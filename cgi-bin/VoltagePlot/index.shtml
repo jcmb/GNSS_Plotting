@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Voltage for:
+<!--#include virtual="file.html" -->
+</title>
+<link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+</head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="/">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+  <!-- end #logo-area -->
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content"></head>
+
+<h1>Voltage for:
+<!--#include virtual="file.html" -->
+</h1>
+<p/>
+
+
+<H2>Voltage</h2>
+<img src="Voltage.png"/>
+<p/>
+
+<H2>Voltage and Temp</h2>
+<img src="VoltTemp.png"/>
+<p/>
+
+
+</body></html>
+

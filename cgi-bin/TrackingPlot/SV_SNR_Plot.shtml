@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">   
+   <meta charset="utf-8" />
+   <title>SV Tracking</title>
+   <meta name="generator" content="BBEdit 10.5" />
+</head>
+<body>
+<script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="/libraries/highcharts.js"></script>
+<script src="/libraries/highcharts-more.js"></script>
+<script src="/libraries/exporting.js"></script>
+<!--
+<script src="jquery-1.10.2.min.js"></script>
+<script src="highcharts.js"></script>
+<script src="highcharts-more.js"></script>
+-->
+
+<h1 id="title">SV Tracking: <!--#include virtual="file.html" --></h1>
+<!--#include virtual="Buttons.html" -->
+<p/>
+<script>
+//create_Buttons("SV_TRACKING")
+</script>
+
+<div id="container">Please wait while plot loads, which normally takes 10-20 seconds</div>
+
+
+<script>
+
+function getURLParameter(name) {
+    return decodeURI(
+        (RegExp(name + '=' + '(.+?)(&|$)').exec(location.search)||[,null])[1]
+    );
+}
+
+var Max_Bands = 1
+
+
+function create_plot(System,SV,Mode) {
+
+
+    if (System == "GPS") {
+        Max_Bands=4;
+        }
+
+    if (System == "GLONASS") {
+        Max_Bands=3;
+        }
+
+    if (System == "SBAS") {
+        Max_Bands=2;
+        }
+
+    var options = {
+        chart: {
+            renderTo: 'container',
+            type: 'line',
+            markersize: 1,
+            zoomType:"xy",
+        },
+
+        legend: {
+            enabled: true
+        },
+        title: {
+            text: 'Tracking Info (' + System +  ': ' + SV + ')'
+            },
+
+        xAxis : {
+            type: 'datetime',
+            title: {
+                text: 'Time'
+            }
+        },
+        yAxis: [
+            {
+            min:0,
+//            max:Max_Bands,
+            endOnTick:false,
+            labels: {
+                enabled: false
+                },
+            title: {
+                text: 'Signal'
+                },
+            },
+            {
+            min:0,
+            max:89,
+            startOnTick:true,
+            endOnTick:true,
+            tickInterval : 15,
+            labels: {
+                enabled: true
+                },
+            opposite: true,
+            title: {
+                text: 'Elevation'
+                },
+           }
+           ],
+        tooltip: {
+            formatter: function() {
+//                console.log(this)
+                
+                if (this.point.Az) {
+                   return '<b>'+ this.series.name +'</b><br/>'
+                   +' Az: ' +this.point.Az +' SNR: ' +this.point.SNR;
+                   }
+                else {
+                   return '<b>'+ this.series.name +': </b>' +this.point.y;
+
+                    } 
+                }
+        },
+        plotOptions: {
+            series: {
+                turboThreshold: 0
+                },
+            scatter: {
+                marker: {
+                    radius: 2,
+                    states: {
+                        hover: {
+                            enabled: true,
+                            lineColor: 'rgb(100,100,100)'
+                        }
+                    }
+                },
+                states: {
+                    hover: {
+                        marker: {
+                            enabled: false
+                        }
+                    }
+                },
+            }
+        },
+
+        }
+
+    series_data=[];
+    elev_data=[];
+    options.series=[]
+    last_slip=[]
+
+    if (Mode=="SIGNAL") {		         
+       options.yAxis[0].max=Max_Bands
+       options.yAxis[0].name="Signal"
+       }
+    else {
+       options.yAxis[0].title.text="SNR"
+       options.yAxis[0].labels.enabled=true
+       }
+    for (var i=1;i<=Max_Bands;i++) {
+        series_data[i]=new Array()
+        options.series[i-1]= {name: 'Band: ' + (i)}
+        last_slip[i]=-1
+        }
+
+    series_data[0]=new Array() //Elevation
+    options.series[Max_Bands] = {
+	name: "Elevation",
+        yAxis: 1,
+        marker: { enabled: false},
+        }
+
+    if (System == "GPS") {
+        options.series[0] = {name:  "L1 C/A"}
+        options.series[1] = {name:  "L2 E"}
+        options.series[2] = {name:  "L2 CS"}
+        options.series[3] = {name:  "L5 IQ"}
+        }
+
+    File_Name=System + "-" + SV +".SNR-SV";
+    console.log(File_Name)
+
+    $.get(File_Name, function(data) {
+        // Split the lines
+        var lines = data.split('\n');
+
+        // Iterate over the lines and add categories or series
+        $.each(lines, function(lineNo, line) {
+            var items = line.split(',');
+
+            if (items[0]) {
+                for (var i=1;i<=Max_Bands;i++) {
+                    if (items[2+(i*2)]) {
+//                        console.log("Have Data")
+                        current_slip=parseInt(items[2+(i*2)])
+//                        console.log(items[1])					       
+	    	         elev_data.push({
+                             x:items[0],
+                             y:parseFloat(items[1]),
+//                             Az: items[3],
+//                             SNR: parseInt(items[3]),
+                             })
+                        if ((last_slip[i]==-1) || (last_slip[i]==current_slip)) {
+	 	            if (Mode=="SIGNAL") {		       
+                               series_data[i].push({
+                                   x:items[0],
+                                   y:i,
+//                                Elev: items[1],
+                                   Az: items[2],
+                                   Signal:i,
+                                   SNR: parseInt(items[1+(i*2)]),
+                                  });
+                               }
+                            else {
+                               series_data[i].push({
+                                   x:items[0],
+                                   y:parseInt(items[1+(i*2)]),
+//                                Elev: items[1],
+                                   Az: items[2],
+                                   Signal:i,
+                                  });
+                               }
+                            }
+                         else {
+	 	            if (Mode=="SIGNAL") {		       
+                               series_data[i].push({
+                                   x:items[0],
+                                   y:i,
+//                                Elev: items[1],
+                                   Az: items[2],
+                                Signal: i,
+                                SNR: parseInt(items[1+(i*2)]),
+                                marker: {
+                                    symbol: 'url(/images/Sign-Alert-icon.png)'
+                                    }
+                                })
+                                }   
+                            else {
+                               series_data[i].push({
+                                   x:items[0],
+                                   y:parseInt(items[1+(i*2)]),
+//                                Elev: items[1],
+                                   Az: items[2],
+                                   Signal:i,
+                                   marker: {
+                                      symbol: 'url(/images/sun.png)'
+                                }
+                                  });
+		              }
+                        }
+                    last_slip[i]=current_slip
+                    }
+                    else {
+//                        console.log("Have Missing")
+			elev_data.push({
+                                x:items[0],
+                                y:null,
+		                })
+
+                        series_data[i].push({
+                            x:items[0],
+                            y: null,
+//                            Elev: items[1],
+                            Az: items[2],
+                            SNR: null,
+                            Signal:i,
+                        });
+                    }
+                }
+            }});
+
+        // Create the chart. It has to be done here as it is made on the call back
+
+        for (var i=1;i<=Max_Bands;i++) {
+            console.log(i)
+//            console.log(series_data[i])
+            options.series[i-1].data=series_data[i]
+            }
+        options.series[Max_Bands].data=elev_data
+
+        var chart = new Highcharts.Chart(options);
+        console.log(options)
+        });
+    }
+
+System=getURLParameter("SYSTEM")
+Sv=getURLParameter("SV")
+Item=getURLParameter("ITEM")
+
+if ( System == "null")  {
+    System="GPS"
+    }
+
+if ( Sv == "null")  {
+    Sv="1"
+    }
+
+
+create_plot(System,Sv,"SNR")
+
+
+function update_plot(Value) {
+    console.log("Update Plot to " + Value)
+    create_plot(System,Sv,Value)
+    }
+
+
+</script>
+
+<button type="button" class="SNR" onclick="update_plot('SNR')" > Display SNR </button>
+
+</body>
+</html>

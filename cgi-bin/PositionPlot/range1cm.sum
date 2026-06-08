@@ -1,0 +1,13 @@
+Range (m) :            0.0105
+Hysteresis time (s)    5
+Epoch interval (s):    0.20
+Total Epochs :         17997
+In Range:              288     1.6%
+Above:                 9333    51.9%
+Below:                 8376    46.5%
+Total Out of range:    17709   98.4%
+
+Above with hysteresis: 9485    52.7%
+Below with hysteresis: 8507    47.3%
+Total with hysteresis: 17992   100.0%
+Max outage length (s): 612.60

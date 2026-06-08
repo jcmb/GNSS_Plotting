@@ -1,0 +1,206 @@
+<span id="GPS">GPS:<br/></span><p/>
+<span id="GLONASS">GLONASS:<br/></span><p/>
+<span id="GAL">Galileo:<br/></span><p/>
+<span id="BDS">BeiDou:<br/></span><p/>
+<span id="SBAS">SBAS:<br/></span><p/>
+
+<a href="SNR_Plot.shtml">All SV's SNR plot</a><br/>
+<a href="Tracking_Plot.shtml">ALL SV's Tracking plot</a><br/>
+<script>
+
+function createCallback( system,SV ){
+//   console.log("create Callback"+SV)
+   return function(){
+     create_plot(system,SV)
+     }
+   }
+
+
+$(document).ready(function() {
+//  console.log("Ready")
+
+  for(var i = 1; i <=32; i++) {
+//     console.log("Make GPS button")
+     $('<button/>', {
+        text: i, //set text 1 to 10
+        id: 'GPS-'+i,
+        class: 'btn-tiny',
+        disabled: true,
+        click: createCallback("GPS",i),
+        }).appendTo("#GPS");
+     }
+
+  for(i = 1; i <=24; i++) {
+     $('<button/>', {
+        text: i, //set text 1 to 10
+        id: 'GLONASS-'+i,
+        class: 'btn-tiny',
+        disabled: true,
+        click: createCallback("GLONASS",i),
+        }).appendTo("#GLONASS");
+     }
+
+  for(i = 1; i <=30; i++) {
+     $('<button/>', {
+        text: i, //set text 1 to 10
+        id: 'GAL-'+i,
+        class: 'btn-tiny',
+        disabled: true,
+        click: createCallback("GAL",i),
+        }).appendTo("#GAL");
+     }
+
+  for(i = 1; i <=35; i++) {
+     $('<button/>', {
+        text: i, //set text 1 to 10
+        id: 'BDS-'+i,
+        class: 'btn-tiny',
+        disabled: true,
+        click: createCallback("BDS",i),
+        }).appendTo("#BDS");
+     }
+
+
+  var SBAS_Names= [
+      "EGNOS - AOR-E",
+      "121",
+      "122",
+      "123",
+      "EGNOS - ARTEMIS",
+      "125",
+      "EGNOS - IND-W",
+      "GAGAN - GSAT 8",
+      "GAGAN",
+      "MSAS-1",
+      "130",
+      "131",
+      "132",
+      "WAAS - INMARSAT 4-F3",
+      "134",
+      "WAAS - GALAXY XV",
+      "EGNOS - SES-5",
+      "MSAS-2",
+      "WAAS - ANIK F1R",
+      "139",
+      "SDCM - LUCH-5A",
+      "141",
+      "142",
+      "143",
+      "144",
+      "145",
+      "146",
+      "147",
+      "148",
+      "149",
+      "150",
+      "151",
+      "152",
+      "153",
+      "154",
+      "155",
+      "156",
+      "157",
+      "158"
+      ]
+
+  for(i = 120; i <=158; i++) {
+     $('<button/>', {
+        text: SBAS_Names[i-120],
+        title: 'SV ' +i,
+        id: 'SBAS-'+i,
+        class: 'btn-tiny',
+        hidden: true,
+        click: createCallback("SBAS",i),
+        }).appendTo("#SBAS");
+     }
+  }
+  );
+
+File_Name="Tracked.SVs";
+//console.log(File_Name)
+
+var First_SV
+First_SV=2
+var First_System
+First_System="GLONASS"
+
+
+$.get(File_Name, function(data) {
+      // Split the lines
+     var lines = data.split('\n');
+     var first_line=true;
+     var Got_GPS=false
+     var Got_GLONASS=false
+     var Got_GAL=false
+     var Got_BDS=false
+     var Got_SBAS=false
+
+     $.each(lines, function(lineNo, line) {
+         var items = line.split(',');
+         if (items[0]) {
+            $("#"+items[0]).removeAttr("disabled");
+            $("#"+items[0]).removeAttr("hidden");
+//            console.log(items)
+            var name=items[0].split('-')
+
+            if (!Got_GPS && (name[0] == "GPS")) {
+               Got_GPS=true
+               }
+            if (!Got_GLONASS && (name[0] == "GLONASS")) {
+               Got_GLONASS=true
+               }
+
+            if (!Got_GAL && (name[0] == "GAL")) {
+               Got_GAL=true
+               }
+
+            if (!Got_BDS && (name[0] == "BDS")) {
+               Got_BDS=true
+               }
+
+            if (!Got_SBAS && (name[0] == "SBAS")) {
+               Got_SBAS=true
+               }
+
+            if (first_line == true) {
+               First_SV=parseInt(name[1]);
+               First_System=name[0];
+               first_line=false;
+               }
+//            console.log(name)
+            }
+        }
+    )
+    if (! Got_GPS ) {
+       $("#GPS").hide();
+       }
+
+    if (! Got_GLONASS ) {
+       $("#GLONASS").hide();
+       }
+
+    if (! Got_GAL ) {
+       $("#GAL").hide();
+       }
+
+    if (! Got_BDS ) {
+       $("#BDS").hide();
+       }
+
+    if (! Got_SBAS ) {
+       $("#SBAS").hide();
+       }
+
+    if (Sv == "null") {
+//       console.log("SV Null")
+       create_plot(First_System,First_SV)
+       }
+    else {
+//       console.log("SV Non Null")
+       create_plot(System,Sv)
+       }
+    }
+)
+
+</script>
+

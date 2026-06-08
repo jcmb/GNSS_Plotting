@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+   <meta charset="utf-8" />
+   <title>Tracking</title>
+   <meta name="generator" content="BBEdit 10.5" />
+</head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="./">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+  <!-- end #logo-area -->
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content">
+
+<script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="/libraries/highcharts.js"></script>
+<script src="/libraries/highcharts-more.js"></script>
+<script src="/libraries/exporting.js"></script>
+<h1 id="title">Tracking: <!--#include virtual="file.html" --></h1>
+<p/>
+<div id="container"></div>
+<div id="status"></div><br/>
+
+<!--#include virtual="Buttons.html" -->
+<script>
+create_Buttons("SLIPS")
+</script>
+
+
+
+<script>
+
+function toRadians (angle) {
+  return angle * (Math.PI / 180);
+}
+
+function getURLParameter(name) {
+    return decodeURI(
+        (RegExp(name + '=' + '(.+?)(&|$)').exec(location.search)||[,null])[1]
+    );
+}
+
+function create_plot(System,Freq,Signal) {
+//    $("body").css("cursor", "progress");
+    $("#status").text("Processing")
+
+    var options = {
+        chart: {
+            renderTo: 'container',
+            type: 'scatter',
+            markersize: 1,
+            zoomType:"xy",
+            animation:false,
+            height: 600,
+            width: 600,
+
+        },
+
+        legend: {
+            enabled: false
+        },
+
+        title: {
+            text: 'Slips for  (' + System +  ' ' + Freq + '-' + Signal +')'
+        },
+        xAxis : {
+            min:-90,
+            max:90,
+            startOnTick: false,
+            endOnTick: false,
+            labels: {
+                enabled: false
+            },
+            title: {
+                enabled: false,
+                }
+        },
+        yAxis: {
+            min:-90,
+            max:90,
+            startOnTick: false,
+            endOnTick: false,
+            labels: {
+                enabled: false
+            },
+            title: {
+                enabled: false,
+                }
+
+        },
+
+        tooltip: {
+            formatter: function() {
+//                console.log(this)
+                if (this.series.index == 0) {
+                   return '<b>'+ this.series.name +'</b><br/>' +
+                    'Slips:' + this.point.Slips + ' Elev: '+ this.point.Elev +' Az: ' +this.point.Az;
+                    }
+                else {
+                   return '<b>'+ this.series.name +'</b><br/>'
+                   }
+                }
+        },
+        plotOptions: {
+            series: {
+                turboThreshold: 0
+                },
+            scatter: {
+                marker: {
+                    radius: 1,
+                    states: {
+                        hover: {
+                            enabled: true,
+                            lineColor: 'rgb(100,100,100)'
+                        }
+                    }
+                },
+                states: {
+                    hover: {
+                        marker: {
+                            enabled: false
+                        }
+                    }
+                },
+            }
+        },
+
+        }
+
+    series_data=[];
+    options.series=[]
+    last_slip=[]
+    options.series[0]= {name: 'Slips: ',
+                        marker: {
+                            radius: 3
+                        },
+                        data: new Array()}
+    options.series[1]= {name: '10 degrees',
+                        data: new Array()}
+    options.series[2]= {name: '30 degrees',
+                        data: new Array()}
+    options.series[3]= {name: '60 degrees' ,
+                        data: new Array()}
+    options.series[4]= {name: '0 degrees',
+                        data: new Array()}
+
+
+    for (var i=0;i<=32;i++) {
+//        series_data[i]=new Array()
+        last_slip[i]=-1
+        }
+
+    slips=[]
+    for (var i=0;i<=359;i++) {
+//        series_data[i]=new Array()
+        slips[i]=new Array()
+        for (var j=0;j<=90;j++) {
+//            console.log(i,j)
+            slips[i][j]=0
+//            console.log(i,j,slips[i][j])
+            }
+        }
+
+    File_Name=System + "-" +Freq + "-" +Signal +".SNR";
+//    console.log(File_Name)
+//    $("body").css("cursor", "wait");
+    $("#status").text("Loading data from server")
+
+    $.ajax({
+      xhrFields: {
+       onprogress: function(evt)
+           {
+
+              if (evt.lengthComputable) {
+                 var percentComplete = evt.loaded / evt.total*100;
+                 $("#status").text("Loaded " + ~~(percentComplete) + '%')
+                }
+              else {
+                 $("#status").text("Loaded " + ~~(evt.loaded/1024) + ' Kb')
+                 }
+            }
+          }
+       ,
+
+       type : "GET",
+       url : File_Name,
+       data: {},
+       success: function(data) {
+
+        // Split the lines
+//        console.timeStamp("Data Loaded")
+        var lines = data.split('\n');
+//        console.timeStamp("Data Split")
+        var total_slips=0
+
+        // Iterate over the lines and add categories or series
+        $.each(lines, function(lineNo, line) {
+            var items = line.split(',');
+//            $("#status").text("Loading line: "+lineNo)
+//            console.log(items[0])
+            if (items[0]) {
+//                console.log("Is Valid")
+                current_slip=parseInt(items[5])
+                sv=parseInt(items[1])-1
+                Elev=parseInt(items[2])
+                Az=parseInt(items[3])
+		if (Az==360) {
+		   Az=0
+		   }
+//                time=items[0]
+                if ((last_slip[sv]!=-1) && (last_slip[sv]!=current_slip)&& (Math.abs(last_slip[sv]-current_slip)<=5)) {
+                    slips[Az][Elev]++
+//                    console.log(Az,Elev,slips[Az][Elev])
+//                    options.series[0].data.push({
+//                        x: Math.sin(toRadians(Az))*(90-Elev),
+//                        y: Math.cos(toRadians(Az))*(90-Elev),
+//                        Elev: Elev,
+//                        Az:   Az,
+//                        SNR:  items[4],
+//                    });
+                    total_slips++
+                    }
+                last_slip[sv]=current_slip
+
+                }
+            }
+            );
+
+//        console.log(slips)
+        for (var Az=0;Az<=359;Az++) {
+    //        series_data[i]=new Array()
+            slips[i]=new Array()
+            for (var Elev=0;Elev<=90;Elev++) {
+                if (slips[Az][Elev]) {
+                    options.series[0].data.push({
+                        x: Math.sin(toRadians(Az))*(90-Elev),
+                        y: Math.cos(toRadians(Az))*(90-Elev),
+                        Elev: Elev,
+                        Az:   Az,
+                        Slips:  slips[Az][Elev]
+                    });
+                }
+            }
+        }
+
+//        console.log(options.series[0])
+
+        for (var Az=0;Az<=359;Az++) {
+//            console.log(Az,Math.sin(toRadians(Az))*90,Math.cos(toRadians(90-10))*90)
+            options.series[1].data.push({
+                x: Math.sin(toRadians(Az))*80,
+                y: Math.cos(toRadians(Az))*80,
+                Elev: 10,
+                Az:   Az,
+                SNR:  'N/A'
+                });
+
+            options.series[2].data.push({
+                x: Math.sin(toRadians(Az))*60,
+                y: Math.cos(toRadians(Az))*60,
+                Elev: 30,
+                Az:   Az,
+                SNR:  'N/A'
+                });
+
+            options.series[3].data.push({
+                x: Math.sin(toRadians(Az))*30,
+                y: Math.cos(toRadians(Az))*30,
+                Elev: 60,
+                Az:   Az,
+                SNR:  'N/A'
+                });
+            options.series[4].data.push({
+                x: Math.sin(toRadians(Az))*90,
+                y: Math.cos(toRadians(Az))*90,
+                Elev: 0,
+                Az:   Az,
+                SNR:  'N/A'
+                });
+
+            }
+
+
+        $("#status").text("Creating Plot")
+        options.title.text='Slips for  (' + System +  ' ' + Freq + '-' + Signal +')' + ' Total Slips: ' + total_slips
+
+        var chart = new Highcharts.Chart(options);
+        $("#status").text("")
+//        $("body").css("cursor", "default");
+//        console.log(options)
+        }
+    })
+  }
+
+System=getURLParameter("SYSTEM")
+Freq=getURLParameter("FREQ")
+Signal=getURLParameter("SIGNAL")
+
+if ( System == "null")  {
+    System="GPS"
+    }
+
+if ( Freq == "null")  {
+    Freq="L1"
+    }
+
+if ( Signal == "null")  {
+    Signal="CA";
+    }
+
+create_plot(System,Freq,Signal)
+</script>
+
+</div>
+</div>
+</div>
+</body>
+</html>

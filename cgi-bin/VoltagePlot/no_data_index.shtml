@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Voltage for:
+<!--#include virtual="file.html" -->
+</title>
+</head>
+<body>
+<h1>No Voltage information for:
+<!--#include virtual="file.html" -->
+</h1>
+<p/>
+
+</body></html>
+

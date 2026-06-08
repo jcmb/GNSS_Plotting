@@ -1,0 +1,180 @@
+<!-- There are clearly better ways of doing the buttons, but I am want to play with selectors -->
+<div id="TRACKING" hidden>
+Tracking:<br/>
+<button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="create_plot('GPS','L1','CA')" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="create_plot('GPS','L2','E')" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="create_plot('GPS','L2','CS')" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="create_plot('GPS','L5','IQ')" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-CA" onclick="create_plot('GLONASS','L1','CA')" disabled > GLN L1 CA</button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-P" onclick="create_plot('GLONASS','L1','P')" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-CA" onclick="create_plot('GLONASS','L2','CA')" disabled > GLN L2 CA</button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-P" onclick="create_plot('GLONASS','L2','P')" disabled > GLN L2 P </button>
+<button type="button" class="btn-sm TRACKING SBAS-L1-CA" onclick="create_plot('SBAS','L1','CA')" disabled > SBAS L1 CA</button>
+<button type="button" class="btn-sm TRACKING SBAS-L5-I" onclick="create_plot('SBAS','L5','I')" disabled > SBAS L5 I </button>
+<button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="create_plot('GAL','L1','MBOC_1_1_PD')" disabled > GAL E1 </button>
+<button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="create_plot('GAL','E5AB','ALTBOC_C_PD')" disabled > GAL AltBoc </button>
+<br/>
+Slips:<br/>
+<button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA'" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E'" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS'" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ'" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=CA'" disabled > GLN L1 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-P" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=P'" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=CA'" disabled > GLN L2 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-P" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=P'" disabled > GLN L2 P  </button>
+<button type="button" class="btn-sm TRACKING SBAS-L1-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=SBAS&FREQ=L1&SIGNAL=CA'" disabled > SBAS L1 CA </button>
+<button type="button" class="btn-sm TRACKING SBAS-L5-I" onclick="location.href='Slips_Plot.shtml?SYSTEM=SBAS&FREQ=L5&SIGNAL=I'" disabled > SBAS L5 I </button>
+<button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="location.href='Slips_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD'" disabled > GAL E1 </button>
+<button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="location.href='Slips_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD'" disabled > GAL AltBoc </button>
+<br/>
+SNR:<br/>
+<button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA'" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E'" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS'" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ'" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=CA'" disabled > GLN L1 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-P" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=P'" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=CA'" disabled > GLN L2 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-P" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=P'" disabled > GLN L2 P  </button>
+<button type="button" class="btn-sm TRACKING SBAS-L1-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=SBAS&FREQ=L1&SIGNAL=CA'" disabled > SBAS L1 CA </button>
+<button type="button" class="btn-sm TRACKING SBAS-L5-I" onclick="location.href='SNR_Plot.shtml?SYSTEM=SBAS&FREQ=L5&SIGNAL=I'" disabled > SBAS L5 I </button>
+<!--
+<button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="location.href='SNR_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD'" disabled > GAL E1 </button>
+<button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="location.href='SNR_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD'" disabled > GAL AltBoc </button>
+-->
+</div>
+
+<div id="SLIPS" hidden>
+Slips:<br/>
+<button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="create_plot('GPS','L1','CA')" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="create_plot('GPS','L2','E')" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="create_plot('GPS','L2','CS')" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="create_plot('GPS','L5','IQ')" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-CA" onclick="create_plot('GLONASS','L1','CA')" disabled > GLN L1 CA</button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-P" onclick="create_plot('GLONASS','L1','P')" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-CA" onclick="create_plot('GLONASS','L2','CA')" disabled > GLN L2 CA</button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-P" onclick="create_plot('GLONASS','L2','P')" disabled > GLN L2 P </button>
+<button type="button" class="btn-sm TRACKING SBAS-L1-CA" onclick="create_plot('SBAS','L1','CA')" disabled > SBAS L1 CA</button>
+<button type="button" class="btn-sm TRACKING SBAS-L5-I" onclick="create_plot('SBAS','L5','I')" disabled > SBAS L5 I </button>
+<button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="create_plot('GAL','L1','MBOC_1_1_PD')" disabled > GAL E1 </button>
+<button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="create_plot('GAL','E5AB','ALTBOC_C_PD')" disabled > GAL AltBoc </button>
+<br/>
+Tracking:<br/>
+<button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA'" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E'" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS'" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ'" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=CA'" disabled > GLN L1 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-P" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=P'" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=CA'" disabled > GLN L2 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-P" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=P'" disabled > GLN L2 P  </button>
+<button type="button" class="btn-sm TRACKING SBAS-L1-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=SBAS&FREQ=L1&SIGNAL=CA'" disabled > SBAS L1 CA </button>
+<button type="button" class="btn-sm TRACKING SBAS-L5-I" onclick="location.href='Tracking_Plot.shtml?SYSTEM=SBAS&FREQ=L5&SIGNAL=I'" disabled > SBAS L5 I </button>
+<button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD'" disabled > GAL E1 </button>
+<button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD'" disabled > GAL AltBoc </button>
+
+<br/>
+SNR:<br/>
+<button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA'" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E'" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS'" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="location.href='SNR_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ'" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=CA'" disabled > GLN L1 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L1-P" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=P'" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=CA'" disabled > GLN L2 CA </button>
+<button type="button" class="btn-sm TRACKING GLONASS-L2-P" onclick="location.href='SNR_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=P'" disabled > GLN L2 P  </button>
+<button type="button" class="btn-sm TRACKING SBAS-L1-CA" onclick="location.href='SNR_Plot.shtml?SYSTEM=SBAS&FREQ=L1&SIGNAL=CA'" disabled > SBAS L1 CA </button>
+<button type="button" class="btn-sm TRACKING SBAS-L5-I" onclick="location.href='SNR_Plot.shtml?SYSTEM=SBAS&FREQ=L5&SIGNAL=I'" disabled > SBAS L5 I </button>
+<!--
+<button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="location.href='SNR_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD'" disabled > GAL E1 </button>
+<button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="location.href='SNR_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD'" disabled > GAL AltBoc </button>
+-->
+</div>
+
+
+<div id="SNR" hidden>
+SNR:<br/>
+<button type="button" class="btn-sm SNR GPS-L1-CA" onclick="create_plot('GPS','L1','CA')" disabled > GPS L1 CA </button>
+<button type="button" class="btn-sm SNR GPS-L2-E" onclick="create_plot('GPS','L2','E')" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm SNR GPS-L2-CS" onclick="create_plot('GPS','L2','CS')" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm SNR GPS-L5-IQ" onclick="create_plot('GPS','L5','IQ')" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm SNR GLONASS-L1-CA" onclick="create_plot('GLONASS','L1','CA')" disabled > GLN L1 CA</button>
+<button type="button" class="btn-sm SNR GLONASS-L1-P" onclick="create_plot('GLONASS','L1','P')" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm SNR GLONASS-L2-CA" onclick="create_plot('GLONASS','L2','CA')" disabled > GLN L2 CA</button>
+<button type="button" class="btn-sm SNR GLONASS-L2-P" onclick="create_plot('GLONASS','L2','P')" disabled > GLN L2 P </button>
+<button type="button" class="btn-sm SNR SBAS-L1-CA" onclick="create_plot('SBAS','L1','CA')" disabled > SBAS L1 CA </button>
+<button type="button" class="btn-sm SNR SBAS-L5-I" onclick="create_plot('SBAS','L5','I')" disabled > SBAS L5 I </button>
+<!--
+<button type="button" class="btn-sm SNR GAL-L1-MBOC_1_1_PD" onclick="create_plot('GAL','L1','MBOC_1_1_PD')" disabled > GAL E1 </button>
+<button type="button" class="btn-sm SNR GAL-E5AB-ALTBOC_C_PD" onclick="create_plot('GAL','E5AB','E5AB-ALTBOC_C_PD')" disabled > GAL AltBoc </button>
+-->
+<br/>
+Tracking:<br/>
+<button type="button" class="btn-sm SNR GPS-L1-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA'" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm SNR GPS-L2-E" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E'" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm SNR GPS-L2-CS" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS'" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm SNR GPS-L5-IQ" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ'" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm SNR GLONASS-L1-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=CA'" disabled > GLN L1 CA </button>
+<button type="button" class="btn-sm SNR GLONASS-L1-P" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=P'" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm SNR GLONASS-L2-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=CA'" disabled > GLN L2 CA </button>
+<button type="button" class="btn-sm SNR GLONASS-L2-P" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=P'" disabled > GLN L2 P </button>
+<button type="button" class="btn-sm SNR SBAS-L1-CA" onclick="location.href='Tracking_Plot.shtml?SYSTEM=SBAS&FREQ=L1&SIGNAL=CA'" disabled > SBAS L1 CA</button>
+<button type="button" class="btn-sm SNR SBAS-L5-I" onclick="location.href='Tracking_Plot.shtml?SYSTEM=SBAS&FREQ=L5&SIGNAL=I'" disabled > SBAS L5 I </button>
+<button type="button" class="btn-sm SNR GAL-L1-MBOC_1_1_PD" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD'" disabled > GAL E1</button>
+<button type="button" class="btn-sm SNR GAL-E5AB-ALTBOC_C_PD" onclick="location.href='Tracking_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD'" disabled > GAL AltBoc </button>
+<br/>
+Slips:<br/>
+<button type="button" class="btn-sm SNR GPS-L1-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA'" disabled > GPS L1 CA</button>
+<button type="button" class="btn-sm SNR GPS-L2-E" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E'" disabled > GPS L2 E </button>
+<button type="button" class="btn-sm SNR GPS-L2-CS" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS'" disabled > GPS L2 CS </button>
+<button type="button" class="btn-sm SNR GPS-L5-IQ" onclick="location.href='Slips_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ'" disabled > GPS L5 IQ </button>
+<button type="button" class="btn-sm SNR GLONASS-L1-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=CA'" disabled > GLN L1 CA </button>
+<button type="button" class="btn-sm SNR GLONASS-L1-P" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L1&SIGNAL=P'" disabled > GLN L1 P </button>
+<button type="button" class="btn-sm SNR GLONASS-L2-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=CA'" disabled > GLN L2 CA </button>
+<button type="button" class="btn-sm SNR GLONASS-L2-P" onclick="location.href='Slips_Plot.shtml?SYSTEM=GLONASS&FREQ=L2&SIGNAL=P'" disabled > GLN L2 P  </button>
+<button type="button" class="btn-sm SNR SBAS-L1-CA" onclick="location.href='Slips_Plot.shtml?SYSTEM=SBAS&FREQ=L1&SIGNAL=CA'" disabled > SBAS L1 CA </button>
+<button type="button" class="btn-sm SNR SBAS-L5-I" onclick="location.href='Slips_Plot.shtml?SYSTEM=SBAS&FREQ=L5&SIGNAL=I'" disabled > SBAS L5 I </button>
+<button type="button" class="btn-sm SNR GAL-L1-MBOC_1_1_PD" onclick="location.href='Slips_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD'" disabled > GAL E1 </button>
+<button type="button" class="btn-sm SNR GAL-E5AB-ALTBOC_C_PD" onclick="location.href='Slips_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD'" disabled > GAL AltBoc </button>
+<br/>
+</div>
+<br/>
+<a href="SV_Tracking_Plot.shtml">Single SV Tracking plots</a>
+
+<script>
+function create_Buttons(PLOT) {
+
+//   console.log("create Buttons:"+PLOT)
+//   console.log($("#"+PLOT))
+   $("#"+PLOT).removeProp("hidden")
+//   $("#"+PLOT).removeProp("disabled")
+//   console.log($("#"+PLOT))
+
+    File_Name="Tracked.Bands";
+    $.get(File_Name, function(data) {
+        var lines = data.split('\n');
+
+        $.each(lines, function(lineNo, line) {
+//            console.log("Tracked Line: " + line)
+            if (line) { //ignore blank lines, avoids a jquery error
+                Buttons=$("."+line)
+                for (var i = 0; i < Buttons.length; i++) {
+                    Buttons[i].disabled=false
+                    }
+                }
+            }
+            );
+        })
+
+
+   }
+
+</script>
+
+<!--
+create_Buttons()
+</script>
+</body>
+</html>
+-->

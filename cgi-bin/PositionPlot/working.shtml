@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+<META HTTP-EQUIV="REFRESH" CONTENT="30">
+<title>Results for: 
+<!--#include virtual="file.html" -->
+</title>
+</head>
+<body>
+<h1>Results for: 
+<!--#include virtual="file.html" -->
+</h1>
+<p/>
+
+<h2>Processing is still on going, please check back later.</h2>
+
+This page will automatically refresh
+</body></html>
+
