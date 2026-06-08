@@ -16,17 +16,16 @@ then
    exit 200
 fi
 
-. $INC_DIR/ftp_user.cfg
+. $INC_DIR/ftp_lib.sh
+ftp_load_config "$INC_DIR"
 . $INC_DIR/GNSS_Paths.cfg
 
-if [ -z "$FTP_USER" ]
+if [ -z "${FTP_DOWNLOAD_JOBS[*]}" ]
 then
-   echo "FTP_USER is not set and must be"
-   logger "get_all_1_hour_ftp.sh: FTP_USER is not set and must be"
+   echo "FTP_DOWNLOAD_JOBS is not set and must be"
+   logger "get_all_1_hour_ftp.sh: FTP_DOWNLOAD_JOBS is not set and must be"
    exit 200
 fi
-
-
 
 if [ -z "$GNSS_RAW_BASE_DIR" ]
 then
@@ -37,77 +36,34 @@ fi
 
 
 if [ -n "$1" ]; then
-  rm /tmp/get_ftp.pid
-  fi
+   rm -f /tmp/get_ftp.pid
+fi
 
+if [ -e /tmp/get_ftp.pid ]; then
+   OLD_PID=`cat /tmp/get_ftp.pid`
+   if kill -0 "$OLD_PID" 2>/dev/null; then
+      echo "get_all_1_hour_ftp already running (pid $OLD_PID). delete /tmp/get_ftp.pid if it is not"
+      logger "get_all_1_hour_ftp.sh: already running (pid $OLD_PID)"
+      exit 101
+   fi
+   rm -f /tmp/get_ftp.pid
+fi
 
 echo $$ >/tmp/get_ftp.pid
-PATH=/opt/local/bin:$PATH
+PATH=/usr/local/bin:$PATH
 logger "get_all_1_hour_ftp started"
 logger "get_all_1_hour_ftp user" `whoami`
 
-. $INC_DIR/ftp_transfer.cfg
-
-echo "Processing: Transfer.Trimble-wco.com"
-
-#for SET in "${SETS[@]}"
-#do
-#    echo "Processing: " $GNSS_RAW_BASE_DIR/$SET/
-#    if [ ! -d "$GNSS_RAW_BASE_DIR/$SET/" ]; then
-#	mkdir -p "$GNSS_RAW_BASE_DIR/$SET/"
-#    fi    
-#   cd $GNSS_RAW_BASE_DIR/$SET/ 
-#
-#   logger "get_all_1_hour_ftp " `pwd`
-#
-#done
-
-
-cd $GNSS_RAW_BASE_DIR
-lftp <<EOF
-set xfer:clobber on
-set xfer:log true
-#set xfer:log-file "/tmp/get_all_1.log"
-open -u $FTP_USER $FTP_SERVER
-cd TCC/BTN/GNSSTransfer/
-# mget -d -E */*
-mirror --older-than=now-15minutes --Remove-source-files --continue .
-EOF
-
-cd $GNSS_RAW_BASE_DIR
-lftp <<EOF
-set xfer:clobber on
-set xfer:log true
-#set xfer:log-file "/tmp/get_all_1.log"
-open -u $FTP_USER $FTP_SERVER
-cd MP/
-#mget -d -E */*
-mirror --older-than=now-15minutes --Remove-source-files --continue .
-EOF
-
-echo "Processing: TCC"
-
-#for SET in "${SETS[@]}"
-#do
-#   echo "Processing: " $GNSS_RAW_BASE_DIR/$SET/ 
-#   cd $GNSS_RAW_BASE_DIR/$SET/
-#
-#   logger "get_all_1_hour_ftp " `pwd`
-#
-#done
-
-
-cd $GNSS_RAW_BASE_DIR
-lftp <<EOF
-set xfer:clobber on
-set xfer:log true
-set xfer:log-file "/tmp/get_all_1.log"
-open -u $FTP_USER myconnectedsite.com
-#cd /TCC/btn/GNSSTransfer/$SET
-cd /TCC/btn/GNSSTransfer/
-mirror --older-than=now-5minutes --Remove-source-files --continue .
-#mget -d -E */*
-EOF
+for job in "${FTP_DOWNLOAD_JOBS[@]}"
+do
+   IFS='|' read -r server remote_path older_than log_file <<< "$job"
+   echo "Processing FTP download: $server:$remote_path"
+   logger "get_all_1_hour_ftp: $server:$remote_path"
+   ftp_mirror_download "$GNSS_RAW_BASE_DIR" "$server" "$remote_path" "$older_than" "$log_file" || {
+      logger "get_all_1_hour_ftp: download failed for $server:$remote_path"
+      echo "FTP download failed for $server:$remote_path"
+   }
+done
 
 logger "get_all_1_hour_ftp " `pwd`
 
@@ -121,17 +77,10 @@ $INC_DIR/do_ren_all.sh
 $INC_DIR/Make_All_24.sh
 $INC_DIR/Make_All_24_Decimated.sh
 
-if [ -e /tmp/get_ftp.pid ]
-   then
-   echo Get_Ftp Plotting is still running. delete /tmp/get_ftp.pid if it is not
-   exit 101
-   fi
-
-
 $INC_DIR/Make_All_24_RINEX.sh &
 $INC_DIR/Make_All_24_Plot.sh &
 disown
-rm /tmp/get_ftp.pid
+rm -f /tmp/get_ftp.pid
 
 logger "$0 finished"
 exit 0

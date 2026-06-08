@@ -1,8 +1,7 @@
 #! /bin/bash
-exit
 shopt -s nullglob
 
-if [ ! -z $2 ]
+if [ -n "$2" ]
 then
    mkdir -p $2
    cd $2

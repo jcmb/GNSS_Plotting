@@ -23,7 +23,6 @@ then
    exit 200
 fi
 
-. $INC_DIR/ftp_user.cfg
 . $INC_DIR/GNSS_Paths.cfg
 
 if [ -z "$GNSS_RAW_BASE_DIR" ]

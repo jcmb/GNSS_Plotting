@@ -24,7 +24,8 @@ then
    exit 200
 fi
 
-. $INC_DIR/ftp_user.cfg
+. $INC_DIR/ftp_lib.sh
+ftp_load_config "$INC_DIR"
 . $INC_DIR/GNSS_Paths.cfg
 
 if [ -z "$GNSS_RAW_BASE_DIR" ]
@@ -41,10 +42,10 @@ then
    exit 200
 fi
 
-if [ -z "$FTP_USER" ] || [ -z "$FTP_SERVER" ] || [ -z "$FTP_BACKUP_PATH" ]
+if [ -z "$FTP_TCC_UPLOAD_SERVER" ] || [ -z "$FTP_BACKUP_PATH" ]
 then
-   echo "FTP_USER, FTP_SERVER, and FTP_BACKUP_PATH must be set in ftp_user.cfg"
-   logger "$0: FTP_USER, FTP_SERVER, or FTP_BACKUP_PATH is not set"
+   echo "FTP_TCC_UPLOAD_SERVER and FTP_BACKUP_PATH must be set in ftp_servers.cfg"
+   logger "$0: FTP_TCC_UPLOAD_SERVER or FTP_BACKUP_PATH is not set"
    exit 200
 fi
 
@@ -64,15 +65,10 @@ do
 
    echo "Backing up set: $SET"
    logger "$0: backing up $SET from $GNSS_RAW_BASE_DIR/$SET"
-   cd "$GNSS_RAW_BASE_DIR/$SET" || exit 1
-
-   lftp <<EOF
-set xfer:clobber on
-set xfer:log
-open -u $FTP_USER $FTP_SERVER
-cd $FTP_BACKUP_PATH/$SET
-mirror --reverse --ignore-time --parallel --log=/tmp/backup_TCC_${SET}.log
-EOF
+   ftp_mirror_upload "$GNSS_RAW_BASE_DIR/$SET" "$FTP_TCC_UPLOAD_SERVER" "$FTP_BACKUP_PATH/$SET" "/tmp/backup_TCC_${SET}.log" || {
+      logger "$0: upload failed for $SET"
+      echo "FTP upload failed for $SET"
+   }
 
 done
 

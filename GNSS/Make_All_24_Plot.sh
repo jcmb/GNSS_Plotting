@@ -38,12 +38,13 @@ if [ -e /tmp/Plot_24.pid ]
 
 echo $$ >/tmp/Plot_24.pid
 
-$INC_DIR/Make_All_24_Plot_Position.sh&
-#sleep 5
-$INC_DIR/Make_All_24_Plot_Tracking.sh&
-#sleep 5
-$INC_DIR/Make_All_24_Plot_Voltage.sh&
+$INC_DIR/Make_All_24_Plot_Position.sh &
+PID_POS=$!
+$INC_DIR/Make_All_24_Plot_Tracking.sh &
+PID_TRACK=$!
+$INC_DIR/Make_All_24_Plot_Voltage.sh &
+PID_VOLT=$!
 
-#wait
-rm /tmp/Plot_24.pid
+wait $PID_POS $PID_TRACK $PID_VOLT
+rm -f /tmp/Plot_24.pid
 logger "$0 finished"
