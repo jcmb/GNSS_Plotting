@@ -1,5 +1,4 @@
 #!/bin/bash
-PATH=$PATH:/opt/local/bin
 unset ftp_proxy
 
 if [ -e /tmp/backup_TCC.pid ]
@@ -21,7 +20,7 @@ fi
 if [ -z "$INC_DIR" ]
 then
    echo "INC_DIR is not set and must be"
-   logger "do_ren_mac.sh: INC_DIR is not set and must be"
+   logger "$0: INC_DIR is not set and must be"
    exit 200
 fi
 
@@ -35,33 +34,47 @@ then
    exit 200
 fi
 
+if [ -z "$BACKUP_SETS" ]
+then
+   echo "BACKUP_SETS is not set and must be"
+   logger "$0: BACKUP_SETS is not set and must be"
+   exit 200
+fi
 
-PATH=/opt/local/bin:$PATH
-logger "$0 started: $0"
-logger "backup_btn user" `whoami`
-echo "$0 started: $0"
+if [ -z "$FTP_USER" ] || [ -z "$FTP_SERVER" ] || [ -z "$FTP_BACKUP_PATH" ]
+then
+   echo "FTP_USER, FTP_SERVER, and FTP_BACKUP_PATH must be set in ftp_user.cfg"
+   logger "$0: FTP_USER, FTP_SERVER, or FTP_BACKUP_PATH is not set"
+   exit 200
+fi
 
-#$INC_DIR/do_ren_all.sh
+PATH=/usr/local/bin:$PATH
+logger "$0 started"
+logger "$0 user" `whoami`
+echo "$0 started"
 
-cd $GNSS_RAW_BASE_DIR/
+for SET in "${BACKUP_SETS[@]}"
+do
+   if [ ! -d "$GNSS_RAW_BASE_DIR/$SET" ]
+   then
+      echo "Skipping $SET: $GNSS_RAW_BASE_DIR/$SET not found"
+      logger "$0: skipping $SET, directory not found"
+      continue
+   fi
 
-logger "$0 " `pwd`
+   echo "Backing up set: $SET"
+   logger "$0: backing up $SET from $GNSS_RAW_BASE_DIR/$SET"
+   cd "$GNSS_RAW_BASE_DIR/$SET" || exit 1
 
-#rsync -v --itemize-changes --dry-run --ignore-times  --progress -r . rsync://hcc.trimble.com/BTN
-#rsync -a  . rsync://hcc.trimble.com/GNSS
-
-
-
-cd $GNSS_RAW_BASE_DIR/BASES
-
-lftp  <<EOF
+   lftp <<EOF
 set xfer:clobber on
 set xfer:log
 open -u $FTP_USER $FTP_SERVER
-cd $FTP_BACKUP_PATH/BASES
-mirror --reverse --ignore-time --parallel --log=/tmp/backup_TCC.log
+cd $FTP_BACKUP_PATH/$SET
+mirror --reverse --ignore-time --parallel --log=/tmp/backup_TCC_${SET}.log
 EOF
 
+done
 
 rm /tmp/backup_TCC.pid
 logger "$0 finished"
