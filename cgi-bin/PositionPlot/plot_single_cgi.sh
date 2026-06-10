@@ -13,7 +13,7 @@ File=`basename $1 $2`;
 Dir=`dirname $0`;
 normalDir=`cd "${Dir}";pwd`
 #echo $PATH
-PATH=${normalDir}:~/bin:$PATH
+PATH=${normalDir}:/usr/local/bin:~/bin:$PATH
 Point=$4
 Ant=$5
 #TrimbleTools=$6
@@ -43,10 +43,24 @@ fi
 #ls -l $1
 
 . $normalDir/JCMBSoft_Config.sh
+GNSS_CFG_DIR=`cd "$normalDir/../../admin/GNSS" 2>/dev/null && pwd`
+if [ -z "$GNSS_CFG_DIR" ] || [ ! -f "$GNSS_CFG_DIR/GNSS_Paths.cfg" ]
+then
+   GNSS_CFG_DIR=/mnt/GPS_Admin/admin/GNSS
+fi
+if [ -f "$GNSS_CFG_DIR/GNSS_Paths.cfg" ]
+then
+   . "$GNSS_CFG_DIR/GNSS_Paths.cfg"
+fi
+if [ -z "$GNSS_RESULTS_DIR" ]
+then
+   GNSS_RESULTS_DIR=/mnt/Results
+fi
 
-logger  /mnt/Results/Position$Project/$File
-mkdir -p /mnt/Results/Position$Project/$File
-cd /mnt/Results/Position$Project/$File && rm * 2> /dev/null
+RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
+logger "$RESULT_DIR"
+mkdir -p "$RESULT_DIR"
+cd "$RESULT_DIR" && rm * 2> /dev/null
 TMP_DIR=/run/shm/
 
 logger `pwd`
@@ -212,6 +226,7 @@ echo records=$Records >>file.plt
 echo "$FileFull" >file.html
 #cp $normalDir/plot_index.html index.shtml
 mv $File.enu file
+cp file position_data.csv
 #echo "pwd $PWD\n"
 #echo "gnuplot file.plt $normalDir/X29_plot.plt\n"
 
@@ -251,6 +266,7 @@ echo '</pre>'
 #echo -n $File
 #echo '/" />'
 cp $normalDir/index.shtml .
+ln -sf $normalDir/interactive_plot.js
 cat index.shtml
 rm outage1cm.csv
 rm outage2cm.csv

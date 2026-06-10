@@ -65,6 +65,7 @@ echo "Plotting Voltage for $File"
 logger "$0: plotting voltage for $File from $INPUT_FILE"
 
 viewdat -d40 -x "$INPUT_FILE" | "$normalDir/X40_Power_To_Flat.py" > "$RESULT_DIR/file"
+cp "$RESULT_DIR/file" "$RESULT_DIR/voltage_data.csv"
 
 cd "$RESULT_DIR" || exit 1
 
@@ -80,6 +81,7 @@ then
 
     gnuplot file.plt "$normalDir/X40_Plot.plt"
     ln -sf "$normalDir/index.shtml" index.shtml
+    ln -sf "$normalDir/interactive_voltage.js" interactive_voltage.js
 else
     echo "$File does not have Voltage/Temp Records"
     logger "$0: $File does not have voltage/temp records"

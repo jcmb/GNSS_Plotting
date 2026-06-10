@@ -23,6 +23,12 @@ STATION=$1
 shift
 
 DIR=`pwd`
+INC_DIR=`cd "$(dirname "$0")" && pwd`
+TRACKING_CGI_DIR=/mnt/GPS_Admin/cgi-bin/TrackingPlot
+if [ ! -x "$TRACKING_CGI_DIR/plot_single_cgi.sh" ]
+then
+   TRACKING_CGI_DIR=`cd "$INC_DIR/../cgi-bin/TrackingPlot" && pwd`
+fi
 
 mkdir /tmp/Tracking 2>/dev/null
 
@@ -31,8 +37,8 @@ while (( "$#" )); do
     then
 	echo "Plotting " $1
         ln -s $DIR/$1  /tmp/Tracking
-	logger "/mnt/GPS_Admin/cgi-bin/TrackingPlot/plot_single_cgi.sh /tmp/Tracking/$1 $TYPE -1 $STATION -1 0 0/$PROJ -1"
-        /mnt/GPS_Admin/cgi-bin/TrackingPlot/plot_single_cgi.sh /tmp/Tracking/$1 $TYPE 0 0 /$PROJ/$STATION
+	logger "$TRACKING_CGI_DIR/plot_single_cgi.sh /tmp/Tracking/$1 $TYPE -1 $STATION -1 0 0/$PROJ -1"
+        "$TRACKING_CGI_DIR/plot_single_cgi.sh" /tmp/Tracking/$1 $TYPE 0 0 /$PROJ/$STATION
 #        curl  -F project=$TYPE -F Point=$STATION -F file=@$1 http://$SERVER/cgi-bin/PositionPlot/T02_2_PNG.pl > $1.html
 	touch .$1.track
 #	sleep 120

@@ -38,6 +38,11 @@ if [ -e /tmp/Plot_24_Voltage.pid ]
 
 echo $$ >/tmp/Plot_24_Voltage.pid
 
+VOLTAGE_CGI_DIR=/mnt/GPS_Admin/cgi-bin/VoltagePlot
+if [ ! -x "$VOLTAGE_CGI_DIR/Plot_Voltage_Dir_Script.sh" ]
+then
+   VOLTAGE_CGI_DIR=`cd "$INC_DIR/../cgi-bin/VoltagePlot" && pwd`
+fi
 
 Local_TZ=`TZ.py`
 for SET in "${PLOT_SETS[@]}"
@@ -51,8 +56,8 @@ do
 
        cd $GNSS_24_BASE_DIR/$SET/30s/$d
        logger "Voltage Plotting for $d"
-       /mnt/GPS_Admin/cgi-bin/VoltagePlot/Plot_Voltage_Dir_Script.sh .T02 $SET $d $Local_TZ *.T02
-       /mnt/GPS_Admin/cgi-bin/VoltagePlot/Plot_Voltage_Dir_Script.sh .T04 $SET $d $Local_TZ *.T04
+       "$VOLTAGE_CGI_DIR/Plot_Voltage_Dir_Script.sh" .T02 $SET $d $Local_TZ *.T02
+       "$VOLTAGE_CGI_DIR/Plot_Voltage_Dir_Script.sh" .T04 $SET $d $Local_TZ *.T04
 
 
    done

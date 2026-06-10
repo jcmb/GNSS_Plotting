@@ -27,6 +27,8 @@ shift
 Local_TZ=$1
 shift
 
+SCRIPT_DIR=`cd "$(dirname "$0")" && pwd`
+
 
 if [ -f No_Voltage ]
 then
@@ -41,7 +43,7 @@ while (( "$#" )); do
     then
     	echo "Plotting Voltage for" $1
 	   logger "Plotting Voltage for $1"
-       /mnt/GPS_Admin/cgi-bin/VoltagePlot/Plot_Voltage.sh $TYPE $PROJ $STATION $Local_TZ $1
+       "$SCRIPT_DIR/Plot_Voltage.sh" $TYPE $PROJ $STATION $Local_TZ $1
 #        curl  -F project=$TYPE -F Point=$STATION -F file=@$1 http://$SERVER/cgi-bin/PositionPlot/T02_2_PNG.pl > $1.html
 	   touch .$1.volt
 #	sleep 120

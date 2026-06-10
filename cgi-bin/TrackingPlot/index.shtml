@@ -5,8 +5,10 @@
 <title>Tracking Results for:
 <!--#include virtual="file.html" -->
 </title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script src="interactive_tracking.js"></script>
 </head>
-<body class="page">
+<body class="page" onload="loadInteractiveTracking()">
 <div class="container clearfix">
   <div style="padding: 10px 10px 10px 0 ;"> <a href="/">
         <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="l
@@ -21,6 +23,10 @@ ogo"> </a>
 <h1>Interactive Tracking Results for:
 <!--#include virtual="file.html" -->
 </h1>
+<p/>
+<p id="tracking-status">Loading interactive tracking...</p>
+<div id="tracking-plot-main" style="width: 100%; height: 420px;"></div>
+<div id="tracking-plot-snr" style="width: 100%; height: 420px;"></div>
 <p/>
 <a href="SNR_Plot.shtml">SNR Values</a>
 <br/>

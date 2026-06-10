@@ -23,6 +23,12 @@ STATION=$1
 shift
 
 DIR=`pwd`
+INC_DIR=`cd "$(dirname "$0")" && pwd`
+POSITION_CGI_DIR=/mnt/GPS_Admin/cgi-bin/PositionPlot
+if [ ! -x "$POSITION_CGI_DIR/plot_single_cgi.sh" ]
+then
+   POSITION_CGI_DIR=`cd "$INC_DIR/../cgi-bin/PositionPlot" && pwd`
+fi
 
 mkdir /run/shm/Position 2>/dev/null
 
@@ -32,8 +38,8 @@ while (( "$#" )); do
 	echo "Plotting " $1
         echo "ln -s $DIR/$1  /run/shm/Position"
         ln -s $DIR/$1  /run/shm/Position
-	echo "/mnt/GPS_Admin/cgi-bin/PositionPlot/plot_single_cgi.sh /run/shm/$1 $TYPE -1 $STATION -1 0 0/$PROJ -1"
-        /mnt/GPS_Admin/cgi-bin/PositionPlot/plot_single_cgi.sh /run/shm/Position/$1 $TYPE -1 $STATION -1 0 0 /$PROJ -1
+	echo "$POSITION_CGI_DIR/plot_single_cgi.sh /run/shm/$1 $TYPE -1 $STATION -1 0 0/$PROJ -1"
+        "$POSITION_CGI_DIR/plot_single_cgi.sh" /run/shm/Position/$1 $TYPE -1 $STATION -1 0 0 /$PROJ -1
 #        curl  -F project=$TYPE -F Point=$STATION -F file=@$1 http://$SERVER/cgi-bin/PositionPlot/T02_2_PNG.pl > $1.html
 	touch .$1.plot
 #	sleep 120

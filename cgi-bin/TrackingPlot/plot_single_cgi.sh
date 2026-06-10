@@ -14,9 +14,24 @@ Project=$5
 #echo $PATH
 PATH=${normalDir}:~/bin:$PATH
 
+GNSS_CFG_DIR=`cd "$normalDir/../../admin/GNSS" 2>/dev/null && pwd`
+if [ -z "$GNSS_CFG_DIR" ] || [ ! -f "$GNSS_CFG_DIR/GNSS_Paths.cfg" ]
+then
+   GNSS_CFG_DIR=/mnt/GPS_Admin/admin/GNSS
+fi
+if [ -f "$GNSS_CFG_DIR/GNSS_Paths.cfg" ]
+then
+   . "$GNSS_CFG_DIR/GNSS_Paths.cfg"
+fi
+if [ -z "$GNSS_RESULTS_DIR" ]
+then
+   GNSS_RESULTS_DIR=/mnt/Results
+fi
 
-mkdir -p /mnt/Results/Tracking$Project/$File
-cd /mnt/Results/Tracking$Project/$File && rm * 2> /dev/null
+
+RESULT_DIR="$GNSS_RESULTS_DIR/Tracking$Project/$File"
+mkdir -p "$RESULT_DIR"
+cd "$RESULT_DIR" && rm * 2> /dev/null
 TMP_DIR=/run/shm
 
 #set -o verbose
@@ -86,6 +101,7 @@ Plot_All_SVs.py $File | gnuplot&
 wait
 
 SNR_Warning.sh $File >Low_SNRs.html
+ls *.SNR > snr_files.txt 2>/dev/null
 
 #mv $$.x29 $File.X29
 #mv $1 $FileFull
@@ -94,13 +110,14 @@ SNR_Warning.sh $File >Low_SNRs.html
 
 echo Processing completed
 logger "Processing completed"
-ln -s $normalDir/SNR_Plot.shtml
-ln -s $normalDir/Tracking_Plot.shtml
-ln -s $normalDir/Slips_Plot.shtml
-ln -s $normalDir/SV_Tracking_Plot.shtml
-ln -s $normalDir/Buttons.html
-ln -s $normalDir/Tracking_Buttons.html
-ln -s $normalDir/index.shtml
+ln -sf $normalDir/SNR_Plot.shtml
+ln -sf $normalDir/Tracking_Plot.shtml
+ln -sf $normalDir/Slips_Plot.shtml
+ln -sf $normalDir/SV_Tracking_Plot.shtml
+ln -sf $normalDir/Buttons.html
+ln -sf $normalDir/Tracking_Buttons.html
+ln -sf $normalDir/index.shtml
+ln -sf $normalDir/interactive_tracking.js
 echo '</pre>'
 #echo -n '<base href="http://trimbletools.com/results/TRACKING/'
 #echo -n $File
