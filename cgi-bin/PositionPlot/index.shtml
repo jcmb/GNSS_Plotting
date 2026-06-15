@@ -85,6 +85,11 @@ Location: <!--#include virtual="kml.html" -->
   <div id="plot-sigma-3d" style="width: 100%; height: 420px;"></div>
 </div>
 
+<div class="plot-card">
+  <h3>Error and Precision vs Age of Corrections</h3>
+  <div id="plot-age-corr" style="width: 100%; height: 460px;"></div>
+</div>
+
 <h2>Range summaries</h2>
 <h3>Height &lt;1 cm</h3>
 <pre><!--#include virtual="range1cm.sum" --></pre>

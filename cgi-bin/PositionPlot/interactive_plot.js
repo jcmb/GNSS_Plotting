@@ -88,6 +88,39 @@ function sigmaRatios(points) {
   };
 }
 
+function ageCorrectionSeries(points) {
+  const rows = points
+    .filter((p) => Number.isFinite(p.latency) && p.latency >= 0)
+    .map((p) => {
+      const e2 = Math.sqrt(p.n * p.n + p.e * p.e);
+      const e3 = Math.sqrt(p.n * p.n + p.e * p.e + p.u * p.u);
+      const hSigma = Number.isFinite(p.hprec) ? Math.sqrt(2 * p.hprec * p.hprec) : null;
+      const vSigma = Number.isFinite(p.vprec) ? p.vprec : null;
+      const d3Sigma = (hSigma != null && vSigma != null) ? Math.sqrt(hSigma * hSigma + vSigma * vSigma) : null;
+      return {
+        age: p.latency,
+        e1: Math.abs(p.u),
+        e2,
+        e3,
+        p1: vSigma,
+        p2: hSigma,
+        p3: d3Sigma
+      };
+    });
+
+  const x = rows.map((r) => r.age);
+  return {
+    x,
+    e1: rows.map((r) => r.e1),
+    e2: rows.map((r) => r.e2),
+    e3: rows.map((r) => r.e3),
+    p1: rows.map((r) => r.p1),
+    p2: rows.map((r) => r.p2),
+    p3: rows.map((r) => r.p3),
+    count: rows.length
+  };
+}
+
 function renderPositionPlots(points, mode) {
   if (!points.length) {
     document.getElementById("plot-status").textContent = "No position points found in position_data.csv.";
@@ -192,7 +225,25 @@ function renderPositionPlots(points, mode) {
     yaxis2: { title: "DOP", overlaying: "y", side: "right", showgrid: false }
   }, { responsive: true });
 
-  document.getElementById("plot-status").textContent = "Loaded " + points.length + " points.";
+  const age = ageCorrectionSeries(points);
+  Plotly.newPlot("plot-age-corr", [
+    { x: age.x, y: age.e1, name: "1D Error |U|", mode: "markers", marker: { size: 5, opacity: 0.55 } },
+    { x: age.x, y: age.e2, name: "2D Error", mode: "markers", marker: { size: 5, opacity: 0.55 } },
+    { x: age.x, y: age.e3, name: "3D Error", mode: "markers", marker: { size: 5, opacity: 0.55 } },
+    { x: age.x, y: age.p1, name: "1D Precision (V Sigma)", mode: "markers", marker: { size: 5, symbol: "diamond", opacity: 0.65 } },
+    { x: age.x, y: age.p2, name: "2D Precision (H Sigma)", mode: "markers", marker: { size: 5, symbol: "diamond", opacity: 0.65 } },
+    { x: age.x, y: age.p3, name: "3D Precision", mode: "markers", marker: { size: 5, symbol: "diamond", opacity: 0.65 } }
+  ], {
+    margin: { l: 65, r: 30, t: 40, b: 45 },
+    title: "Error and Precision vs Age of Corrections",
+    xaxis: { title: "Age of Corrections (s)" },
+    yaxis: { title: "Meters" },
+    legend: { orientation: "h" }
+  }, { responsive: true });
+
+  document.getElementById("plot-status").textContent =
+    "Loaded " + points.length + " points. " +
+    "Age-of-correction points: " + age.count + ".";
 }
 
 function loadInteractivePosition() {
