@@ -100,4 +100,127 @@ Location: <!--#include virtual="kml.html" -->
 <h3>Height &lt;3 Sigma</h3>
 <pre><!--#include virtual="range3sig.sum" --></pre>
 
+<h2>Legacy static plots (gnuplot)</h2>
+<p>These PNG plots are still generated while interactive views are being developed.</p>
+
+<div class="plot-card">
+  <h3>Solution Type</h3>
+  <img src="Solution.png" alt="Solution Type"/>
+</div>
+
+<div class="plot-card">
+  <h3>Latency</h3>
+  <img src="Latency.png" alt="Latency"/>
+</div>
+
+<div class="plot-card">
+  <h3>Solution and Latency</h3>
+  <img src="Sol_Latency.png" alt="Solution and Latency"/>
+</div>
+
+<div class="plot-card">
+  <h3>SVs</h3>
+  <img src="SVs.png" alt="SVs"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height Error</h3>
+  <img src="U_Error.png" alt="Height Error"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height Abs Error</h3>
+  <img src="U_abs_Error.png" alt="Height Abs Error"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height Error Cumulative</h3>
+  <img src="U_Error_cumulative.png" alt="Height Error Cumulative"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height vs 1 Sigma Prec</h3>
+  <img src="1D_Prec.png" alt="1D Prec"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height vs 3 Sigma Prec</h3>
+  <img src="1D_3Prec.png" alt="1D 3Prec"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height / Sigma Ratio</h3>
+  <img src="U_Error_Sigma_Ratio.png" alt="Height Sigma Ratio"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height / Sigma Cumulative</h3>
+  <img src="U_Error_Sigma_cumulative.png" alt="Height Sigma Cumulative"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height PDOP</h3>
+  <img src="U_Error_DOPS.png" alt="Height DOPs"/>
+</div>
+
+<div class="plot-card">
+  <h3>Northing Error</h3>
+  <img src="N_Error.png" alt="Northing Error"/>
+</div>
+
+<div class="plot-card">
+  <h3>Northing Error Cumulative</h3>
+  <img src="N_Error_cumulative.png" alt="Northing Error Cumulative"/>
+</div>
+
+<div class="plot-card">
+  <h3>Easting Error</h3>
+  <img src="E_Error.png" alt="Easting Error"/>
+</div>
+
+<div class="plot-card">
+  <h3>Easting Error Cumulative</h3>
+  <img src="E_Error_cumulative.png" alt="Easting Error Cumulative"/>
+</div>
+
+<div class="plot-card">
+  <h3>2D Error</h3>
+  <img src="2D_Error.png" alt="2D Error"/>
+</div>
+
+<div class="plot-card">
+  <h3>2D Error Cumulative</h3>
+  <img src="2D_Error_cumulative.png" alt="2D Error Cumulative"/>
+</div>
+
+<div class="plot-card">
+  <h3>2D Error vs Prec</h3>
+  <img src="2D_Prec.png" alt="2D Prec"/>
+</div>
+
+<div class="plot-card">
+  <h3>2D Error vs 3*Prec</h3>
+  <img src="2D_3Prec.png" alt="2D 3Prec"/>
+</div>
+
+<div class="plot-card">
+  <h3>3D Error</h3>
+  <img src="3D_Error.png" alt="3D Error"/>
+</div>
+
+<div class="plot-card">
+  <h3>All Errors</h3>
+  <img src="All_Error.png" alt="All Errors"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height &gt;2 Sigma</h3>
+  <img src="U_Range_2Sigma.png" alt="Height Range 2 Sigma"/>
+</div>
+
+<div class="plot-card">
+  <h3>Height &gt;2 Sigma Histogram</h3>
+  <img src="U_Hist_2Sigma.png" alt="Height Hist 2 Sigma"/>
+</div>
+
 </body></html>
