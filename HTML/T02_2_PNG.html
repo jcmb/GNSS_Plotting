@@ -1,0 +1,132 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+<title>Plot postions for a GNSS file</title>
+ </head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="http://construction.trimble.com/">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+  <!-- end #logo-area -->
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content" class="clearfix">
+<form target="_blank" action="/cgi-bin/PositionPlot/T02_2_PNG.pl" method="post" enctype="multipart/form-data" >
+<table border="1" width="100%">
+<caption>GNSS File Source</caption>
+<col width="25%">
+<col width="75%">
+<tr>
+<td>
+GNSS File:
+</td>
+<td>
+<input type="file" name="file" size="80" accept=".T00,.T01,.T02,.T04"/>
+</td>
+</tr>
+<tr>
+<td>
+GNSS File (link):
+</td>
+<td>
+<input type="text" name="file_link" size="80"/>
+</td>
+</tr>
+</table>
+<br/>
+<table border="1" width="100%">
+<caption>Processing options</caption>
+<col width="25%">
+<col width="75%">
+<tr>
+<td>
+Solution Type:
+</td>
+<td>
+<select name="Sol">
+   <option value="">Automatic</option>
+   <option value="0">Autonomous</option>
+   <option value="1">RTCM</option>
+   <option value="2">SBAS</option>
+   <option value="3">Float</option>
+   <option value="4">Fixed</option>
+   <option value="5">OmniSTAR</option>
+   <option value="6">Network Fixed</option>
+   <option value="7">Network Float</option>
+   <option value="8">Type 8</option>
+   <option value="9">Kalman Autonomous</option>
+   <option value="15">RTX</option>
+   <option value="41">HAS</option>
+</select>
+</td>
+</tr>
+<tr>
+<td>
+Decimate:
+</td>
+<td>
+<select name="Decimate">
+   <option value="-1">Automatic</option>
+   <option selected value="0">Don't Decimate (All Data)</option>
+   <option value="0.2">5Hz</option>
+   <option value="1">1 Second</option>
+   <option value="2">2 Second</option>
+   <option value="5">5 Second</option>
+   <option value="10">10 Second</option>
+   <option value="15">15 Second</option>
+   <option value="30">30 Second</option>
+   <option value="60">60 Second</option>
+<select>
+</td>
+</tr>
+<tr>
+<td>
+Plot Range:
+</td>
+<td>
+<select name="Range">
+   <option selected value="0">Automatic</option>
+   <option value="1">Fixed</option>
+</select>
+</td>
+</tr>
+<tr>
+<td>
+Project (Optional):
+</td>
+<td>
+<input type="text" name="project" size="30"/>
+</td>
+</tr>
+
+
+<tr>
+<td>
+Point Name (Optional):
+</td>
+<td>
+<input type="text" name="Point" size="30"/>
+</td>
+</tr>
+
+
+</table>
+<p/>
+
+<input type="checkbox" name="SaveFile" value="1"/> 
+<label for="Savefile">Save raw position files</label>
+<p/>
+
+
+<input type="submit" value="Submit" />
+</form>
+</div>
+</div>
+</div>
+
+</body>
+</html>
