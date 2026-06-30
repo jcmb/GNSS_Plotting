@@ -8,7 +8,7 @@ BEGIN {
    Latency[5]=0;
    Latency[6]=0;
    
-   for (i=0;i<=20;i++) {
+   for (i=0;i<=50;i++) {
       Pos[i] = 0.0;
       Unused[i] = 0.0;
       }
@@ -125,12 +125,18 @@ END {
  print "Kalman Auton:    " Pos[9] " ("Pos[9]/NR* 100  "%)";
  print "Kalman DGNSS:    " Pos[10] " ("Pos[10]/NR* 100  "%)";
  print "Kalman SBAS:     " Pos[11] " ("Pos[11]/NR* 100  "%)";
+ print "12:              " Pos[12] " ("Pos[12]/NR* 100  "%)";
+ print "13:              " Pos[13] " ("Pos[13]/NR* 100  "%)";
+ print "14:              " Pos[14] " ("Pos[14]/NR* 100  "%)";
  print "RTX:             " Pos[15] " ("Pos[15]/NR* 100  "%)";
  print "RTX (Fixed):     " Fixed " (" Fixed/NR* 100  "%)";
  print "RTX (Current):   " Current " (" Current/NR* 100  "%)";
-# for (i=10;i<=20;i++) {
-#    print "Type " i ":        " Pos[i] " ("Pos[i]/NR* 100"%)";
-#    }  
+ print "HAS:             " Pos[41] " ("Pos[41]/NR* 100  "%)";
+ for (i=16;i<=50;i++) {
+     if (i != 41 && Pos[i] != 0) {
+	 print "Type " i ":        " Pos[i] " ("Pos[i]/NR* 100"%)";
+     }
+    }  
 
  
  print ""; 
