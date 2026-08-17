@@ -3,8 +3,8 @@
 
 BEGIN {FS=","
        OFS=","
-	if (ARGC != 2 || ARGV[1]=="?") {
-	   print "x29_height_cdf.awk Records <FileName "
+	if (ARGC < 2 || ARGV[1]=="?") {
+	   print "x29_sigma_cdf.awk Records <FileName "
 		print ""
       print "Takes a X29 file and report the sigma (25) at 68% and 95%"
       print ""
@@ -18,9 +18,16 @@ BEGIN {FS=","
 	   exit  
            }
 
-     Records= ARGV[1]
-     Rec_68=int(Records*0.68)
-     Rec_95=int(Records*0.95)
+     Records= ARGV[1] + 0
+     if (Records < 1) {
+        Rec_68 = 0
+        Rec_95 = 0
+     } else {
+        Rec_68=int(Records*0.68)
+        Rec_95=int(Records*0.95)
+        if (Rec_68 < 1) { Rec_68 = 1 }
+        if (Rec_95 < 1) { Rec_95 = 1 }
+     }
      ARGV[1] = ""
 #     print Rec_68
 #     print Rec_95
@@ -40,5 +47,9 @@ BEGIN {FS=","
  }
 
  END {
+     if (Records < 1) {
+        printf("sigma_cdf_68=0;sigma_cdf_95=0")
+        exit
+     }
      printf("sigma_cdf_68=%.2f;sigma_cdf_95=%.2f",cdf_68,cdf_95)
  }

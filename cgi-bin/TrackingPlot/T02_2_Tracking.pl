@@ -5,8 +5,9 @@ use CGI qw(param);
 use CGI::Carp;
 use File::Basename;
 
-use LWP::Simple;
-
+use FindBin qw($Bin);
+use lib "$Bin/../PositionPlot";
+use JCMBSoft_Config;
 
 sub urldecode {
     my $s = shift;
@@ -18,6 +19,7 @@ sub urldecode {
 $CGI::POST_MAX = 1024 * 190000; # 190mb file max
 
 my $query = new CGI;
+my $gnss_user = JCMBSoft_Config::enforce_access($query);
 my $safe_filename_characters = "a-zA-Z0-9_.-";
 
 my $TrimbleTools=0;
@@ -154,8 +156,12 @@ if ($file_uploaded) {
 }
 
 if ($file_linked) {
-    print "Getting file by url from " . $file_link."<br/>";
-    system("curl -L --silent -o $upload_file $file_link")
+    print "Getting file by url from " . CGI::escapeHTML($file_link) . "<br/>";
+    my ( $ok, $dl_err ) = JCMBSoft_Config::download_to_file( $file_link, $upload_file );
+    unless ($ok) {
+        print "<p>Could not download file: " . CGI::escapeHTML($dl_err) . "</p></body></html>";
+        exit;
+    }
 }
 
 

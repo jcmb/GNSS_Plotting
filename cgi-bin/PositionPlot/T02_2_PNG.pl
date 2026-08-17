@@ -5,8 +5,8 @@ use CGI qw(param);
 use CGI::Carp;
 use File::Basename;
 
-use LWP::Simple;
-
+use FindBin qw($Bin);
+use lib $Bin;
 use JCMBSoft_Config;
 
 use Sys::Syslog;
@@ -26,6 +26,7 @@ sub urldecode {
 
 $CGI::POST_MAX = 1024 * 300000; # 200mb file max
 my $query = new CGI;
+my $gnss_user = JCMBSoft_Config::enforce_access($query);
 my $safe_filename_characters = "a-zA-Z0-9_.-";
 
 my $filename = $query->param('file');
@@ -35,6 +36,10 @@ my $Point = $query->param('Point');
 my $Ant = $query->param('Ant');
 my $Fixed_Range = $query->param('Range');
 my $SaveFile = $query->param('SaveFile');
+my $MeanSol = $query->param('MeanSol');
+if (defined($MeanSol)) {
+    $MeanSol =~ s/^\s+|\s+$//g;
+}
 
 #$file_link="https://www.dropbox.com/s/yjupry9omdvm2og/6343_D5.T02?dl=0";
 
@@ -69,7 +74,7 @@ if ( !$filename && !$file_link )
 }
 
 
-if ( !$Sol )
+if ( !defined($Sol) || $Sol eq "" )
 {
 #    print $query->header ( );
 #    print "There was a problem getting the solution type\n";
@@ -114,10 +119,17 @@ if ( !$Decimate )
     $Decimate="0";
 }
 
-if ( !$SaveFile )
+if ( !defined($SaveFile) )
 {
     $SaveFile="0";
 }
+
+if ( !defined($MeanSol) || $MeanSol eq "" )
+{
+    $MeanSol="-1";
+}
+
+$ENV{GNSS_MEAN_SOL} = $MeanSol;
 
 #print $filename."\n";
 
@@ -169,10 +181,12 @@ else
     die "Filename contains invalid characters";
 }
 
+my $report_url = "/results/Position$project$Point_Dir/$name/";
+$ENV{GNSS_REPORT_URL} = $report_url;
+
 #print "Content-type: text/html\n\n";
 print "<html><head><title>Plotting GNSS Data</title>";
-print "<base href=\"/results/Position$project$Point_Dir/$name/\">";
-print "<meta http-equiv=\"refresh\" content=\"30; url=/results/Position$project$Point_Dir/$name/\">";
+print "<base href=\"$report_url\">";
 print "</head>";
 print "<body><h1>Processing $filename:</h1>\n";
 
@@ -200,25 +214,20 @@ if ($file_uploaded) {
     close UPLOADFILE;
 }
 
-#my $upload_file = "/home8/trimblet/public_html/cgi-bin/tmp/".$filename;
-#my $upload_file = $filename;
-
-my $upload_filehandle = $query->upload("file");
-
-close UPLOADFILE;
-
-#Content-type: text/html
-#application/vnd.google-earth.kml+xml
-
-
 if ($file_linked) {
-    print "Getting file by url from " . $file_link."<br/>";
-    system("curl -L --silent -o $upload_file $file_link")
+    print "Getting file by url from " . CGI::escapeHTML($file_link) . "<br/>";
+    my ( $ok, $dl_err ) = JCMBSoft_Config::download_to_file( $file_link, $upload_file );
+    unless ($ok) {
+        print "<p>Could not download file: " . CGI::escapeHTML($dl_err) . "</p></body></html>";
+        syslog( LOG_WARNING, "URL download failed: $dl_err" );
+        closelog();
+        exit;
+    }
 }
 
 
 print "Data is being processed: This will normally takes a few seconds but can take longer for very large files.<br>";
-print "The report will be at \<a href=\"/results/Position$project$Point_Dir/$name\"\>/results/Position$project$Point_Dir/$name/\</a\>\n";
+print "The report will be at \<a href=\"$report_url\"\>$report_url\</a\>\n";
 #print "The report will not have Summary, Spread or Latitude unless you use the link<br>\n";
 
 #print "bash -c ./start_single.sh \"$upload_file\" \"$extension\" $Sol ";
@@ -227,19 +236,17 @@ print "<p/>Processing will continue if you navigate away from this page<br/>";
 print "<pre>\n";
 
 
-if ($JCMBSoft_Config::TrimbleTools) {
+if ( JCMBSoft_Config::TrimbleTools() ) {
 #    print "/bin/bash"," /home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh"," ",$upload_file,"*",$extension,"*",$Sol,"*",$Point,"*",$Ant,"*",$TrimbleTools,"*",$Decimate,"*",$project,"*\n";
-    print "</body>";
-    print "</html>\n";
     syslog (LOG_INFO,"Starting processing: " . $upload_file);
-    exec ("/bin/bash","/home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile);
+    exec ("/bin/bash","/home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url);
     syslog (LOG_INFO,"Processing finished: " . $upload_file);
 }
 else  
    {
    print "./start_single.sh"," ",$upload_file," ",$extension," ",$Sol," ",$Point," ",$Ant," ",$Decimate," ",$Fixed_Range," ",$project,"\n";
    syslog (LOG_INFO,"Starting processing: " . $upload_file);
-   system "./start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile;
+   system "./start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url;
    syslog (LOG_INFO,"Processing finished: " . $upload_file);
    }
 

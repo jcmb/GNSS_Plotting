@@ -1,2 +1,3 @@
 
 .DS_Store
+cgi-bin/PositionPlot/auth.htpasswd

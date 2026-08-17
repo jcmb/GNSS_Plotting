@@ -33,8 +33,13 @@ BEGIN {FS=","
 
 #     print "ARGC "   ARGC  "\n"
      Solution_Type = 4; #Default to RTK Fixed
+     All_Types = 0;
      if (ARGC>=2) {
-	 Solution_Type = ARGV[1];
+        if (ARGV[1] == "all") {
+           All_Types = 1;
+        } else if (ARGV[1] != "") {
+           Solution_Type = ARGV[1];
+        }
      }
 
      if (ARGC>=4) {
@@ -58,7 +63,7 @@ BEGIN {FS=","
 
 
  {
-     if ($9 == Solution_Type) {
+     if (All_Types || $9 == Solution_Type) {
         North_Total += $11
         if (North_Min > $11) {North_Min = $11};
         if (North_Max < $11) {North_Max = $11};
@@ -73,6 +78,10 @@ BEGIN {FS=","
  }
 
 END {
+ 	if (Records == 0) {
+	    printf ("North=0;East=0;Elev=0;Records=0;North_Min=0;North_Max=0;North_Range=0;East_Min=0;East_Max=0;East_Range=0;Elev_Min=0;Elev_Max=0;Elev_Range=0;Sol_HRange=%2.3f;Sol_VRange=%2.3f;Sol_3DRange=%2.3f\n", Sol_HRange, Sol_VRange, Sol_3DRange);
+	    exit;
+	}
  	if (Fixed_Range != 1 ) {
 #	    print "Computed range\n"
 	    if (North_Min < -Sol_HRange) {Sol_HRange = -North_Min};

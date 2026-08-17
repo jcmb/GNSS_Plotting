@@ -1,9 +1,74 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
 <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
 <title>Plot postions for a GNSS file</title>
- </head>
+<style type="text/css">
+  #submit-status {
+    display: none;
+    margin: 16px 0;
+    padding: 14px;
+    border: 1px solid #999;
+    border-radius: 6px;
+    background: #f8f8f8;
+  }
+  #submit-status.active {
+    display: block;
+  }
+  #status-phase {
+    font-weight: bold;
+    margin: 0 0 8px 0;
+  }
+  .progress-track {
+    width: 100%;
+    height: 18px;
+    border: 1px solid #888;
+    border-radius: 4px;
+    background: #fff;
+    overflow: hidden;
+    margin: 8px 0 12px 0;
+  }
+  .progress-fill {
+    height: 100%;
+    width: 0;
+    background: #0063a3;
+    transition: width 0.15s linear;
+  }
+  .progress-fill.indeterminate {
+    width: 35%;
+    animation: gnss-progress-indeterminate 1.2s ease-in-out infinite;
+  }
+  @keyframes gnss-progress-indeterminate {
+    0% { margin-left: 0; }
+    50% { margin-left: 65%; }
+    100% { margin-left: 0; }
+  }
+  #status-detail {
+    margin: 0 0 10px 0;
+    color: #333;
+  }
+  #processing-log {
+    display: none;
+    max-height: 420px;
+    overflow: auto;
+    margin: 0;
+    padding: 10px;
+    border: 1px solid #ccc;
+    background: #fff;
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+  }
+  #processing-log.visible {
+    display: block;
+  }
+  .form-disabled {
+    opacity: 0.55;
+    pointer-events: none;
+  }
+</style>
+</head>
 <body class="page">
 <div class="container clearfix">
   <div style="padding: 10px 10px 10px 0 ;"> <a href="http://construction.trimble.com/">
@@ -15,7 +80,7 @@
 <div id="content-area">
 <div id="content">
 <div id="main-content" class="clearfix">
-<form target="_blank" action="/cgi-bin/PositionPlot/T02_2_PNG.pl" method="post" enctype="multipart/form-data" >
+<form id="gnss-plot-form" action="/cgi-bin/PositionPlot/T02_2_PNG.pl" method="post" enctype="multipart/form-data">
 <table border="1" width="100%">
 <caption>GNSS File Source</caption>
 <col width="25%">
@@ -25,15 +90,7 @@
 GNSS File:
 </td>
 <td>
-<input type="file" name="file" size="80" accept=".T00,.T01,.T02,.T04"/>
-</td>
-</tr>
-<tr>
-<td>
-GNSS File (link):
-</td>
-<td>
-<input type="text" name="file_link" size="80"/>
+<input type="file" name="file" id="gnss-file" size="80" accept=".T00,.T01,.T02,.T04"/>
 </td>
 </tr>
 </table>
@@ -48,7 +105,31 @@ Solution Type:
 </td>
 <td>
 <select name="Sol">
-   <option value="">Automatic</option>
+   <option value="-2">All (no filter)</option>
+   <option value="" selected>Automatic</option>
+   <option value="0">Autonomous</option>
+   <option value="1">RTCM</option>
+   <option value="2">SBAS</option>
+   <option value="3">Float</option>
+   <option value="4">Fixed</option>
+   <option value="5">OmniSTAR</option>
+   <option value="6">Network Fixed</option>
+   <option value="7">Network Float</option>
+   <option value="8">Type 8</option>
+   <option value="9">Kalman Autonomous</option>
+   <option value="15">RTX</option>
+   <option value="41">HAS</option>
+</select>
+</td>
+</tr>
+<tr>
+<td>
+Mean Solution Type:
+</td>
+<td>
+<select name="MeanSol">
+   <option value="-1" selected>Automatic</option>
+   <option value="all">All (no filter)</option>
    <option value="0">Autonomous</option>
    <option value="1">RTCM</option>
    <option value="2">SBAS</option>
@@ -80,7 +161,7 @@ Decimate:
    <option value="15">15 Second</option>
    <option value="30">30 Second</option>
    <option value="60">60 Second</option>
-<select>
+</select>
 </td>
 </tr>
 <tr>
@@ -117,16 +198,247 @@ Point Name (Optional):
 </table>
 <p/>
 
-<input type="checkbox" name="SaveFile" value="1"/> 
-<label for="Savefile">Save raw position files</label>
+<input type="checkbox" name="SaveFile" value="1" id="save-file"/>
+<label for="save-file">Save raw position files</label>
 <p/>
 
-
-<input type="submit" value="Submit" />
+<input type="submit" id="gnss-submit" value="Submit" />
 </form>
+
+<div id="submit-status" aria-live="polite">
+  <p id="status-phase">Uploading file...</p>
+  <div class="progress-track" aria-hidden="true">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+  <p id="status-detail"></p>
+  <pre id="processing-log"></pre>
+</div>
+
 </div>
 </div>
 </div>
+
+<script type="text/javascript">
+(function () {
+  var form = document.getElementById("gnss-plot-form");
+  var statusPanel = document.getElementById("submit-status");
+  var statusPhase = document.getElementById("status-phase");
+  var statusDetail = document.getElementById("status-detail");
+  var progressFill = document.getElementById("progress-fill");
+  var processingLog = document.getElementById("processing-log");
+  var submitBtn = document.getElementById("gnss-submit");
+  var activeXhr = null;
+  var redirectScheduled = false;
+
+  function setPhase(text) {
+    statusPhase.textContent = text;
+  }
+
+  function setDetail(text) {
+    statusDetail.textContent = text || "";
+  }
+
+  function setUploadPercent(percent) {
+    progressFill.className = "progress-fill";
+    progressFill.style.width = Math.min(100, Math.max(0, percent)) + "%";
+  }
+
+  function setIndeterminateProgress() {
+    progressFill.className = "progress-fill indeterminate";
+    progressFill.style.width = "";
+  }
+
+  function isProcessingComplete(html) {
+    return /Processing complete/i.test(html) ||
+      /Plotting completed/i.test(html) ||
+      /content="0;url=/i.test(html) ||
+      /<a href="[^"]+">Open report<\/a>/i.test(html);
+  }
+
+  function extractReportUrl(html, requireComplete) {
+    if (requireComplete && !isProcessingComplete(html)) {
+      return null;
+    }
+    var m = html.match(/content="0;url=([^"]+)"/i);
+    if (m) return m[1];
+    m = html.match(/window\.location\.replace\("([^"]+)"\)/);
+    if (m) return m[1];
+    m = html.match(/<a href="(\/results\/[^"]+)">Open report<\/a>/i);
+    if (m) return m[1];
+    if (!requireComplete) {
+      m = html.match(/The report will be at[^<]*<a href="([^"]+)"/i);
+      if (m) return m[1];
+    }
+    return null;
+  }
+
+  function extractPreLog(html) {
+    var start = html.indexOf("<pre>");
+    if (start === -1) return "";
+    start += 5;
+    var end = html.indexOf("</pre>", start);
+    var chunk = end === -1 ? html.slice(start) : html.slice(start, end);
+    return chunk.replace(/<[^>]+>/g, "");
+  }
+
+  function extractStatusMessages(html) {
+    var bodyMatch = html.match(/<body[^>]*>([\s\S]*)/i);
+    if (!bodyMatch) return "";
+    var body = bodyMatch[1];
+    var preIdx = body.indexOf("<pre>");
+    var header = preIdx === -1 ? body : body.slice(0, preIdx);
+    header = header.replace(/<h1[^>]*>[\s\S]*?<\/h1>/i, "");
+    header = header.replace(/<script[\s\S]*?<\/script>/gi, "");
+    header = header.replace(/<meta[^>]*>/gi, "");
+    header = header.replace(/<p>\s*<\/p>/gi, "");
+    return header.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "").trim();
+  }
+
+  function updateFromResponse(html, finished) {
+    var logText = extractPreLog(html);
+    var headerText = extractStatusMessages(html);
+    var complete = isProcessingComplete(html);
+    var reportUrl = extractReportUrl(html, true);
+
+    if (headerText) {
+      setDetail(headerText.replace(/\n+/g, " ").trim());
+    }
+
+    if (logText) {
+      processingLog.className = "visible";
+      processingLog.textContent = logText;
+      processingLog.scrollTop = processingLog.scrollHeight;
+    }
+
+    if (finished && complete && reportUrl) {
+      if (!redirectScheduled) {
+        redirectScheduled = true;
+        setPhase("Processing complete. Opening report...");
+        setUploadPercent(100);
+        window.setTimeout(function () {
+          window.location.href = reportUrl;
+        }, 800);
+      }
+    }
+  }
+
+  function resetUi() {
+    statusPanel.className = "";
+    processingLog.className = "";
+    processingLog.textContent = "";
+    setDetail("");
+    setUploadPercent(0);
+    progressFill.className = "progress-fill";
+    form.className = "";
+    submitBtn.disabled = false;
+    redirectScheduled = false;
+  }
+
+  function beginSubmit() {
+    var fileInput = document.getElementById("gnss-file");
+    var hasFile = fileInput.files && fileInput.files.length > 0;
+
+    if (!hasFile) {
+      window.alert("Select a GNSS file to upload.");
+      return;
+    }
+
+    if (activeXhr) {
+      activeXhr.abort();
+      activeXhr = null;
+    }
+
+    resetUi();
+    form.className = "form-disabled";
+    submitBtn.disabled = true;
+    statusPanel.className = "active";
+
+    setPhase("Uploading file...");
+    setDetail("Sending " + fileInput.files[0].name + " to the server.");
+    setUploadPercent(0);
+
+    var xhr = new XMLHttpRequest();
+    activeXhr = xhr;
+    var formData = new FormData(form);
+
+    xhr.open("POST", form.action, true);
+    xhr.withCredentials = true;
+
+    xhr.upload.addEventListener("progress", function (event) {
+      if (event.lengthComputable) {
+        var pct = Math.round((event.loaded / event.total) * 100);
+        setUploadPercent(pct);
+        setDetail("Uploaded " + pct + "% of " + fileInput.files[0].name + ".");
+        if (pct >= 100) {
+          setPhase("Upload complete. Processing on server...");
+        }
+      } else {
+        setIndeterminateProgress();
+      }
+    });
+
+    xhr.addEventListener("readystatechange", function () {
+      if (xhr.readyState === XMLHttpRequest.LOADING || xhr.readyState === XMLHttpRequest.DONE) {
+        if (xhr.readyState === XMLHttpRequest.LOADING) {
+          setPhase("Processing on server...");
+          setUploadPercent(100);
+        }
+        updateFromResponse(xhr.responseText, xhr.readyState === XMLHttpRequest.DONE);
+      }
+    });
+
+    xhr.addEventListener("load", function () {
+      activeXhr = null;
+      if (xhr.status === 401) {
+        setPhase("Authentication required.");
+        setDetail("Reload this page and sign in when your browser prompts for GNSS Plotting credentials.");
+        form.className = "";
+        submitBtn.disabled = false;
+        return;
+      }
+      if (xhr.status === 429) {
+        setPhase("Rate limit exceeded.");
+        setDetail("Too many plot requests from this address. Wait and try again later.");
+        form.className = "";
+        submitBtn.disabled = false;
+        return;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        setPhase("Request failed.");
+        setDetail("Server returned HTTP " + xhr.status + ".");
+        form.className = "";
+        submitBtn.disabled = false;
+        return;
+      }
+      updateFromResponse(xhr.responseText, true);
+      if (!isProcessingComplete(xhr.responseText) || !extractReportUrl(xhr.responseText, true)) {
+        setPhase("Processing finished.");
+        form.className = "";
+        submitBtn.disabled = false;
+      }
+    });
+
+    xhr.addEventListener("error", function () {
+      activeXhr = null;
+      setPhase("Upload or connection failed.");
+      setDetail("Check your network connection and try again.");
+      form.className = "";
+      submitBtn.disabled = false;
+    });
+
+    xhr.addEventListener("abort", function () {
+      activeXhr = null;
+    });
+
+    xhr.send(formData);
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    beginSubmit();
+  });
+})();
+</script>
 
 </body>
 </html>

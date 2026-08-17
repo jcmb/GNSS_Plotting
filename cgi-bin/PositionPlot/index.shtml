@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js"></script>
+<script src="interactive_plot.js?v=20250630i"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -15,9 +15,127 @@
     margin: 10px 0;
     background: #fff;
   }
+  .filter-panel {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 10px 0;
+    background: #f8f8f8;
+  }
+  .filter-panel label {
+    margin-right: 14px;
+    white-space: nowrap;
+  }
+  #sol-type-filters {
+    margin-top: 6px;
+    line-height: 1.8;
+  }
+  #plot-status.loading {
+    color: #333;
+  }
+  #plot-status.error {
+    color: #a00;
+  }
+  .report-section {
+    margin: 1.25em 0;
+  }
+  .report-section h3 {
+    margin: 0 0 0.5em 0;
+    font-size: 1.15em;
+    color: #222;
+  }
+  .report-section h4 {
+    margin: 0.75em 0 0.35em 0;
+    font-size: 1em;
+    color: #444;
+    font-weight: 600;
+  }
+  .report-table {
+    width: 100%;
+    max-width: 960px;
+    border-collapse: collapse;
+    margin-bottom: 0.5em;
+    font-size: 0.95em;
+  }
+  .report-table th,
+  .report-table td {
+    border: 1px solid #c8c8c8;
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .report-table th {
+    background: #eef2f7;
+    font-weight: 600;
+  }
+  .report-table td.num,
+  .report-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .report-table tbody tr:nth-child(even) {
+    background: #fafafa;
+  }
+  .report-meta {
+    color: #444;
+    margin: 0.25em 0 0.75em 0;
+    line-height: 1.5;
+  }
+  .report-source {
+    font-weight: 600;
+    color: #333;
+  }
+  .report-copy-bar {
+    margin: 0 0 0.5em 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+  }
+  .report-copy-btn {
+    font-size: 0.85em;
+    padding: 4px 10px;
+    border: 1px solid #9ab;
+    border-radius: 4px;
+    background: #f5f8fb;
+    color: #234;
+    cursor: pointer;
+  }
+  .report-copy-btn:hover {
+    background: #e8eef5;
+  }
+  .report-empty,
+  .report-error {
+    color: #666;
+    font-style: italic;
+  }
+  .report-error {
+    color: #a00;
+    font-style: normal;
+  }
+  .report-raw-data {
+    display: none;
+  }
+  .report-location {
+    margin: 1em 0 1.25em 0;
+    max-width: 960px;
+  }
+  .report-location-coords {
+    margin: 0 0 0.5em 0;
+    color: #333;
+    line-height: 1.5;
+  }
+  .report-location-map {
+    width: 100%;
+    height: 360px;
+    border: 1px solid #c8c8c8;
+    border-radius: 6px;
+    display: block;
+  }
 </style>
+<script src="report_tables.js?v=20250630g"></script>
 </head>
-<body onload="loadInteractivePosition()">
+<body onload="loadReportTables(); loadInteractivePosition();">
 <h1>Results for: 
 <!--#include virtual="file.html" -->
 </h1>
@@ -27,11 +145,21 @@ Location: <!--#include virtual="kml.html" -->
 <br/>Summary : <!--#include virtual="sum.html" --> 
 <br/>RawData : <!--#include virtual="SaveFile.html" -->
 
-<pre>
-<!--#include virtual="llh.mean" -->
-<!--#include virtual="sum.txt" -->
-<!--#include virtual="nee.mean" -->
-</pre>
+<div id="report-location-root">
+  <p class="report-empty">Loading location map...</p>
+</div>
+
+<h2>Processing Summary</h2>
+<div id="report-summary-root">
+  <p class="report-empty">Loading summary tables...</p>
+</div>
+
+<div class="report-raw-data" aria-hidden="true">
+  <script type="text/plain" id="raw-mean-info"><!--#include virtual="mean.info" --></script>
+  <script type="text/plain" id="raw-llh-mean"><!--#include virtual="llh.mean" --></script>
+  <script type="text/plain" id="raw-sum-txt"><!--#include virtual="sum.txt" --></script>
+  <script type="text/plain" id="raw-nee-mean"><!--#include virtual="nee.mean" --></script>
+</div>
 
 <h2>Interactive Position Plots</h2>
 <p id="plot-status">Loading plot data...</p>
@@ -40,11 +168,22 @@ Location: <!--#include virtual="kml.html" -->
 <select id="axis-mode">
   <option value="local">Local time</option>
   <option value="seconds">Seconds</option>
+  <option value="gps">GPS</option>
 </select>
+
+<div id="sol-type-filter-panel" class="filter-panel" style="display: none;">
+  <strong>Solution type filter</strong> (interactive view only; does not change reported statistics)
+  <div id="sol-type-filters"></div>
+</div>
 
 <div class="plot-card">
   <h3>Solution and Latency Combined</h3>
   <div id="plot-solution-latency" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>Latency Distribution</h3>
+  <div id="plot-latency-dist" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card">
@@ -53,13 +192,23 @@ Location: <!--#include virtual="kml.html" -->
 </div>
 
 <div class="plot-card">
-  <h3>NEU Error vs Time</h3>
+  <h3>Height Error</h3>
+  <div id="plot-height-error" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>NEU Error</h3>
   <div id="plot-enu" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card">
-  <h3>2D/3D Error vs Time</h3>
-  <div id="plot-2d3d" style="width: 100%; height: 420px;"></div>
+  <h3>H/U Error and Sigma</h3>
+  <div id="plot-enu-sigma" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>NE Error Scatter</h3>
+  <div id="plot-ne-scatter" style="width: 100%; height: 480px;"></div>
 </div>
 
 <div class="plot-card">
@@ -87,140 +236,23 @@ Location: <!--#include virtual="kml.html" -->
 
 <div class="plot-card">
   <h3>Error and Precision vs Age of Corrections</h3>
-  <div id="plot-age-corr" style="width: 100%; height: 460px;"></div>
+  <h4>1D (Vertical)</h4>
+  <div id="plot-age-corr-1d" style="width: 100%; height: 380px;"></div>
+  <h4>2D (Horizontal)</h4>
+  <div id="plot-age-corr-2d" style="width: 100%; height: 380px;"></div>
+  <h4>3D</h4>
+  <div id="plot-age-corr-3d" style="width: 100%; height: 380px;"></div>
 </div>
 
-<h2>Range summaries</h2>
-<h3>Height &lt;1 cm</h3>
-<pre><!--#include virtual="range1cm.sum" --></pre>
-<h3>Height &lt;2 cm</h3>
-<pre><!--#include virtual="range2cm.sum" --></pre>
-<h3>Height &lt;2 Sigma</h3>
-<pre><!--#include virtual="range2sig.sum" --></pre>
-<h3>Height &lt;3 Sigma</h3>
-<pre><!--#include virtual="range3sig.sum" --></pre>
-
-<h2>Legacy static plots (gnuplot)</h2>
-<p>These PNG plots are still generated while interactive views are being developed.</p>
-
-<div class="plot-card">
-  <h3>Solution Type</h3>
-  <img src="Solution.png" alt="Solution Type"/>
+<h2>Range Summaries</h2>
+<div id="range-summaries-root">
+  <p class="report-empty">Loading range summaries...</p>
 </div>
-
-<div class="plot-card">
-  <h3>Latency</h3>
-  <img src="Latency.png" alt="Latency"/>
-</div>
-
-<div class="plot-card">
-  <h3>Solution and Latency</h3>
-  <img src="Sol_Latency.png" alt="Solution and Latency"/>
-</div>
-
-<div class="plot-card">
-  <h3>SVs</h3>
-  <img src="SVs.png" alt="SVs"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height Error</h3>
-  <img src="U_Error.png" alt="Height Error"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height Abs Error</h3>
-  <img src="U_abs_Error.png" alt="Height Abs Error"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height Error Cumulative</h3>
-  <img src="U_Error_cumulative.png" alt="Height Error Cumulative"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height vs 1 Sigma Prec</h3>
-  <img src="1D_Prec.png" alt="1D Prec"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height vs 3 Sigma Prec</h3>
-  <img src="1D_3Prec.png" alt="1D 3Prec"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height / Sigma Ratio</h3>
-  <img src="U_Error_Sigma_Ratio.png" alt="Height Sigma Ratio"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height / Sigma Cumulative</h3>
-  <img src="U_Error_Sigma_cumulative.png" alt="Height Sigma Cumulative"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height PDOP</h3>
-  <img src="U_Error_DOPS.png" alt="Height DOPs"/>
-</div>
-
-<div class="plot-card">
-  <h3>Northing Error</h3>
-  <img src="N_Error.png" alt="Northing Error"/>
-</div>
-
-<div class="plot-card">
-  <h3>Northing Error Cumulative</h3>
-  <img src="N_Error_cumulative.png" alt="Northing Error Cumulative"/>
-</div>
-
-<div class="plot-card">
-  <h3>Easting Error</h3>
-  <img src="E_Error.png" alt="Easting Error"/>
-</div>
-
-<div class="plot-card">
-  <h3>Easting Error Cumulative</h3>
-  <img src="E_Error_cumulative.png" alt="Easting Error Cumulative"/>
-</div>
-
-<div class="plot-card">
-  <h3>2D Error</h3>
-  <img src="2D_Error.png" alt="2D Error"/>
-</div>
-
-<div class="plot-card">
-  <h3>2D Error Cumulative</h3>
-  <img src="2D_Error_cumulative.png" alt="2D Error Cumulative"/>
-</div>
-
-<div class="plot-card">
-  <h3>2D Error vs Prec</h3>
-  <img src="2D_Prec.png" alt="2D Prec"/>
-</div>
-
-<div class="plot-card">
-  <h3>2D Error vs 3*Prec</h3>
-  <img src="2D_3Prec.png" alt="2D 3Prec"/>
-</div>
-
-<div class="plot-card">
-  <h3>3D Error</h3>
-  <img src="3D_Error.png" alt="3D Error"/>
-</div>
-
-<div class="plot-card">
-  <h3>All Errors</h3>
-  <img src="All_Error.png" alt="All Errors"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height &gt;2 Sigma</h3>
-  <img src="U_Range_2Sigma.png" alt="Height Range 2 Sigma"/>
-</div>
-
-<div class="plot-card">
-  <h3>Height &gt;2 Sigma Histogram</h3>
-  <img src="U_Hist_2Sigma.png" alt="Height Hist 2 Sigma"/>
+<div class="report-raw-data" aria-hidden="true">
+  <script type="text/plain" id="raw-range1cm"><!--#include virtual="range1cm.sum" --></script>
+  <script type="text/plain" id="raw-range2cm"><!--#include virtual="range2cm.sum" --></script>
+  <script type="text/plain" id="raw-range2sig"><!--#include virtual="range2sig.sum" --></script>
+  <script type="text/plain" id="raw-range3sig"><!--#include virtual="range3sig.sum" --></script>
 </div>
 
 </body></html>

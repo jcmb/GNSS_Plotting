@@ -1,35 +1,32 @@
 #! /usr/bin/awk -f
-# X29_SOL. This output only the lines in which the GPS quailty is what the user asks
 
-BEGIN {FS=","
-       OFS=","
-       OFMT="%0.4f"
-	if (ARGC > 1 || ARGV[1]=="?") {
-	   print "X29_height_abs <FileName "
-		print ""
-      print "Takes a X29 file and converts the height, which will be an error, to absolute error"
-      print ""
-	   print ""
-	   print "OUTPUT:"
-      print ""
-	   print "Standard X29 file with the height as an absolute value"
-      print "is what was on the command line"
-	   print ""   
-	   print "JCMBsoft V1.0"
-      print ""
-	   exit  
-           }
+BEGIN {
+    FS = ","
+    OFS = ","
+    OFMT = "%0.4f"
+    if (ARGV[1] == "?") {
+        print "x29_height_abs [field] <FileName"
+        print ""
+        print "Converts the given ENU error field (11=N, 12=E, 13=U) to absolute value."
+        print "Default field is 13 (height)."
+        print ""
+        print "JCMBsoft V1.0"
+        exit
+    }
+    field = 13
+    if (ARGC > 1 && ARGV[1] != "") {
+        field = ARGV[1] + 0
+    }
+    for (i = 1; i < ARGC; i++) {
+        ARGV[i] = ""
+    }
 }
 
+function abs(value) {
+    return (value < 0 ? -value : value)
+}
 
-function abs(value)
 {
-    return (value<0?-value:value);
-}
-
-# By this time the file should have had GGKclean run on it so it is a good file.
-
- {
-     $13=abs($13)
+    $field = abs($field)
     print
- }
+}

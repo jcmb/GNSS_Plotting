@@ -25,7 +25,7 @@ then
 fi
 if [ -z "$GNSS_RESULTS_DIR" ]
 then
-   GNSS_RESULTS_DIR=/mnt/Results
+   GNSS_RESULTS_DIR=/mnt/Data/results
 fi
 
 
@@ -105,7 +105,7 @@ ls *.SNR > snr_files.txt 2>/dev/null
 
 #mv $$.x29 $File.X29
 #mv $1 $FileFull
-#rm $1
+rm $1
 
 
 echo Processing completed
