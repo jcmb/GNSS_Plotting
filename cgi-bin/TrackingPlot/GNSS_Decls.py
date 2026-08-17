@@ -10,42 +10,10 @@ Tracking_Names=["CA","P","E","CSM","CSL","CS","I","Q","IQ","Y","M",
     "SAIF","LEX","G3_PD","G3_P","G3_D","XPS","E6_PD","E6_P","E6_D"]
 
 
-Expected_SNR = [[[None] * len (Tracking_Names)] * len (Freq_Names)] * len(System_Names)
-
-GPS_L2CS=[False]*33 # So we get 1..32
-
-GPS_L2CS[17]=True
-GPS_L2CS[31]=True
-GPS_L2CS[12]=True
-GPS_L2CS[15]=True
-GPS_L2CS[29]=True
-GPS_L2CS[7]=True
-GPS_L2CS[5]=True
-
-GPS_L2CS[25]=True
-GPS_L2CS[1]=True
-GPS_L2CS[24]=True
-GPS_L2CS[27]=True
-GPS_L2CS[30]=True
-GPS_L2CS[6]=True
-GPS_L2CS[9]=True
-GPS_L2CS[3]=True
-GPS_L2CS[26]=True
-GPS_L2CS[8]=True
-
-
-GPS_L5=[False]*33 # So we get 1..32
-GPS_L5[25]=True
-GPS_L5[1]=True
-GPS_L5[24]=True
-GPS_L5[27]=True
-GPS_L5[30]=True
-GPS_L5[6]=True
-GPS_L5[9]=True
-GPS_L5[3]=True
-GPS_L5[26]=True
-GPS_L5[8]=True
-
+Expected_SNR = [
+    [[None for _ in Tracking_Names] for _ in Freq_Names]
+    for _ in System_Names
+]
 
 # GPS L1 CA
 
@@ -79,7 +47,7 @@ def Freq_Number(Freq):
     return Freq_Names.index(Freq)
 
 def Tracking_Number(Tracking):
-    return Tracking_Number.index(Tracking)
+    return Tracking_Names.index(Tracking)
 
 def Tracking_Index(Freq,Tracking):
     return (Freq*50 + Tracking)
@@ -90,8 +58,11 @@ def Freq_Tracking_From_Index(Index):
     return (Freq,Tracking)
 
 
-if __name__ == "__main__" :
+if __name__ == "__main__":
     print("GPS L1: ", len(Expected_SNR[0][0][0]))
     print("GPS L2 E ", len(Expected_SNR[0][1][2]))
     print("GPS L2 CS", len(Expected_SNR[0][1][5]))
     print("GPS L5 IQ", len(Expected_SNR[0][2][8]))
+    assert Expected_SNR[0][0][0] is not Expected_SNR[2][0][0]
+    assert Expected_SNR[0][0][0][9] == 40.1
+    assert Expected_SNR[2][0][0][9] == 40.6

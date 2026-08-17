@@ -1,9 +1,12 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import re
 import sys
 
-def output_plot_header (min,max):
+from antenna_names import split_antenna_prefix, read_tracked_antennas, file_prefix_for_antennas
+
+
+def output_plot_header (t_min,t_max):
     print("""
         set datafile separator ","
         set terminal png size 1000,800 noenhanced font '/usr/share/fonts/msttcorefonts/arial.ttf' 10
@@ -23,18 +26,18 @@ def output_plot_header (min,max):
         set ylabel "SNR"
     """)
 
-    print("set xrange[{}:{}]".format(min,max))
+    print("set xrange[{}:{}]".format(t_min,t_max))
 
 
-def output_plot (System,Band_Name,Tracking,Field,SVs,HTML_File,Plot_Name):
-#    print SVs
+def output_plot (Antenna_Prefix,System,Band_Name,Tracking,Field,SVs,HTML_File,Plot_Name):
+    plot_base = Antenna_Prefix + System + "-" + Band_Name + "-" + Tracking
     HTML_File.write('<h3>{} {}{}</h3>'.format(System,Band_Name,Tracking))
-    HTML_File.write('<a name="{}-{}-{}"/>'.format(System,Band_Name,Tracking))
-    HTML_File.write('<img src="{}-{}-{}.SNRs.png"'.format(System,Band_Name,Tracking))
-    HTML_File.write('alt="{}-{}-{}.SNRs.png">'.format(System,Band_Name,Tracking))
+    HTML_File.write('<a name="{}"/>'.format(plot_base))
+    HTML_File.write('<img src="{}.SNRs.png"'.format(plot_base))
+    HTML_File.write('alt="{}.SNRs.png">'.format(plot_base))
     HTML_File.write("<p/><p/>\n")
     print("")
-    print('set output "{}-{}-{}.SNRs.png"'.format(System,Band_Name,Tracking))
+    print('set output "{}.SNRs.png"'.format(plot_base))
     print('set title "{} {} {} {} SNRs"'.format(Plot_Name,System,Band_Name,Tracking))
     print("")
     print("plot \\")
@@ -44,15 +47,22 @@ def output_plot (System,Band_Name,Tracking,Field,SVs,HTML_File,Plot_Name):
             first=False
        else:
           print(",\\")
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\"".format(System,SV,Field,SV), end=' ')
+       print("'{}.SNR-SV' using ($1/1000):(${}) title \"{}\"".format(SV,Field,SV.split("-")[-1]), end="")
 
     print("")
 
-def read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs,HTML_File,Plot_Name):
+def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
+    def svs(system, antenna):
+        return sv_by_antenna.get(antenna, {}).get(system, [])
+
+    def prefix(antenna):
+        return file_prefix_for_antennas(antennas, antenna)
+
     Bands_file=open("Tracked.Bands","r")
     for Band in Bands_file:
         Band=Band.strip()
-        m=re.search('(.*)-(.*)-(.*)',Band)
+        antenna, rest = split_antenna_prefix(Band)
+        m=re.search('(.*)-(.*)-(.*)',rest)
 #        print m.group(1),m.group(2),m.group(3)
 
         if m:
@@ -62,19 +72,19 @@ def read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZS
             if Sys=="GPS":
                 if Band=="L1":
                     if Tracked=="CA":
-                        output_plot(Sys,Band,Tracked,4,GPS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("GPS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GPS L1 Tracked: " + Tracked)
                 elif Band=="L2":
                     if Tracked=="E":
-                        output_plot(Sys,Band,Tracked,6,GPS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("GPS", antenna),HTML_File,Plot_Name)
                     elif Tracked=="CS":
-                        output_plot(Sys,Band,Tracked,8,GPS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("GPS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GPS L2 Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="IQ":
-                        output_plot(Sys,Band,Tracked,10,GPS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("GPS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GPS L5 Tracked: " + Tracked)
                 else:
@@ -84,22 +94,22 @@ def read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZS
             elif Sys=="GLONASS":
                 if Band=="L1":
                     if Tracked=="CA":
-                        output_plot(Sys,Band,Tracked,4,GLONASS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("GLONASS", antenna),HTML_File,Plot_Name)
                     elif Tracked=="P":
-                        output_plot(Sys,Band,Tracked,6,GLONASS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("GLONASS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GLONASS L1 Tracked: " + Tracked)
                 elif Band=="L2":
                     if Tracked=="CA":
-                        output_plot(Sys,Band,Tracked,8,GLONASS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("GLONASS", antenna),HTML_File,Plot_Name)
                     elif Tracked=="P":
-                        output_plot(Sys,Band,Tracked,10,GLONASS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("GLONASS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GLONASS L2 Tracked: " + Tracked)
 
                 elif Band=="G3":
                     if Tracked=="G3_PD":
-#                        output_plot(Sys,Band,Tracked,12,GLONASS_SVs,HTML_File,Plot_Name)
+#                        output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("GLONASS", antenna),HTML_File,Plot_Name)
                         pass
                     else:
                         sys.exit("Internal Error, Unknown GLONASS G3 Tracked: " + Tracked)
@@ -110,12 +120,12 @@ def read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZS
             elif Sys=="SBAS":
                 if Band=="L1":
                     if Tracked=="CA":
-                        output_plot(Sys,Band,Tracked,4,SBAS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("SBAS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown SBAS L1 Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="I":
-                        output_plot(Sys,Band,Tracked,6,SBAS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("SBAS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown SBAS L5 Tracked: " + Tracked)
                 else:
@@ -124,22 +134,22 @@ def read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZS
             elif Sys=="GAL":
                 if Band=="L1":
                     if Tracked=="MBOC_1_1_PD":
-                        output_plot(Sys,Band,Tracked,4,GAL_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GAL L1 Tracked: " + Tracked)
                 elif Band=="E5AB":
                     if Tracked=="ALTBOC_C_PD":
-                        output_plot(Sys,Band,Tracked,6,GAL_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GAL E5AB Tracked: " + Tracked)
                 elif Band=="E5B":
                     if Tracked=="BPSK_PD":
-                        output_plot(Sys,Band,Tracked,8,GAL_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GAL E5B Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="BPSK_PD":
-                        output_plot(Sys,Band,Tracked,10,GAL_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GAL L5 Tracked: " + Tracked)
                 else:
@@ -148,37 +158,37 @@ def read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZS
             elif Sys=="BDS":
                 if Band=="B1_E2":
                     if Tracked=="BPSK2_B1":
-                        output_plot(Sys,Band,Tracked,4,BDS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown BDS L1 Tracked: " + Tracked)
                 elif Band=="E5B":
                     if Tracked=="BPSK2_B2":
-                        output_plot(Sys,Band,Tracked,6,BDS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown BDS L5 Tracked: " + Tracked)
                 elif Band=="B3":
                     if Tracked=="BPSK2_B3":
-                        output_plot(Sys,Band,Tracked,8,BDS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown BDS B3 Tracked: " + Tracked)
             elif Sys=="QZSS":
                 if Band=="L1":
                     if Tracked=="CA":
-                        output_plot(Sys,Band,Tracked,4,QZSS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("QZSS", antenna),HTML_File,Plot_Name)
                     elif Tracked=="BOC_1_1_PD":
-                        output_plot(Sys,Band,Tracked,6,QZSS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("QZSS", antenna),HTML_File,Plot_Name)
                     elif Tracked=="SAIF":
-                        output_plot(Sys,Band,Tracked,8,QZSS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("QZSS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown QZSS L1 Tracked: " + Tracked)
                 elif Band=="L2":
                     if Tracked=="CS":
-                        output_plot(Sys,Band,Tracked,10,QZSS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("QZSS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown QZSS L2 Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="IQ":
-                        output_plot(Sys,Band,Tracked,12,QZSS_SVs,HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("QZSS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown QZSS L5 Tracked: " + Tracked)
                 else:
@@ -193,123 +203,89 @@ def read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZS
     Bands_file.close()
 
 def determine_SV_time_range():
-    min=1000000000000000
-    min=1000000000000000
-    max=-2
+    t_min = 1000000000000000
+    t_max = -2
 
-    SVs_file=open("Tracked.SVs","r")
-    for SV in SVs_file:
-        SV=SV.strip()
-#        print SV
-        SV_File=open(SV+".SNR-SV","r")
-        first_line=SV_File.readline()
-        for line in SV_File:
-            last_line=line
+    with open("Tracked.SVs", "r") as SVs_file:
+        for SV in SVs_file:
+            SV = SV.strip()
+            if not SV:
+                continue
+            first_line = None
+            last_line = None
+            with open(SV + ".SNR-SV", "r") as SV_File:
+                for line in SV_File:
+                    if first_line is None:
+                        first_line = line
+                    last_line = line
+            if first_line:
+                m = re.search(r'(.*?),.*', first_line)
+                if m and float(m.group(1)) < t_min:
+                    t_min = float(m.group(1))
+            if last_line:
+                m = re.search(r'(.*?),.*', last_line)
+                if m and float(m.group(1)) > t_max:
+                    t_max = float(m.group(1))
 
-#        print first_line
-        m=re.search('(.*?),.*',first_line)
-        if m:
-            if float(m.group(1))<min:
-                min=float(m.group(1))
-
-
-#        print last_line
-        m=re.search('(.*?),.*',last_line)
-        if m:
-            if float(m.group(1))>max:
-                max=float(m.group(1))
-
-        SV_File.close()
-
-#        print SV, min,max
-    return(min,max)
+    return (t_min, t_max)
 
 
+def read_SVs_by_antenna():
+    sv_by_antenna = {}
 
-    max=-2
+    def ensure_antenna(antenna):
+        if antenna not in sv_by_antenna:
+            sv_by_antenna[antenna] = {
+                "GPS": [], "GLONASS": [], "SBAS": [], "GAL": [], "BDS": [], "QZSS": []
+            }
 
-    SVs_file=open("Tracked.SVs","r")
-    for SV in SVs_file:
-        SV=SV.strip()
-#        print SV
-        SV_File=open(SV+".SNR-SV","r")
-        first_line=SV_File.readline()
-        for line in SV_File:
-            last_line=line
-
-#        print first_line
-        m=re.search('(.*?),.*',first_line)
-        if m:
-            if float(m.group(1))<min:
-                min=float(m.group(1))
-
-
-#        print last_line
-        m=re.search('(.*?),.*',last_line)
-        if m:
-            if float(m.group(1))>max:
-                max=float(m.group(1))
-
-        SV_File.close()
-
-#        print SV, min,max
-    return(min,max)
-
-
-def read_SVs(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs):
-    SVs_file=open("Tracked.SVs","r")
-    for SV in SVs_file:
-        SV=SV.strip()
-        m=re.search('(.*)-(.*)',SV)
-        if m:
-            Sys=m.group(1).upper()
-            SV=int(m.group(2))
-
-#            print Sys,SV
-
-            if Sys=="GPS":
-                GPS_SVs.append(SV)
-            elif Sys=="GLONASS":
-                GLONASS_SVs.append(SV)
-            elif Sys=="SBAS":
-                SBAS_SVs.append(SV)
-            elif Sys=="GAL":
-                GAL_SVs.append(SV)
-            elif Sys=="BDS":
-                BDS_SVs.append(SV)
-            elif Sys=="QZSS":
-                QZSS_SVs.append(SV)
+    with open("Tracked.SVs", "r") as SVs_file:
+        for SV in SVs_file:
+            SV = SV.strip()
+            if not SV:
+                continue
+            antenna, rest = split_antenna_prefix(SV)
+            match = re.search(r'(.*)-(.*)', rest)
+            if match:
+                Sys = match.group(1).upper()
+                if Sys in ("GPS", "GLONASS", "SBAS", "GAL", "BDS", "QZSS"):
+                    ensure_antenna(antenna)
+                    sv_by_antenna[antenna][Sys].append(SV)
+                else:
+                    sys.exit("Internal Error, Unknown SV Type: " + Sys)
             else:
-                sys.exit("Internal Error, Unknown SV Type: " + Sys)
+                sys.exit("Internal Error, could not decode Tracked SVs: " + SV)
+
+    for antenna in sv_by_antenna:
+        for system in sv_by_antenna[antenna]:
+            sv_by_antenna[antenna][system].sort(key=lambda item: int(item.split("-")[-1]))
+
+    return sv_by_antenna
 
 
-        else:
-            sys.exit("Internal Error, could not decode Tracked SVs: " + SV)
-
-    GPS_SVs.sort()
-    GLONASS_SVs.sort()
-    SBAS_SVs.sort()
-    GAL_SVs.sort()
-    BDS_SVs.sort()
-    QZSS_SVs.sort()
-    SVs_file.close()
-
-
-def read_Bands_and_create_header(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs,HTML_File,Plot_Name):
+def read_Bands_and_create_header(antennas, HTML_File):
     HTML_File.write('<h2>Bands Tracked</h2>')
     Bands_file=open("Tracked.Bands","r")
     for Band in Bands_file:
         Band=Band.strip()
-        m=re.search('(.*)-(.*)-(.*)',Band)
-        if m:
-            System=m.group(1).upper()
-            Band_Name=m.group(2).upper()
-            Tracked=m.group(3).upper()
-            HTML_File.write('<a href="#{}-{}-{}">'.format(System,Band_Name,Tracked))
-            HTML_File.write('{} {} {}'.format(System,Band_Name,Tracked))
+        if not Band:
+            continue
+        antenna, rest = split_antenna_prefix(Band)
+        match = re.search('(.*)-(.*)-(.*)', rest)
+        if match:
+            System=match.group(1).upper()
+            Band_Name=match.group(2).upper()
+            Tracked=match.group(3).upper()
+            plot_base = file_prefix_for_antennas(antennas, antenna) + System + "-" + Band_Name + "-" + Tracked
+            label = Band if len(antennas) > 1 else "{} {} {}".format(System, Band_Name, Tracked)
+            HTML_File.write('<a href="#{}">'.format(plot_base))
+            HTML_File.write(label)
             HTML_File.write('</a><br>')
     HTML_File.write('<p/>')
-    HTML_File.write('<h2>Plots</h2>')
+    if len(antennas) > 1:
+        HTML_File.write('<h2>Plots by Antenna</h2>')
+    else:
+        HTML_File.write('<h2>Plots</h2>')
     Bands_file.close()
 
 def create_html_header(HTML_File,Name):
@@ -347,34 +323,21 @@ def close_html_file(HTML_File):
 if len(sys.argv) <=1:
    sys.exit("Name for plots must be provided on the command line")
 else:
-    Plot_Name=sys.argv[1]
+    Plot_Name = sys.argv[1]
 
-GPS_SVs=[]
-GLONASS_SVs=[]
-SBAS_SVs=[]
-GAL_SVs=[]
-BDS_SVs=[]
-QZSS_SVs=[]
+antennas = read_tracked_antennas()
+sv_by_antenna = read_SVs_by_antenna()
 
-HTML_File=open("PNGs.html","w")
+HTML_File = open("PNGs.html", "w")
 
+create_html_header(HTML_File, Plot_Name)
 
-create_html_header(HTML_File,Plot_Name)
+(t_min, t_max) = determine_SV_time_range()
+t_min = t_min / 1000
+t_max = t_max / 1000
+output_plot_header(t_min, t_max)
 
-read_SVs(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs)
-
-(min,max)=determine_SV_time_range()
-min=min/1000
-max=max/1000
-output_plot_header (min,max)
-
-#print GPS_SVs
-#print GLONASS_SVs
-#print SBAS_SVs
-#print GAL_SVs
-#print BDS_SVs
-
-read_Bands_and_create_header(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs,HTML_File,Plot_Name)
-read_Bands_and_create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs,HTML_File,Plot_Name)
+read_Bands_and_create_header(antennas, HTML_File)
+read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name)
 
 close_html_file(HTML_File)

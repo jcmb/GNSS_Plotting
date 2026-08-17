@@ -1,0 +1,277 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+<title>Plot Tracking for a GNSS file</title>
+<style type="text/css">
+#upload-progress {
+  display: none;
+  margin-top: 1em;
+  max-width: 32em;
+}
+#upload-progress.visible {
+  display: block;
+}
+#upload-progress-bar {
+  width: 100%;
+  height: 1.25em;
+  border: 1px solid #999;
+  background: #eee;
+}
+#upload-progress-fill {
+  width: 0;
+  height: 100%;
+  background: #0063a3;
+  transition: width 0.15s linear;
+}
+#upload-progress-text {
+  margin-top: 0.5em;
+}
+#upload-error {
+  display: none;
+  margin-top: 1em;
+  color: #a00000;
+}
+#upload-error.visible {
+  display: block;
+}
+#upload-processing {
+  display: none;
+  margin-top: 1em;
+  color: #0063a3;
+}
+#upload-processing.visible {
+  display: block;
+}
+</style>
+</head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="http://construction.trimble.com/">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+  <!-- end #logo-area -->
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content" class="clearfix">
+<form id="tracking-upload-form" action="/cgi-bin/TrackingPlot/T02_2_Tracking.pl" method="post" enctype="multipart/form-data">
+<table border="1">
+<tr>
+<td>
+GNSS File:
+</td>
+<td>
+<input type="file" name="file" id="tracking-file" accept=".t02,.T02,.t04,.T04" required="required"/>
+</td>
+</tr>
+<tr>
+<td>
+Decimate:
+</td>
+<td>
+<select name="Decimate">
+   <option selected="selected" value="-1">Automatic</option>
+   <option value="0">Don't Decimate (All Data)</option>
+   <option value="0.2">5Hz</option>
+   <option value="1">1 Second</option>
+   <option value="2">2 Second</option>
+   <option value="5">5 Second</option>
+   <option value="10">10 Second</option>
+   <option value="15">15 Second</option>
+   <option value="30">30 Second</option>
+   <option value="60">60 Second</option>
+</select>
+</td>
+</tr>
+<tr>
+<td>
+Project (Optional):
+</td>
+<td>
+<input type="text" name="project"/>
+</td>
+</tr>
+</table><br/>
+<input type="submit" id="tracking-submit" value="Submit" />
+<div id="upload-progress" aria-live="polite">
+  <div id="upload-progress-bar"><div id="upload-progress-fill"></div></div>
+  <div id="upload-progress-text">Uploading... 0%</div>
+</div>
+<div id="upload-error"></div>
+<div id="upload-processing">Processing your file on the server. Plot generation may take a minute for large files.</div>
+</form>
+</div>
+</div>
+</div>
+<script type="text/javascript">
+(function () {
+  var form = document.getElementById("tracking-upload-form");
+  var fileInput = document.getElementById("tracking-file");
+  var submitButton = document.getElementById("tracking-submit");
+  var progressBox = document.getElementById("upload-progress");
+  var progressFill = document.getElementById("upload-progress-fill");
+  var progressText = document.getElementById("upload-progress-text");
+  var errorBox = document.getElementById("upload-error");
+  var processingBox = document.getElementById("upload-processing");
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) {
+      return bytes + " B";
+    }
+    if (bytes < 1024 * 1024) {
+      return (bytes / 1024).toFixed(1) + " KB";
+    }
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function setProgress(loaded, total) {
+    var percent = total ? Math.round((loaded / total) * 100) : 0;
+    progressFill.style.width = percent + "%";
+    if (total) {
+      progressText.textContent =
+        "Uploading... " + percent + "% (" + formatBytes(loaded) + " of " + formatBytes(total) + ")";
+    } else {
+      progressText.textContent =
+        "Uploading... " + formatBytes(loaded) + " sent";
+    }
+  }
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.className = "visible";
+  }
+
+  function clearError() {
+    errorBox.textContent = "";
+    errorBox.className = "";
+    processingBox.className = "";
+  }
+
+  function showProcessing(resultsUrl) {
+    processingBox.innerHTML = "";
+    processingBox.appendChild(
+      document.createTextNode("Processing your file on the server. Please wait... Results will be at ")
+    );
+    var link = document.createElement("a");
+    link.href = resultsUrl;
+    link.textContent = resultsUrl;
+    processingBox.appendChild(link);
+    processingBox.appendChild(document.createTextNode("."));
+    processingBox.className = "visible";
+  }
+
+  function waitForProcessingComplete(resultsUrl, callback) {
+    var processingUrl = resultsUrl.replace(/\/?$/, "/") + ".processing";
+    var pollIntervalMs = 3000;
+
+    function poll() {
+      var check = new XMLHttpRequest();
+      check.open("GET", processingUrl + "?_=" + Date.now(), true);
+      check.onload = function () {
+        if (check.status === 200) {
+          showProcessing(resultsUrl);
+          window.setTimeout(poll, pollIntervalMs);
+          return;
+        }
+        callback();
+      };
+      check.onerror = function () {
+        callback();
+      };
+      check.send();
+    }
+
+    poll();
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    clearError();
+
+    if (!fileInput.files || !fileInput.files.length) {
+      showError("Please choose a GNSS file to upload.");
+      return;
+    }
+
+    var formData = new FormData(form);
+    var xhr = new XMLHttpRequest();
+
+    submitButton.disabled = true;
+    progressBox.className = "visible";
+    setProgress(0, fileInput.files[0].size || 0);
+
+    xhr.upload.addEventListener("progress", function (event) {
+      if (event.lengthComputable) {
+        setProgress(event.loaded, event.total);
+        if (event.loaded >= event.total) {
+          progressText.textContent = "Upload complete. Waiting for server...";
+        }
+      } else {
+        setProgress(event.loaded, 0);
+      }
+    });
+
+    xhr.addEventListener("load", function () {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var redirectUrl = null;
+        try {
+          var data = JSON.parse(xhr.responseText);
+          if (data.redirect) {
+            redirectUrl = data.redirect;
+          } else if (data.error) {
+            submitButton.disabled = false;
+            progressBox.className = "";
+            showError(data.error);
+            return;
+          }
+        } catch (ignore) {
+          // Non-JSON fallback for plain HTML responses.
+        }
+
+        progressText.textContent = "Upload complete.";
+        progressFill.style.width = "100%";
+
+        if (redirectUrl) {
+          progressText.textContent = "Upload complete.";
+          progressFill.style.width = "100%";
+          showProcessing(redirectUrl);
+          waitForProcessingComplete(redirectUrl, function () {
+            window.location.assign(redirectUrl);
+          });
+          return;
+        }
+
+        submitButton.disabled = false;
+        progressBox.className = "";
+        showError("Upload succeeded, but the server did not return a results page URL.");
+        return;
+      }
+
+      submitButton.disabled = false;
+      progressBox.className = "";
+      showError("Upload failed (HTTP " + xhr.status + "). Please try again.");
+    });
+
+    xhr.addEventListener("error", function () {
+      submitButton.disabled = false;
+      progressBox.className = "";
+      showError("Upload failed due to a network error. Please try again.");
+    });
+
+    xhr.addEventListener("abort", function () {
+      submitButton.disabled = false;
+      progressBox.className = "";
+      showError("Upload cancelled.");
+    });
+
+    xhr.open("POST", form.action, true);
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.send(formData);
+  });
+})();
+</script>
+</body>
+</html>

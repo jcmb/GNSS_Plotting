@@ -1,9 +1,6 @@
-#!/usr/bin/python3 -u
-import sys
+#!/usr/bin/env python3
+
 import glob
 
-SNRs=glob.glob('*.SNR-SV')
-for file in SNRs:
-    without_extension=file[0:-7]
-    print(without_extension)
-
+for file in glob.glob('*.SNR-SV'):
+    print(file[0:-7])

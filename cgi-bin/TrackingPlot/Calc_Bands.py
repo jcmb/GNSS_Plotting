@@ -1,8 +1,6 @@
-#!/usr/bin/python3 -u
+#!/usr/bin/env python3
 
 import glob
 
-SNRs=glob.glob('*.SNR')
-for file in SNRs:
-    without_extension=file[0:-4]
-    print(without_extension)
+for file in glob.glob('*.SNR'):
+    print(file[0:-4])

@@ -4,25 +4,21 @@
 <span id="BDS">BeiDou:<br/></span><p/>
 <span id="SBAS">SBAS:<br/></span><p/>
 
-<a href="SNR_Plot.shtml">All SV's SNR plot</a><br/>
-<a href="Tracking_Plot.shtml">ALL SV's Tracking plot</a><br/>
+<a href="#" onclick="navigatePlot('SNR_Plot.shtml'); return false;">All SV's SNR plot</a><br/>
+<a href="#" onclick="navigatePlot('Tracking_Plot.shtml'); return false;">ALL SV's Tracking plot</a><br/>
 <script>
 
 function createCallback( system,SV ){
-//   console.log("create Callback"+SV)
    return function(){
      create_plot(system,SV)
      }
    }
 
 
-$(document).ready(function() {
-//  console.log("Ready")
-
+function loadTrackedSvButtons(antennas, antenna) {
   for(var i = 1; i <=32; i++) {
-//     console.log("Make GPS button")
      $('<button/>', {
-        text: i, //set text 1 to 10
+        text: i,
         id: 'GPS-'+i,
         class: 'btn-tiny',
         disabled: true,
@@ -32,7 +28,7 @@ $(document).ready(function() {
 
   for(i = 1; i <=24; i++) {
      $('<button/>', {
-        text: i, //set text 1 to 10
+        text: i,
         id: 'GLONASS-'+i,
         class: 'btn-tiny',
         disabled: true,
@@ -42,7 +38,7 @@ $(document).ready(function() {
 
   for(i = 1; i <=30; i++) {
      $('<button/>', {
-        text: i, //set text 1 to 10
+        text: i,
         id: 'GAL-'+i,
         class: 'btn-tiny',
         disabled: true,
@@ -52,7 +48,7 @@ $(document).ready(function() {
 
   for(i = 1; i <=35; i++) {
      $('<button/>', {
-        text: i, //set text 1 to 10
+        text: i,
         id: 'BDS-'+i,
         class: 'btn-tiny',
         disabled: true,
@@ -113,11 +109,8 @@ $(document).ready(function() {
         click: createCallback("SBAS",i),
         }).appendTo("#SBAS");
      }
-  }
-  );
 
 File_Name="Tracked.SVs";
-//console.log(File_Name)
 
 var First_SV
 First_SV=2
@@ -126,22 +119,26 @@ First_System="GLONASS"
 
 
 $.get(File_Name, function(data) {
-      // Split the lines
-     var lines = data.split('\n');
-     var first_line=true;
-     var Got_GPS=false
-     var Got_GLONASS=false
-     var Got_GAL=false
-     var Got_BDS=false
-     var Got_SBAS=false
+      var lines = data.split('\n');
+      var first_line=true;
+      var Got_GPS=false
+      var Got_GLONASS=false
+      var Got_GAL=false
+      var Got_BDS=false
+      var Got_SBAS=false
 
-     $.each(lines, function(lineNo, line) {
-         var items = line.split(',');
-         if (items[0]) {
-            $("#"+items[0]).removeAttr("disabled");
-            $("#"+items[0]).removeAttr("hidden");
-//            console.log(items)
-            var name=items[0].split('-')
+      $.each(lines, function(lineNo, line) {
+         line = line.trim();
+         if (!line) {
+            return;
+         }
+         if (!trackedLineMatchesAntenna(line, antennas, antenna)) {
+            return;
+         }
+         var buttonId = svButtonId(line, antennas, antenna);
+         $("#"+buttonId).removeAttr("disabled");
+         $("#"+buttonId).removeAttr("hidden");
+         var name=buttonId.split('-')
 
             if (!Got_GPS && (name[0] == "GPS")) {
                Got_GPS=true
@@ -167,8 +164,6 @@ $.get(File_Name, function(data) {
                First_System=name[0];
                first_line=false;
                }
-//            console.log(name)
-            }
         }
     )
     if (! Got_GPS ) {
@@ -192,15 +187,19 @@ $.get(File_Name, function(data) {
        }
 
     if (Sv == "null") {
-//       console.log("SV Null")
        create_plot(First_System,First_SV)
        }
     else {
-//       console.log("SV Non Null")
        create_plot(System,Sv)
        }
     }
 )
+
+}
+
+initAntennaPage("antenna-selector", function(antennas, antenna) {
+    loadTrackedSvButtons(antennas, antenna);
+});
 
 </script>
 

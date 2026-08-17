@@ -1,3 +1,13 @@
 
 .DS_Store
 cgi-bin/PositionPlot/auth.htpasswd
+cgi-bin/TrackingPlot/__pycache__/
+cgi-bin/TrackingPlot/*.MEAN
+cgi-bin/TrackingPlot/Tracked.*
+cgi-bin/TrackingPlot/Decimation
+cgi-bin/TrackingPlot/*.bak
+cgi-bin/TrackingPlot/file.html
+cgi-bin/TrackingPlot/Low_SNRs*.html
+cgi-bin/TrackingPlot/PNGs*.html
+cgi-bin/TrackingPlot/snr_files.txt
+cgi-bin/TrackingPlot/.processing

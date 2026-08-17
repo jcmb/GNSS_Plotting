@@ -1,11 +1,12 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
 import re
 import sys
 
-from GNSS_Decls import GPS_L2CS, GPS_L5
+from antenna_names import split_antenna_prefix, read_tracked_antennas, file_prefix_for_antennas
 
-def output_plot_header (min,max):
+
+def output_plot_header(t_min, t_max):
     print("""
         set datafile separator ","
         set terminal png size 1000,800 noenhanced
@@ -28,127 +29,117 @@ def output_plot_header (min,max):
         set y2label "Elevation"
 
     """)
-    print("set xrange[{}:{}]".format(min,max))
+    print("set xrange[{}:{}]".format(t_min, t_max))
 
 
-
-def output_plot (System,SV,HTML_File,Plot_Name):
-#    print SVs
-    HTML_File.write('<a name="{}-{}">'.format(System,SV))
-    HTML_File.write('<img src="{}-{}.SNR.png"'.format(System,SV))
-    HTML_File.write('alt="{}-{}.SNR.png">'.format(System,SV))
+def output_plot(System, sv_file, plot_base, HTML_File, Plot_Name):
+    HTML_File.write('<a name="{}">'.format(plot_base))
+    HTML_File.write('<img src="{}.SNR.png"'.format(plot_base))
+    HTML_File.write('alt="{}.SNR.png">'.format(plot_base))
     HTML_File.write("<p/><p/>\n")
     print("")
-    print('set output "{}-{}.SNR.png"'.format(System,SV))
-    print('set title "{} {} {} SNRs"'.format(Plot_Name,System,SV))
+    print('set output "{}.SNR.png"'.format(plot_base))
+    print('set title "{} {} SNRs"'.format(Plot_Name, sv_file))
     print("")
     print("plot \\")
-    if System=="GPS":
+    data_file = sv_file + ".SNR-SV"
+    if System == "GPS":
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "L1 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "L2 E"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "L2 CS"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "L5 IQ"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "Exp L1 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 13, "Exp L2 E"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 14, "Exp L2 CS"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 15, "Exp L5 IQ"))
+        print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
 
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,4,"L1 C/A"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,6,"L2 E"))
-       if GPS_L2CS[SV]:
-           print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,8,"L2 CS"))
-       if GPS_L5[SV]:
-           print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,10,"L5 IQ"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,12,"Exp L1 C/A"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,13,"Exp L2 E"))
-       if GPS_L2CS[SV]:
-           print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,14,"Exp L2 CS"))
-       if GPS_L5[SV]:
-           print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,15,"Exp L5 IQ"))
-       print("'{}-{}.SNR-SV' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(System,SV))
-
-    elif System=="GLONASS":
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,4,"L1 C/A"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,6,"L1 P"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,8,"L2 CA"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,10,"L2 P"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,12,"Exp L1 C/A"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,13,"Exp L1 P"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,14,"Exp L2 C/A"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,15,"Exp L2 P"))
-       print("'{}-{}.SNR-SV' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(System,SV))
-    elif System=="GAL":
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,4,"E1"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,6,"AltBoc"))
-       print("'{}-{}.SNR-SV' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(System,SV))
-    elif System=="BDS":
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,4,"B1"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,6,"B2"))
-       print("'{}-{}.SNR-SV' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(System,SV))
-    elif System=="SBAS":
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,4,"L1 C/A"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,6,"L5 IQ"))
-       print("'{}-{}.SNR-SV' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(System,SV))
-    elif System=="QZSS":
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,4,"L1 C/A"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,6,"L1 BOC_1_1_PD"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,8,"L1 SAIF"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,10,"L2 CS"))
-       print("'{}-{}.SNR-SV' using ($1/1000):(${}) title \"{}\",\\".format(System,SV,13,"L5 IQ"))
-       print("'{}-{}.SNR-SV' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(System,SV))
+    elif System == "GLONASS":
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "L1 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "L1 P"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "L2 CA"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "L2 P"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "Exp L1 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 13, "Exp L1 P"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 14, "Exp L2 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 15, "Exp L2 P"))
+        print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
+    elif System == "GAL":
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "E1"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "AltBoc"))
+        print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
+    elif System == "BDS":
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "B1"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "B2"))
+        print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
+    elif System == "SBAS":
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "L1 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "L5 IQ"))
+        print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
+    elif System == "QZSS":
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "L1 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "L1 BOC_1_1_PD"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "L1 SAIF"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "L2 CS"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "L5 IQ"))
+        print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
     else:
-        sys.exit("Internal Error, Unknown SV Type: " + Sys)
+        sys.exit("Internal Error, Unknown SV Type: " + System)
 
     print("")
 
-def create_Sys_Plots(Sys,SVs,HTML_File,Name):
-    for SV in SVs:
-        output_plot(Sys,SV,HTML_File,Name)
 
-def create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs,HTML_File,Plot_Name):
-    create_Sys_Plots("GPS",GPS_SVs,HTML_File,Plot_Name);
-    create_Sys_Plots("GLONASS",GLONASS_SVs,HTML_File,Plot_Name)
-    create_Sys_Plots("SBAS",SBAS_SVs,HTML_File,Plot_Name)
-    create_Sys_Plots("GAL",GAL_SVs,HTML_File,Plot_Name)
-    create_Sys_Plots("BDS",BDS_SVs,HTML_File,Plot_Name)
-    create_Sys_Plots("QZSS",QZSS_SVs,HTML_File,Plot_Name)
+def create_Sys_Plots(Sys, SV_Entries, HTML_File, Name):
+    for sv_file, plot_base, _sv_num in SV_Entries:
+        output_plot(Sys, sv_file, plot_base, HTML_File, Name)
 
-def read_SVs(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs):
-    SVs_file=open("Tracked.SVs","r")
-    for SV in SVs_file:
-        SV=SV.strip()
-        m=re.search('(.*)-(.*)',SV)
-        if m:
-            Sys=m.group(1).upper()
-            SV=int(m.group(2))
 
-#            print Sys,SV
+def create_plots(sv_entries, HTML_File, Plot_Name):
+    create_Sys_Plots("GPS", sv_entries["GPS"], HTML_File, Plot_Name)
+    create_Sys_Plots("GLONASS", sv_entries["GLONASS"], HTML_File, Plot_Name)
+    create_Sys_Plots("SBAS", sv_entries["SBAS"], HTML_File, Plot_Name)
+    create_Sys_Plots("GAL", sv_entries["GAL"], HTML_File, Plot_Name)
+    create_Sys_Plots("BDS", sv_entries["BDS"], HTML_File, Plot_Name)
+    create_Sys_Plots("QZSS", sv_entries["QZSS"], HTML_File, Plot_Name)
 
-            if Sys=="GPS":
-                GPS_SVs.append(SV)
-            elif Sys=="GLONASS":
-                GLONASS_SVs.append(SV)
-            elif Sys=="SBAS":
-                SBAS_SVs.append(SV)
-            elif Sys=="GAL":
-                GAL_SVs.append(SV)
-            elif Sys=="BDS":
-                BDS_SVs.append(SV)
-            elif Sys=="QZSS":
-                QZSS_SVs.append(SV)
+
+def read_SVs(antennas):
+    sv_entries = {
+        "GPS": [], "GLONASS": [], "SBAS": [], "GAL": [], "BDS": [], "QZSS": []
+    }
+
+    with open("Tracked.SVs", "r") as SVs_file:
+        for SV in SVs_file:
+            SV = SV.strip()
+            if not SV:
+                continue
+            antenna, rest = split_antenna_prefix(SV)
+            match = re.search(r'(.*)-(.*)', rest)
+            if match:
+                Sys = match.group(1).upper()
+                sv_num = int(match.group(2))
+                plot_base = file_prefix_for_antennas(antennas, antenna) + Sys + "-" + str(sv_num)
+                if Sys in sv_entries:
+                    sv_entries[Sys].append((SV, plot_base, sv_num))
+                else:
+                    sys.exit("Internal Error, Unknown SV Type: " + Sys)
             else:
-                sys.exit("Internal Error, Unknown SV Type: " + Sys)
-        else:
-            sys.exit("Internal Error, could not decode Tracked SVs: " + SV)
+                sys.exit("Internal Error, could not decode Tracked SVs: " + SV)
 
-    GPS_SVs.sort()
-    GLONASS_SVs.sort()
-    SBAS_SVs.sort()
-    GAL_SVs.sort()
-    BDS_SVs.sort()
-    QZSS_SVs.sort()
+    for system in sv_entries:
+        sv_entries[system].sort(key=lambda item: item[2])
 
-def create_html_header(HTML_File,Name):
+    return sv_entries
 
+
+def create_html_header(HTML_File, Name):
     HTML_File.write("""
 <html>
 <head>
 <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
 <title>
     """)
-    HTML_File.write("Single SV Tracking PNG's for "+Name)
+    HTML_File.write("Single SV Tracking PNG's for " + Name)
     HTML_File.write("""
 </title>
 </head>
@@ -164,7 +155,7 @@ def create_html_header(HTML_File,Name):
 <div id="content">
 <div id="main-content">
 """)
-    HTML_File.write("<h1>Single SV Tracking for "+Name+"</h1><p/>")
+    HTML_File.write("<h1>Single SV Tracking for " + Name + "</h1><p/>")
 
 
 def close_html_file(HTML_File):
@@ -173,95 +164,75 @@ def close_html_file(HTML_File):
 </html>""")
 
 
-def create_html_Single_TOC(HTML_File,System,SVs):
-    HTML_File.write("<bold>{}: </bold>".format(System)),
-    for SV in SVs:
-        HTML_File.write('<a href="#{}-{}">{}</a>\n'.format(System,SV,SV))
+def create_html_Single_TOC(HTML_File, System, SV_Entries):
+    HTML_File.write("<bold>{}: </bold>".format(System))
+    for _sv_file, plot_base, sv_num in SV_Entries:
+        HTML_File.write('<a href="#{}">{}</a>\n'.format(plot_base, sv_num))
     HTML_File.write("<br/>")
 
 
-
-def create_html_TOC(HTML_File,GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs):
-    if GPS_SVs:
-        create_html_Single_TOC(HTML_File,"GPS",GPS_SVs)
-    if GLONASS_SVs:
-        create_html_Single_TOC(HTML_File,"GLONASS",GLONASS_SVs)
-    if GAL_SVs:
-        create_html_Single_TOC(HTML_File,"GAL",GAL_SVs)
-    if BDS_SVs:
-        create_html_Single_TOC(HTML_File,"BDS",BDS_SVs)
-    if SBAS_SVs:
-        create_html_Single_TOC(HTML_File,"SBAS",SBAS_SVs)
-    if QZSS_SVs:
-        create_html_Single_TOC(HTML_File,"QZSS",QZSS_SVs)
-
+def create_html_TOC(HTML_File, sv_entries):
+    if sv_entries["GPS"]:
+        create_html_Single_TOC(HTML_File, "GPS", sv_entries["GPS"])
+    if sv_entries["GLONASS"]:
+        create_html_Single_TOC(HTML_File, "GLONASS", sv_entries["GLONASS"])
+    if sv_entries["GAL"]:
+        create_html_Single_TOC(HTML_File, "GAL", sv_entries["GAL"])
+    if sv_entries["BDS"]:
+        create_html_Single_TOC(HTML_File, "BDS", sv_entries["BDS"])
+    if sv_entries["SBAS"]:
+        create_html_Single_TOC(HTML_File, "SBAS", sv_entries["SBAS"])
+    if sv_entries["QZSS"]:
+        create_html_Single_TOC(HTML_File, "QZSS", sv_entries["QZSS"])
 
 
 def determine_SV_time_range():
-    min=1000000000000000
-    max=-2
+    t_min = 1000000000000000
+    t_max = -2
 
-    SVs_file=open("Tracked.SVs","r")
-    for SV in SVs_file:
-        SV=SV.strip()
-#        print SV
-        SV_File=open(SV+".SNR-SV","r")
-        first_line=SV_File.readline()
-        for line in SV_File:
-            last_line=line
+    with open("Tracked.SVs", "r") as SVs_file:
+        for SV in SVs_file:
+            SV = SV.strip()
+            if not SV:
+                continue
+            first_line = None
+            last_line = None
+            with open(SV + ".SNR-SV", "r") as SV_File:
+                for line in SV_File:
+                    if first_line is None:
+                        first_line = line
+                    last_line = line
+            if first_line:
+                m = re.search(r'(.*?),.*', first_line)
+                if m and float(m.group(1)) < t_min:
+                    t_min = float(m.group(1))
+            if last_line:
+                m = re.search(r'(.*?),.*', last_line)
+                if m and float(m.group(1)) > t_max:
+                    t_max = float(m.group(1))
 
-#        print first_line
-        m=re.search('(.*?),.*',first_line)
-        if m:
-            if float(m.group(1))<min:
-                min=float(m.group(1))
-
-
-#        print last_line
-        m=re.search('(.*?),.*',last_line)
-        if m:
-            if float(m.group(1))>max:
-                max=float(m.group(1))
-
-        SV_File.close()
-
-#        print SV, min,max
-    return(min,max)
+    return (t_min, t_max)
 
 
-if len(sys.argv) <=1:
-   sys.exit("Name for plots must be provided on the command line")
-else:
-    Plot_Name=sys.argv[1]
+if len(sys.argv) <= 1:
+    sys.exit("Name for plots must be provided on the command line")
 
-GPS_SVs=[]
-GLONASS_SVs=[]
-SBAS_SVs=[]
-GAL_SVs=[]
-BDS_SVs=[]
-QZSS_SVs=[]
+Plot_Name = sys.argv[1]
+antennas = read_tracked_antennas()
+sv_entries = read_SVs(antennas)
 
-HTML_File=open("PNGs_SVs.html","w")
+HTML_File = open("PNGs_SVs.html", "w")
 
+create_html_header(HTML_File, Plot_Name)
 
-create_html_header(HTML_File,Plot_Name)
+(t_min, t_max) = determine_SV_time_range()
+t_min = t_min / 1000
+t_max = t_max / 1000
 
-read_SVs(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs)
+output_plot_header(t_min, t_max)
 
-(min,max)=determine_SV_time_range()
-min=min/1000
-max=max/1000
+create_html_TOC(HTML_File, sv_entries)
 
-output_plot_header (min,max)
-
-create_html_TOC(HTML_File,GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs)
-
-#print GPS_SVs
-#print GLONASS_SVs
-#print SBAS_SVs
-#print GAL_SVs
-#print BDS_SVs
-
-create_plots(GPS_SVs,GLONASS_SVs,SBAS_SVs,GAL_SVs,BDS_SVs,QZSS_SVs,HTML_File,Plot_Name)
+create_plots(sv_entries, HTML_File, Plot_Name)
 
 close_html_file(HTML_File)
