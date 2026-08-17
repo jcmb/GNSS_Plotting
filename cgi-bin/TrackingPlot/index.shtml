@@ -5,14 +5,11 @@
 <title>Tracking Results for:
 <!--#include virtual="file.html" -->
 </title>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_tracking.js"></script>
 </head>
-<body class="page" onload="loadInteractiveTracking()">
+<body class="page">
 <div class="container clearfix">
   <div style="padding: 10px 10px 10px 0 ;"> <a href="/">
-        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="l
-ogo"> </a>
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
       </div>
   <!-- end #logo-area -->
 </div>
@@ -23,11 +20,12 @@ ogo"> </a>
 <h1>Interactive Tracking Results for:
 <!--#include virtual="file.html" -->
 </h1>
+<div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">
+Processing is still running. Interactive plots and PNGs will appear when complete.
+</div>
+<div id="antenna-selector"></div>
 <p/>
-<p id="tracking-status">Loading interactive tracking...</p>
-<div id="tracking-plot-main" style="width: 100%; height: 420px;"></div>
-<div id="tracking-plot-snr" style="width: 100%; height: 420px;"></div>
-<p/>
+<div id="interactive-links">
 <a href="SNR_Plot.shtml">SNR Values</a>
 <br/>
 <a href="Tracking_Plot.shtml">Overall Tracking</a>
@@ -35,6 +33,7 @@ ogo"> </a>
 <a href="Slips_Plot.shtml">Overall Cycle Slips</a>
 <br/>
 <a href="SV_Tracking_Plot.shtml">Single SV Tracking</a>
+</div>
 </div>
 
 <div id="main-content">
@@ -53,4 +52,33 @@ ogo"> </a>
 </div>
 </div>
 </div>
+<script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="/libraries/antenna_common.js"></script>
+<script>
+initAntennaPage("antenna-selector", function(antennas, antenna) {
+    if (antennas.length <= 1) {
+        return;
+    }
+    $("#interactive-links a").each(function() {
+        var href = $(this).attr("href");
+        $(this).attr("href", appendAntennaQuery(href, antenna, antennas));
+    });
+});
+
+function checkProcessingStatus() {
+    $.ajax({
+        url: ".processing",
+        cache: false,
+        success: function() {
+            $("#processing-banner").show();
+            window.setTimeout(checkProcessingStatus, 3000);
+        },
+        error: function() {
+            $("#processing-banner").hide();
+        }
+    });
+}
+
+checkProcessingStatus();
+</script>
 </body></html>

@@ -20,30 +20,50 @@ ogo"> </a>
 <div id="main-content">
 
 <script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="/libraries/antenna_common.js"></script>
 <script src="/libraries/highcharts.js"></script>
 <script src="/libraries/highcharts-more.js"></script>
 <script src="/libraries/exporting.js"></script>
 <h1 id="title">SNR: <!--#include virtual="file.html" --></h1>
+<div id="antenna-selector"></div>
 <div id="container"></div>
 
 <!--#include virtual="Buttons.html" -->
 <p/>
 <script>
-create_Buttons("SNR")
+initAntennaPage("antenna-selector", function(antennas, antenna) {
+    plotAntennas = antennas;
+    plotAntenna = antenna;
+    create_Buttons("SNR", antennas, antenna);
+
+    var System=getURLParameter("SYSTEM")
+    var Freq=getURLParameter("FREQ")
+    var Signal=getURLParameter("SIGNAL")
+
+    if ( System == "null")  {
+        System="GPS"
+        }
+
+    if ( Freq == "null")  {
+        Freq="L1"
+        }
+
+    if ( Signal == "null")  {
+        Signal="CA";
+        }
+
+    create_plot(System,Freq,Signal)
+});
 </script>
 
 <script>
 
-function getURLParameter(name) {
-    return decodeURI(
-        (RegExp(name + '=' + '(.+?)(&|$)').exec(location.search)||[,null])[1]
-    );
-}
+var plotAntennas = ["0"];
+var plotAntenna = "0";
 
-//console.log("Before create plot")
 function create_plot(System,Freq,Signal) {
     $("body").css("cursor", "progress");
-    File_Name=System + "-" +Freq + "-" +Signal +".MEAN";
+    File_Name=antennaFilePrefix(plotAntennas, plotAntenna) + System + "-" + Freq + "-" + Signal +".MEAN";
 //    console.log(File_Name)
     var options = {
         chart: {
@@ -214,23 +234,6 @@ function create_plot(System,Freq,Signal) {
         });
     }
 
-System=getURLParameter("SYSTEM")
-Freq=getURLParameter("FREQ")
-Signal=getURLParameter("SIGNAL")
-if ( System == "null")  {
-    System="GPS"
-    }
-
-if ( Freq == "null")  {
-    Freq="L1"
-    }
-
-if ( Signal == "null")  {
-    Signal="CA";
-    }
-
-
-create_plot(System,Freq,Signal)
 </script>
 </div>
 </div>

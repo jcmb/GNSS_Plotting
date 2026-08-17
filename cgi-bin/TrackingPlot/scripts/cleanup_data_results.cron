@@ -1,0 +1,6 @@
+# Prune /mnt/Data/results when free space on /mnt/Data falls below 300 MB.
+# Install with: crontab -e
+# Or copy to /etc/cron.d/trackingplot-cleanup-data (requires a user field).
+#
+# Daily at 03:15
+15 3 * * * root /usr/local/lib/trackingplot/scripts/cleanup_data_results.sh

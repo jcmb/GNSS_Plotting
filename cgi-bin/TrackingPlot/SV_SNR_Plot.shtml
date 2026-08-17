@@ -8,35 +8,24 @@
 </head>
 <body>
 <script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="/libraries/antenna_common.js"></script>
 <script src="/libraries/highcharts.js"></script>
 <script src="/libraries/highcharts-more.js"></script>
 <script src="/libraries/exporting.js"></script>
-<!--
-<script src="jquery-1.10.2.min.js"></script>
-<script src="highcharts.js"></script>
-<script src="highcharts-more.js"></script>
--->
-
 <h1 id="title">SV Tracking: <!--#include virtual="file.html" --></h1>
+<div id="antenna-selector"></div>
 <!--#include virtual="Buttons.html" -->
 <p/>
-<script>
-//create_Buttons("SV_TRACKING")
-</script>
-
 <div id="container">Please wait while plot loads, which normally takes 10-20 seconds</div>
 
 
 <script>
 
-function getURLParameter(name) {
-    return decodeURI(
-        (RegExp(name + '=' + '(.+?)(&|$)').exec(location.search)||[,null])[1]
-    );
-}
-
-var Max_Bands = 1
-
+var Max_Bands = 1;
+var System;
+var Sv;
+var plotAntennas = ["0"];
+var plotAntenna = "0";
 
 function create_plot(System,SV,Mode) {
 
@@ -174,7 +163,7 @@ function create_plot(System,SV,Mode) {
         options.series[3] = {name:  "L5 IQ"}
         }
 
-    File_Name=System + "-" + SV +".SNR-SV";
+    File_Name=antennaFilePrefix(plotAntennas, plotAntenna) + System + "-" + SV +".SNR-SV";
     console.log(File_Name)
 
     $.get(File_Name, function(data) {
@@ -280,20 +269,23 @@ function create_plot(System,SV,Mode) {
         });
     }
 
-System=getURLParameter("SYSTEM")
-Sv=getURLParameter("SV")
-Item=getURLParameter("ITEM")
+initAntennaPage("antenna-selector", function(antennas, antenna) {
+    plotAntennas = antennas;
+    plotAntenna = antenna;
 
-if ( System == "null")  {
-    System="GPS"
-    }
+    System=getURLParameter("SYSTEM")
+    Sv=getURLParameter("SV")
 
-if ( Sv == "null")  {
-    Sv="1"
-    }
+    if ( System == "null")  {
+        System="GPS"
+        }
 
+    if ( Sv == "null")  {
+        Sv="1"
+        }
 
-create_plot(System,Sv,"SNR")
+    create_plot(System,Sv,"SNR")
+});
 
 
 function update_plot(Value) {

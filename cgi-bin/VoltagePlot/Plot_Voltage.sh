@@ -29,9 +29,7 @@ fi
 
 if [ -z "$GNSS_RESULTS_DIR" ]
 then
-   echo "GNSS_RESULTS_DIR is not set and must be"
-   logger "$0: GNSS_RESULTS_DIR is not set and must be"
-   exit 200
+   GNSS_RESULTS_DIR=/mnt/Data/results
 fi
 
 TYPE=$1
@@ -89,3 +87,5 @@ else
     cd "$GNSS_RESULTS_DIR/Voltage/$PROJ/$STATION" || exit 1
     rmdir "$File" 2>/dev/null
 fi
+
+rm -f "$INPUT_FILE"

@@ -1,37 +1,44 @@
-#! /bin/awk -f
-# X29_SOL. This output only the lines in which the GPS quailty is what the user asks
+#! /usr/bin/awk -f
 
-BEGIN {FS=","
-       OFS=","
-       OFMT="%0.4f"
-	if (ARGC > 1 || ARGV[1]=="?") {
-	   print "X29_height_abs <FileName "
-		print ""
-      print "Takes a X29 file and converts the height, field 13,  which will be an error, to absolute error"
-      print "Takes a X29 file and converts the sigma, field 25, to the rato of error to sigma"
-      print ""
-	   print ""
-	   print "OUTPUT:"
-      print ""
-	   print "Standard X29 file with the height as an absolute value"
-      print "is what was on the command line"
-	   print ""   
-	   print "JCMBsoft V1.0"
-      print ""
-	   exit  
-           }
+BEGIN {
+    FS = ","
+    OFS = ","
+    OFMT = "%0.4f"
+    if (ARGV[1] == "?") {
+        print "x29_sigma [n|e|u] <FileName"
+        print ""
+        print "Writes |error|/sigma ratio into field 25 for sorted CDF processing."
+        print "  u (default): |U| / vertical precision (field 25)"
+        print "  n: |N| / horizontal precision (field 24)"
+        print "  e: |E| / horizontal precision (field 24)"
+        print ""
+        print "JCMBsoft V1.0"
+        exit
+    }
+    component = "u"
+    if (ARGC > 1 && ARGV[1] != "") {
+        component = ARGV[1]
+    }
+    for (i = 1; i < ARGC; i++) {
+        ARGV[i] = ""
+    }
 }
 
+function abs(value) {
+    return (value < 0 ? -value : value)
+}
 
-function abs(value)
 {
-    return (value<0?-value:value);
-}
-
-# By this time the file should have had GGKclean run on it so it is a good file.
-
- {
-     $13=abs($13)
-     $25=$13/$25
+    if (component == "n") {
+        $11 = abs($11)
+        $25 = ($24 != 0 && $24 != "") ? $11 / $24 : 0
+    } else if (component == "e") {
+        $12 = abs($12)
+        $25 = ($24 != 0 && $24 != "") ? $12 / $24 : 0
+    } else {
+        vprec = $25
+        $13 = abs($13)
+        $25 = (vprec != 0 && vprec != "") ? $13 / vprec : 0
+    }
     print
- }
+}

@@ -1,6 +1,6 @@
 BEGIN {
    FS=",";
-   for (i=0;i<=37;i++) {
+   for (i=0;i<=50;i++) {
       Pos[i] = 0;
       HRange[i] = .05;
       VRange[i] = .05;
@@ -38,6 +38,10 @@ BEGIN {
    Name[10]="Kalman DGNSS";
    Name[15]="RTX";
    Name[37]="QZSS";
+   Name[41]="HAS";
+   HRange[41]=0.2;
+   VRange[41]=0.5;
+   Latency[41]=0;
    
    Max_Index = -1;
 
@@ -56,7 +60,7 @@ Pos[$9]++;
 
 END {
  Max = 0;
- for (i=0;i<=37;i++) {
+ for (i=0;i<=50;i++) {
     if (Pos[i] > Max) {
 	Max = Pos[i];
         Max_Index = i;

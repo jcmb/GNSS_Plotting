@@ -24,6 +24,7 @@ ogo"> </a>
 <div id="main-content">
 
 <script src="/libraries/jquery-1.10.2.min.js" type="text/javascript"></script>
+<script src="/libraries/antenna_common.js" type="text/javascript"></script>
 <script src="/libraries/highcharts.js" type="text/javascript"></script>
 <script src="/libraries/highcharts-more.js" type="text/javascript"></script>
 <script src="/libraries/exporting.js" type="text/javascript"></script>
@@ -34,9 +35,8 @@ ogo"> </a>
 -->
 
 
-  <h1 id="title">SV Tracking: <!--#include virtual="file.html" --></h1><script type="text/javascript">
-//create_Buttons("SV_TRACKING")
-  </script>
+  <h1 id="title">SV Tracking: <!--#include virtual="file.html" --></h1>
+  <div id="antenna-selector"></div>
 
   <div id="container"></div>
   <div id="status"></div><br/>
@@ -247,7 +247,7 @@ ogo"> </a>
         }
 
 
-    File_Name=System + "-" + SV +".SNR-SV";
+    File_Name=antennaFilePrefix(trackedAntennas, selectedAntenna) + System + "-" + SV +".SNR-SV";
     console.log(File_Name)
 
     $.ajax({

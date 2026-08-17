@@ -5,8 +5,13 @@ echo $1 " " $2 " " $3 " " $4 " " $5 " " $6 " " $7 " " $8 " " $9 "<br>"
 #set -x
 
 TrimbleTools=1
+ALL_SOL_TYPES=0
 
-if [ "$Sol" = -1 ]
+if [ "$Sol" = "-2" ]
+then
+   ALL_SOL_TYPES=1
+   Sol=""
+elif [ "$Sol" = "-1" ]
 then
    Sol=""
    echo "Solution type is automatically computed"
@@ -33,32 +38,42 @@ fi
 
 rm $$.x29
 
-echo name="'$File: '" >file.plt
 echo "$File" >file.html
-
-
-#ln  -f $File.X29 file
-
-$normalDir/x29_secs.py <$File.X29 >file
-$normalDir/gnuplot file.plt $normalDir/X29_sol.plt
 
 #echo "Solution Type $Sol";
 
-eval $(awk -f $normalDir/x29_sol_type.awk $Sol < $File.X29);
+if [ "$ALL_SOL_TYPES" = "1" ]
+then
+   Sol_Name="All Types"
+   Sol_HRange=5
+   Sol_VRange=10
+   Sol_Latency=0
+   Sol_3DRange=10
+else
+   eval $(awk -f $normalDir/x29_sol_type.awk $Sol < $File.X29);
+fi
 echo "Solution Type $Sol_Name ($Sol)";
 
 
-eval $(awk -f $normalDir/x29_mean2.awk $Sol <$File.X29)
+if [ "$ALL_SOL_TYPES" = "1" ]
+then
+   eval $(awk -f $normalDir/x29_mean2.awk all <$File.X29)
+else
+   eval $(awk -f $normalDir/x29_mean2.awk $Sol <$File.X29)
+fi
 
 echo "Latitude $Lat"
 echo "Longitude $Long"
 echo "Height $Height"
 echo "Records $Records"
 
-echo "Latitude: $Lat" > llh.mean
-echo "Longitude: $Long" >> llh.mean
-echo "Height: $Height" >> llh.mean
-#echo "Records: $Records" >> llh.mean
+awk -f $normalDir/llh_mean_report.awk \
+    -v mode=computed \
+    -v label="$Sol_Name (type $Sol)" \
+    -v lat="$Lat" -v lon="$Long" -v height="$Height" \
+    -v records="$Records" \
+    -v lat_std="${Lat_Std:-0}" -v lon_std="${Long_Std:-0}" -v height_std="${Height_Std:-0}" \
+    > llh.mean
 
 
 $normalDir/kml_point.py $File $Lat $Long $Height
@@ -70,9 +85,14 @@ echo "<pre>"
 
 
 
-awk -f $normalDir/x29_sum.awk $Sol <$File.X29 | tee sum.txt
+if [ -n "$Sol" ]
+then
+   awk -f $normalDir/x29_sum.awk $Sol <$File.X29 | tee sum.txt
+else
+   awk -f $normalDir/x29_sum.awk <$File.X29 | tee sum.txt
+fi
 
-if [ $Sol ]
+if [ -n "$Sol" ]
 then
    awk -f $normalDir/x29_sol.awk $Sol <$File.X29 >$File.sol
 else
@@ -88,7 +108,12 @@ rm $File.sol
 
 echo ""
 echo "Computing NEE Mean"
-eval $(awk -f $normalDir/x29_mean2_enu.awk $Sol $Sol_HRange $Sol_VRange $Fixed_Range <$File.enu)
+MEAN_SOL="all"
+if [ -n "$Sol" ]
+then
+   MEAN_SOL="$Sol"
+fi
+eval $(awk -f $normalDir/x29_mean2_enu.awk $MEAN_SOL $Sol_HRange $Sol_VRange $Fixed_Range <$File.enu)
 
 echo "North: $North" | tee  nee.mean
 echo "North Min: $North_Min" | tee  -a nee.mean
@@ -104,32 +129,19 @@ echo ""
 echo "Records: $Records" | tee -a nee.mean
 echo ""
 
-echo Plotting file for $FileFull
+echo Generating summaries for $FileFull
 echo "Fixed Range: $Fixed_Range" 
 echo "Horizontal Range for plotting $Sol_HRange"
 echo "Vertical Range for plotting $Sol_VRange"
 echo ""
 
-echo name="'$File, $Sol_Name: '" >file.plt
-echo sol_type="'$Sol_Name'" >>file.plt
-echo hrange=$Sol_HRange >>file.plt
-echo vrange=$Sol_VRange >>file.plt
-echo D3Range=$Sol_3DRange >>file.plt
-echo latency=$Sol_Latency >>file.plt
-echo records=$Records >>file.plt
 echo "$FileFull" >file.html
 #cp $normalDir/plot_index.html index.shtml
 mv $File.enu file
-#echo "pwd $PWD\n"
-#echo "gnuplot file.plt $normalDir/X29_plot.plt\n"
-$normalDir/gnuplot file.plt $normalDir/X29_plot.plt&
 $normalDir/out_range.py -R 0.0305 < file --OUTAGE outage2.csv --DETAIL range2.csv --SUMMARY range2.sum
 $normalDir/out_range.py -R 0.0455 < file --OUTAGE outage3.csv --DETAIL range3.csv --SUMMARY range3.sum
-$normalDir/gnuplot file.plt $normalDir/range.plt
-$normalDir/gnuplot file.plt $normalDir/range_hist.plt
-wait
 #rm file
-echo Plotting completed
+echo Processing completed
 echo '</pre>'
 #echo -n '<base href="http://trimbletools.com/results/Position/'
 #echo -n $File

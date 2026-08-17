@@ -6,9 +6,144 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js"></script>
+<script src="interactive_plot.js?v=20250817a"></script>
+<style>
+  .plot-card {
+    border: 1px solid #999;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 10px 0;
+    background: #fff;
+  }
+  .filter-panel {
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 10px 0;
+    background: #f8f8f8;
+  }
+  .filter-panel label {
+    margin-right: 14px;
+    white-space: nowrap;
+  }
+  #sol-type-filters {
+    margin-top: 6px;
+    line-height: 1.8;
+  }
+  #plot-status.loading {
+    color: #333;
+  }
+  #plot-status.error {
+    color: #a00;
+  }
+  .report-section {
+    margin: 1.25em 0;
+  }
+  .report-section h3 {
+    margin: 0 0 0.5em 0;
+    font-size: 1.15em;
+    color: #222;
+  }
+  .report-section h4 {
+    margin: 0.75em 0 0.35em 0;
+    font-size: 1em;
+    color: #444;
+    font-weight: 600;
+  }
+  .report-table {
+    width: 100%;
+    max-width: 960px;
+    border-collapse: collapse;
+    margin-bottom: 0.5em;
+    font-size: 0.95em;
+  }
+  .report-table th,
+  .report-table td {
+    border: 1px solid #c8c8c8;
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .report-table th {
+    background: #eef2f7;
+    font-weight: 600;
+  }
+  .report-table td.num,
+  .report-table th.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .report-table tbody tr:nth-child(even) {
+    background: #fafafa;
+  }
+  .report-meta {
+    color: #444;
+    margin: 0.25em 0 0.75em 0;
+    line-height: 1.5;
+  }
+  .report-source {
+    font-weight: 600;
+    color: #333;
+  }
+  .report-copy-bar {
+    margin: 0 0 0.5em 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5em;
+  }
+  .report-copy-btn {
+    font-size: 0.85em;
+    padding: 4px 10px;
+    border: 1px solid #9ab;
+    border-radius: 4px;
+    background: #f5f8fb;
+    color: #234;
+    cursor: pointer;
+  }
+  .report-copy-btn:hover {
+    background: #e8eef5;
+  }
+  .report-warning {
+    color: #8a4b00;
+    background: #fff8e6;
+    border: 1px solid #e6c200;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 0.5em 0 0.75em 0;
+    line-height: 1.5;
+  .report-empty,
+  .report-error {
+    color: #666;
+    font-style: italic;
+  }
+  .report-error {
+    color: #a00;
+    font-style: normal;
+  }
+  .report-raw-data {
+    display: none;
+  }
+  .report-location {
+    margin: 1em 0 1.25em 0;
+    max-width: 960px;
+  }
+  .report-location-coords {
+    margin: 0 0 0.5em 0;
+    color: #333;
+    line-height: 1.5;
+  }
+  .report-location-map {
+    width: 100%;
+    height: 360px;
+    border: 1px solid #c8c8c8;
+    border-radius: 6px;
+    display: block;
+  }
+</style>
+<script src="report_tables.js?v=20250817a"></script>
 </head>
-<body onload="loadInteractivePosition()">
+<body onload="loadReportTables(); loadInteractivePosition();">
 <h1>Results for: 
 <!--#include virtual="file.html" -->
 </h1>
@@ -18,26 +153,117 @@ Location: <!--#include virtual="kml.html" -->
 <br/>Summary : <!--#include virtual="sum.html" --> 
 <br/>RawData : <!--#include virtual="SaveFile.html" -->
 
-<pre>
-<!--#include virtual="llh.mean" -->
-<!--#include virtual="sum.txt" -->
-<!--#include virtual="nee.mean" -->
-</pre>
+<div id="report-location-root">
+  <p class="report-empty">Loading location map...</p>
+</div>
+
+<h2>Processing Summary</h2>
+<div id="report-summary-root">
+  <p class="report-empty">Loading summary tables...</p>
+</div>
+
+<div class="report-raw-data" aria-hidden="true">
+  <script type="text/plain" id="raw-mean-info"><!--#include virtual="mean.info" --></script>
+  <script type="text/plain" id="raw-time-range"><!--#include virtual="time_range.txt" --></script>
+  <script type="text/plain" id="raw-llh-mean"><!--#include virtual="llh.mean" --></script>
+  <script type="text/plain" id="raw-sum-txt"><!--#include virtual="sum.txt" --></script>
+  <script type="text/plain" id="raw-nee-mean"><!--#include virtual="nee.mean" --></script>
+  <script type="text/plain" id="raw-session-type"><!--#include virtual="session_type.txt" --></script>
+  <script type="text/plain" id="raw-plot-filter"><!--#include virtual="plot_filter.txt" --></script>
+</div>
 
 <h2>Interactive Position Plots</h2>
 <p id="plot-status">Loading plot data...</p>
-<div id="plot-enu" style="width: 100%; height: 420px;"></div>
-<div id="plot-2d3d" style="width: 100%; height: 420px;"></div>
-<div id="plot-dop" style="width: 100%; height: 420px;"></div>
 
-<h2>Range summaries</h2>
-<h3>Height &lt;1 cm</h3>
-<pre><!--#include virtual="range1cm.sum" --></pre>
-<h3>Height &lt;2 cm</h3>
-<pre><!--#include virtual="range2cm.sum" --></pre>
-<h3>Height &lt;2 Sigma</h3>
-<pre><!--#include virtual="range2sig.sum" --></pre>
-<h3>Height &lt;3 Sigma</h3>
-<pre><!--#include virtual="range3sig.sum" --></pre>
+<label for="axis-mode">X axis mode:</label>
+<select id="axis-mode">
+  <option value="local">Local time</option>
+  <option value="seconds">Seconds</option>
+  <option value="gps">GPS</option>
+</select>
+
+<div id="sol-type-filter-panel" class="filter-panel" style="display: none;">
+  <strong>Solution type filter</strong> (interactive view only; does not change reported statistics)
+  <div id="sol-type-filters"></div>
+</div>
+
+<div class="plot-card">
+  <h3>Solution and Latency Combined</h3>
+  <div id="plot-solution-latency" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>Latency Distribution</h3>
+  <div id="plot-latency-dist" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>SVs Used and Tracked</h3>
+  <div id="plot-sv" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>Height Error</h3>
+  <div id="plot-height-error" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-static-only">
+  <h3>NEU Error</h3>
+  <div id="plot-enu" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-static-only">
+  <h3>H/U Error and Sigma</h3>
+  <div id="plot-enu-sigma" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-static-only">
+  <h3>NE Error Scatter</h3>
+  <div id="plot-ne-scatter" style="width: 100%; height: 480px;"></div>
+</div>
+
+<div class="plot-card plot-static-only">
+  <h3>Cumulative Error Plots</h3>
+  <div id="plot-cumulative" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>1D Sigma (Vertical)</h3>
+  <label><input type="checkbox" id="show-dop-1d"> Show PDOP/HDOP/VDOP</label>
+  <div id="plot-sigma-1d" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>2D Sigma (Horizontal)</h3>
+  <label><input type="checkbox" id="show-dop-2d"> Show PDOP/HDOP/VDOP</label>
+  <div id="plot-sigma-2d" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card">
+  <h3>3D Sigma</h3>
+  <label><input type="checkbox" id="show-dop-3d"> Show PDOP/HDOP/VDOP</label>
+  <div id="plot-sigma-3d" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-static-only">
+  <h3>Error and Precision vs Age of Corrections</h3>
+  <h4>1D (Vertical)</h4>
+  <div id="plot-age-corr-1d" style="width: 100%; height: 380px;"></div>
+  <h4>2D (Horizontal)</h4>
+  <div id="plot-age-corr-2d" style="width: 100%; height: 380px;"></div>
+  <h4>3D</h4>
+  <div id="plot-age-corr-3d" style="width: 100%; height: 380px;"></div>
+</div>
+
+<h2 class="plot-static-only">Range Summaries</h2>
+<div id="range-summaries-root" class="plot-static-only">
+  <p class="report-empty">Loading range summaries...</p>
+</div>
+<div class="report-raw-data" aria-hidden="true">
+  <script type="text/plain" id="raw-range1cm"><!--#include virtual="range1cm.sum" --></script>
+  <script type="text/plain" id="raw-range2cm"><!--#include virtual="range2cm.sum" --></script>
+  <script type="text/plain" id="raw-range2sig"><!--#include virtual="range2sig.sum" --></script>
+  <script type="text/plain" id="raw-range3sig"><!--#include virtual="range3sig.sum" --></script>
+</div>
 
 </body></html>

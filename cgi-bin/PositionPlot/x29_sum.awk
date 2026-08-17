@@ -8,13 +8,30 @@ BEGIN {
    Latency[5]=0;
    Latency[6]=0;
    
-   for (i=0;i<=20;i++) {
+   for (i=0;i<=50;i++) {
       Pos[i] = 0.0;
       Unused[i] = 0.0;
       }
 
    Fixed=0;
    Current=0;
+
+   Name[0]="Autonomous";
+   Name[1]="RTCM";
+   Name[2]="SBAS";
+   Name[3]="Float";
+   Name[4]="Fixed";
+   Name[5]="OmniSTAR";
+   Name[6]="Wide-area Fixed";
+   Name[7]="Wide-area Float";
+   Name[8]="Type 8";
+   Name[9]="Kalman Auton";
+   Name[10]="Kalman DGNSS";
+   Name[11]="Kalman SBAS";
+   Name[15]="RTX";
+   Name[28]="xFill";
+   Name[37]="QZSS";
+   Name[41]="HAS";
 
    OFMT="%0.0f";
    Filter_On="";
@@ -94,6 +111,20 @@ if (Filter_On == "" || $9==Filter_On) {
    }
 }
 
+function pct(count, total) {
+   if (total <= 0) {
+      return "0.0";
+   }
+   return sprintf("%.1f", count / total * 100);
+}
+
+function type_name(i) {
+   if (i in Name) {
+      return Name[i];
+   }
+   return "Type " i;
+}
+
 END {
  print "Total Records: " NR;
  print "Filtered Records: " Count;
@@ -101,44 +132,37 @@ END {
  print ""; 
  print "Solution Age Report:"
  print "====================";
- print " 0 sec Latency: " Latency[0] " (" Latency[0]/Count* 100  "%)";
- print "<1 sec Latency: " Latency[1] " (" Latency[1]/Count* 100  "%)";
- print "<2 sec Latency: " Latency[2] " (" Latency[2]/Count* 100  "%)";
- print "<3 sec Latency: " Latency[3] " (" Latency[3]/Count* 100  "%)";
- print "<4 sec Latency: " Latency[4] " (" Latency[4]/Count* 100  "%)";
- print "<5 sec Latency: " Latency[5] " (" Latency[5]/Count* 100  "%)";
- print ">5 sec Latency: " Latency[6] " (" Latency[6]/Count* 100  "%)";
+ print " 0 sec Latency: " Latency[0] " (" pct(Latency[0], Count) "%)";
+ print "<1 sec Latency: " Latency[1] " (" pct(Latency[1], Count) "%)";
+ print "<2 sec Latency: " Latency[2] " (" pct(Latency[2], Count) "%)";
+ print "<3 sec Latency: " Latency[3] " (" pct(Latency[3], Count) "%)";
+ print "<4 sec Latency: " Latency[4] " (" pct(Latency[4], Count) "%)";
+ print "<5 sec Latency: " Latency[5] " (" pct(Latency[5], Count) "%)";
+ print ">5 sec Latency: " Latency[6] " (" pct(Latency[6], Count) "%)";
 
  print ""; 
  print "Position Type Report:";
  print "=====================";
-  
- print "Autonomous:      " Pos[0] " ("Pos[0]/NR* 100  "%)";
- print "RTCM:            " Pos[1] " ("Pos[1]/NR* 100  "%)";
- print "SBAS:            " Pos[2] " ("Pos[2]/NR* 100  "%)";
- print "Float:           " Pos[3] " ("Pos[3]/NR* 100  "%)";
- print "Fixed:           " Pos[4] " ("Pos[4]/NR* 100  "%)";
- print "Type 5:          " Pos[5] " ("Pos[5]/NR* 100  "%)";
- print "Wide-area Fixed: " Pos[6] " ("Pos[6]/NR* 100  "%)";
- print "Wide-area Float: " Pos[7] " ("Pos[7]/NR* 100  "%)";
- print "Type 8:          " Pos[8] " ("Pos[8]/NR* 100  "%)";
- print "Kalman Auton:    " Pos[9] " ("Pos[9]/NR* 100  "%)";
- print "Kalman DGNSS:    " Pos[10] " ("Pos[10]/NR* 100  "%)";
- print "Kalman SBAS:     " Pos[11] " ("Pos[11]/NR* 100  "%)";
- print "RTX:             " Pos[15] " ("Pos[15]/NR* 100  "%)";
- print "RTX (Fixed):     " Fixed " (" Fixed/NR* 100  "%)";
- print "RTX (Current):   " Current " (" Current/NR* 100  "%)";
-# for (i=10;i<=20;i++) {
-#    print "Type " i ":        " Pos[i] " ("Pos[i]/NR* 100"%)";
-#    }  
+
+ for (i = 0; i <= 50; i++) {
+    if (Pos[i] > 0) {
+       printf "%-17s %d (%s%%)\n", type_name(i) ":", Pos[i], pct(Pos[i], NR);
+    }
+ }
+ if (Fixed > 0) {
+    printf "%-17s %d (%s%%)\n", "RTX (Fixed):", Fixed, pct(Fixed, NR);
+ }
+ if (Current > 0) {
+    printf "%-17s %d (%s%%)\n", "RTX (Current):", Current, pct(Current, NR);
+ }
 
  
  print ""; 
  print "Unused SV's Report: For Solution type " Filter_On ;
  print "===================";
- print "All SV's Used: " Unused[0] " ("Unused[0]/NR* 100"%)";
+ print "All SV's Used: " Unused[0] " (" pct(Unused[0], Count) "%)";
  for (i=1;i<=10;i++) {
-    print i " unused: " Unused[i] " ("Unused[i]/NR* 100"%)";
+    print i " unused: " Unused[i] " (" pct(Unused[i], Count) "%)";
     }  
 
  }

@@ -1,0 +1,6 @@
+# Prune /mnt/GPS_Admin_Backup/GNSS_Data when free space falls below 300 MB.
+# Install with: crontab -e
+# Or copy to /etc/cron.d/trackingplot-cleanup-gnss-backup (requires a user field).
+#
+# Daily at 03:30
+30 3 * * * root /usr/local/lib/trackingplot/scripts/cleanup_gnss_backup.sh
