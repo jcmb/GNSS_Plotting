@@ -81,6 +81,9 @@ const ERROR_COLORWAY = [
 
 const LATENCY_COLOR = "#7f7f7f";
 
+const SOLUTION_TYPE_LINE_COLOR = "#2563eb";
+const LATENCY_COMBINED_COLOR = "#ea580c";
+
 const DOP_COLORS = {
   PDOP: "#636efa",
   HDOP: "#ef553b",
@@ -177,6 +180,15 @@ function latencyTrace(x, latency) {
   });
 }
 
+function latencyYAxis(overrides) {
+  return {
+    title: "Latency (s)",
+    rangemode: "tozero",
+    zeroline: true,
+    ...(overrides || {})
+  };
+}
+
 function mapSolutionType(raw) {
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
@@ -207,7 +219,7 @@ function parseX29Csv(text) {
   return data;
 }
 
-function parsePositionCsv(text) {
+function parsePositionCsv(text, isMoving) {
   const rows = text.trim().split(/\r?\n/);
   const data = [];
   for (const row of rows) {
@@ -215,9 +227,6 @@ function parsePositionCsv(text) {
     const f = row.split(",");
     if (f.length < 29) continue;
     const t = parseTimestamp(f);
-    const n = Number(f[10]);
-    const e = Number(f[11]);
-    const u = Number(f[12]);
     const pdop = Number(f[18]);
     const hdop = Number(f[19]);
     const vdop = Number(f[20]);
@@ -229,10 +238,28 @@ function parsePositionCsv(text) {
     const solution = mapSolutionType(f[8]);
     if (!Number.isFinite(t)) continue;
     const gps = parseGpsTimeFromFields(f, t);
-    data.push({
-      t, n, e, u, pdop, hdop, vdop, hprec, vprec, latency, solution, tracked, used,
-      gpsWeek: gps.gpsWeek, gpsSec: gps.gpsSec
-    });
+    if (isMoving) {
+      data.push({
+        t,
+        lat: Number(f[10]),
+        lon: Number(f[11]),
+        absHeight: Number(f[12]),
+        n: 0,
+        e: 0,
+        u: Number(f[12]),
+        pdop, hdop, vdop, hprec, vprec, latency, solution, tracked, used,
+        gpsWeek: gps.gpsWeek, gpsSec: gps.gpsSec
+      });
+    } else {
+      data.push({
+        t,
+        n: Number(f[10]),
+        e: Number(f[11]),
+        u: Number(f[12]),
+        pdop, hdop, vdop, hprec, vprec, latency, solution, tracked, used,
+        gpsWeek: gps.gpsWeek, gpsSec: gps.gpsSec
+      });
+    }
   }
   return data;
 }
@@ -336,7 +363,15 @@ function buildSolutionTypeFilterUI(types) {
 
 let allPositionPoints = [];
 let allSolutionPoints = [];
-let plotFilterInfo = { filter: "unknown", mean: "unknown", meanName: "", meanRequest: "" };
+let plotFilterInfo = {
+  filter: "unknown",
+  mean: "unknown",
+  meanName: "",
+  meanRequest: "",
+  session: "static",
+  sessionRequest: "-1",
+  driveWarning: false
+};
 let plotListenersAttached = false;
 
 function rerenderPositionPlots() {
@@ -433,11 +468,10 @@ function gpsAxisLayout(points, xValues) {
   };
 }
 
-function formatLocalTimestamp(unixSec) {
+function formatLocalTime(unixSec) {
   const d = new Date(unixSec * 1000);
   const pad = (n) => String(n).padStart(2, "0");
-  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " +
-    pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+  return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
 }
 
 function timePlotLayout(xaxisLayout, mode) {
@@ -484,7 +518,7 @@ function axisData(points, mode) {
   return {
     x: points.map((p) => new Date(p.t * 1000)),
     layout: {
-      title: "Local Time (" + formatLocalTimestamp(points[0].t) + ")",
+      title: "Local Time (" + formatLocalTime(points[0].t) + ")",
       type: "date",
       tickformat: "%H:%M:%S",
       hoverformat: "%Y-%m-%d %H:%M:%S"
@@ -634,7 +668,7 @@ function plotAgeCorrectionChart(elementId, title, bins, errKey, sigKey, errName,
   ], {
     margin: { l: 65, r: 30, t: 40, b: 45 },
     title,
-    xaxis: { title: "Age of Corrections (s)" },
+    xaxis: { title: "Age of Corrections (s)", rangemode: "tozero", zeroline: true },
     yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
     legend: { orientation: "h", itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
@@ -836,6 +870,9 @@ function parsePlotFilter(text) {
   let mean = "unknown";
   let meanName = "";
   let meanRequest = "";
+  let session = "static";
+  let sessionRequest = "-1";
+  let driveWarning = false;
   for (const line of lines) {
     if (!line) continue;
     if (line.startsWith("mean_name:")) {
@@ -844,11 +881,53 @@ function parsePlotFilter(text) {
       meanRequest = line.slice(13);
     } else if (line.startsWith("mean:")) {
       mean = line.slice(5);
+    } else if (line.startsWith("session_request:")) {
+      sessionRequest = line.slice(16);
+    } else if (line.startsWith("session:")) {
+      session = line.slice(8);
+    } else if (line.startsWith("drive_warning:")) {
+      driveWarning = line.slice(14).trim() === "yes";
     } else {
       filter = line;
     }
   }
-  return { filter, mean, meanName, meanRequest };
+  return { filter, mean, meanName, meanRequest, session, sessionRequest, driveWarning };
+}
+
+function applySessionPlotVisibility(isMoving) {
+  document.querySelectorAll(".plot-static-only").forEach((el) => {
+    el.style.display = isMoving ? "none" : "";
+  });
+  const heightCard = document.getElementById("plot-height-error");
+  if (heightCard) {
+    const heading = heightCard.closest(".plot-card")?.querySelector("h3");
+    if (heading) heading.textContent = isMoving ? "Height" : "Height Error";
+  }
+}
+
+function sigma3dSeries(points) {
+  const hs = horizontalSigma(points);
+  const vs = verticalSigma(points);
+  return hs.map((h, i) => {
+    const v = vs[i];
+    if (!Number.isFinite(h) || !Number.isFinite(v)) return null;
+    return Math.sqrt(h * h + v * v);
+  });
+}
+
+function pdopMarkerStyle(points, usedSv, maxUsedSv) {
+  const pdopVals = points.map((p) => p.pdop).filter(Number.isFinite);
+  const pdopMax = Math.max(3, ...(pdopVals.length ? pdopVals : [8]));
+  return {
+    size: usedSv.map((u) => (Number.isFinite(u) ? 4 + (u / maxUsedSv) * 12 : 4)),
+    color: points.map((p) => (Number.isFinite(p.pdop) ? p.pdop : pdopMax)),
+    colorscale: "Viridis",
+    cmin: 1,
+    cmax: pdopMax,
+    colorbar: { title: "PDOP" },
+    showscale: true,
+    opacity: 0.85
+  };
 }
 
 function meanTypeLabel(info) {
@@ -870,6 +949,9 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     return;
   }
 
+  const isMoving = filterInfo.session === "moving";
+  applySessionPlotVisibility(isMoving);
+
   purgeAllPlots();
 
   const solPoints = solutionPoints.length ? solutionPoints : points;
@@ -880,32 +962,43 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const north = points.map((p) => Math.abs(p.n));
   const east = points.map((p) => Math.abs(p.e));
   const up = points.map((p) => Math.abs(p.u));
-  const signedHeight = points.map((p) => (Number.isFinite(p.u) ? p.u : null));
+  const signedHeight = isMoving
+    ? points.map((p) => (Number.isFinite(p.absHeight) ? p.absHeight : null))
+    : points.map((p) => (Number.isFinite(p.u) ? p.u : null));
   const err2d = d2(points);
-  const err3d = d3(points);
   const latency = points.map((p) => (
     Number.isFinite(p.latency) && p.latency >= 0 ? p.latency : null
   ));
-  const ratios = sigmaRatios(points);
+  const hSigma = horizontalSigma(points);
+  const vSigma = verticalSigma(points);
+  const s3d = sigma3dSeries(points);
 
   const commonLayout = timePlotLayout(axis.layout, mode);
 
   drawPlot("plot-solution-latency", [
-    { x: solX, y: solPoints.map((p) => p.solution), name: "Solution Type", mode: "lines" },
+    {
+      x: solX,
+      y: solPoints.map((p) => p.solution),
+      name: "Solution Type",
+      mode: "lines",
+      line: { color: SOLUTION_TYPE_LINE_COLOR, width: 2.5 },
+      marker: { color: SOLUTION_TYPE_LINE_COLOR }
+    },
     {
       x: solX,
       y: solPoints.map((p) => p.latency),
       name: "Latency (s)",
       mode: "lines",
       yaxis: "y2",
-      line: { color: LATENCY_COLOR }
+      line: { color: LATENCY_COMBINED_COLOR, width: 2, dash: "dot" },
+      marker: { color: LATENCY_COMBINED_COLOR }
     }
   ], {
     ...timePlotLayout(solAxis.layout, mode),
     margin: { l: 100, r: 60, t: mode === "local" ? 58 : 50, b: 45 },
     title: "Solution and Latency Combined",
     yaxis: solutionYAxis(solPoints),
-    yaxis2: { title: "Latency (s)", overlaying: "y", side: "right", automargin: true }
+    yaxis2: latencyYAxis({ overlaying: "y", side: "right", automargin: true })
   });
 
   plotLatencyDistribution("plot-latency-dist", latencyDistribution(solPoints));
@@ -921,16 +1014,16 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   const heightTraces = [
-    coloredLine(x, signedHeight, "Height Error", "up"),
+    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up"),
     latencyTrace(x, latency),
     { ...vdopTrace(x, points, "y3"), visible: "legendonly" }
   ];
   const heightLayout = {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: 50 },
-    title: "Height Error",
-    yaxis: { title: "Height Error (m)", zeroline: true },
-    yaxis2: { title: "Latency (s)", overlaying: "y", side: "right" },
+    title: isMoving ? "Height" : "Height Error",
+    yaxis: { title: isMoving ? "Height (m)" : "Height Error (m)", zeroline: !isMoving },
+    yaxis2: latencyYAxis({ overlaying: "y", side: "right" }),
     yaxis3: {
       title: "VDOP",
       overlaying: "y",
@@ -943,6 +1036,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   };
   drawPlot("plot-height-error", heightTraces, heightLayout);
 
+  if (!isMoving) {
   drawPlot("plot-enu", [
     coloredLine(x, north, "North Error", "north"),
     coloredLine(x, east, "East Error", "east"),
@@ -953,7 +1047,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     margin: { ...commonLayout.margin, r: 50 },
     title: "NEU Error",
     yaxis: { title: "Error (m)" },
-    yaxis2: { title: "Latency (s)", overlaying: "y", side: "right" }
+    yaxis2: latencyYAxis({ overlaying: "y", side: "right" })
   });
 
   drawPlot("plot-enu-sigma", [
@@ -967,7 +1061,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     margin: { ...commonLayout.margin, r: 50 },
     title: "H/U Error and Sigma",
     yaxis: { title: "Meters", rangemode: "tozero" },
-    yaxis2: { title: "Latency (s)", overlaying: "y", side: "right" },
+    yaxis2: latencyYAxis({ overlaying: "y", side: "right" }),
     legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
 
@@ -978,14 +1072,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     y: points.map((p) => p.n),
     mode: "markers",
     name: "NE Error",
-    marker: {
-      size: usedSv.map((u) => (Number.isFinite(u) ? 4 + (u / maxUsedSv) * 12 : 4)),
-      color: points.map((p) => p.pdop),
-      colorscale: "Turbo",
-      colorbar: { title: "PDOP" },
-      showscale: true,
-      opacity: 0.7
-    },
+    marker: pdopMarkerStyle(points, usedSv, maxUsedSv),
     customdata: points.map((p) => [p.pdop, p.tracked, p.used]),
     hovertemplate:
       "East: %{x:.4f} m<br>North: %{y:.4f} m<br>PDOP: %{customdata[0]:.2f}" +
@@ -1012,41 +1099,43 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     yaxis: { title: "Percent (%)", range: [0, 100] },
     legend: { orientation: "h" }
   });
+  }
 
   const showDop1 = document.getElementById("show-dop-1d").checked;
   const showDop2 = document.getElementById("show-dop-2d").checked;
   const showDop3 = document.getElementById("show-dop-3d").checked;
 
   drawPlot("plot-sigma-1d", [
-    coloredLine(x, ratios.r1d, "1D Error/Sigma", "up"),
+    coloredLine(x, vSigma, "V Sigma", "up"),
     ...withDopTraces(showDop1, x, points)
   ], {
     ...commonLayout,
-    title: "1D Sigma Ratio",
-    yaxis: { title: "Ratio" },
+    title: "1D Sigma (Vertical)",
+    yaxis: { title: "Sigma (m)", rangemode: "tozero" },
     yaxis2: { title: "DOP", overlaying: "y", side: "right", showgrid: false }
   });
 
   drawPlot("plot-sigma-2d", [
-    coloredLine(x, ratios.r2d, "2D Error/Sigma", "d2"),
+    coloredLine(x, hSigma, "H Sigma", "d2"),
     ...withDopTraces(showDop2, x, points)
   ], {
     ...commonLayout,
-    title: "2D Sigma Ratio",
-    yaxis: { title: "Ratio" },
+    title: "2D Sigma (Horizontal)",
+    yaxis: { title: "Sigma (m)", rangemode: "tozero" },
     yaxis2: { title: "DOP", overlaying: "y", side: "right", showgrid: false }
   });
 
   drawPlot("plot-sigma-3d", [
-    coloredLine(x, ratios.r3d, "3D Error/Sigma", "d3"),
+    coloredLine(x, s3d, "3D Sigma", "d3"),
     ...withDopTraces(showDop3, x, points)
   ], {
     ...commonLayout,
-    title: "3D Sigma Ratio",
-    yaxis: { title: "Ratio" },
+    title: "3D Sigma",
+    yaxis: { title: "Sigma (m)", rangemode: "tozero" },
     yaxis2: { title: "DOP", overlaying: "y", side: "right", showgrid: false }
   });
 
+  if (!isMoving) {
   const age = ageCorrectionSeries(points);
   const ageBins = binAgeCorrectionRows(age.rows, 1);
   plotAgeCorrectionChart(
@@ -1073,9 +1162,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     "3D Error", "3D Sigma",
     "d3"
   );
+  }
 
   linkTimePlotZoom(SOLUTION_TIME_PLOT_IDS);
-  linkTimePlotZoom(POSITION_TIME_PLOT_IDS);
+  if (!isMoving) {
+    linkTimePlotZoom(POSITION_TIME_PLOT_IDS);
+  } else {
+    linkTimePlotZoom(["plot-height-error"]);
+  }
 
   const filterMode = filterInfo.filter;
   const typesShown = solutionTypesInData(points, solPoints);
@@ -1087,14 +1181,21 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const viewFilterNote = typesShown.length > 1
     ? " View filter: " + typesShown.map(solutionTypeName).join(", ") + "."
     : "";
-  const meanNote = "Mean computed from: " + meanTypeLabel(filterInfo) + ".";
-  const solNote = solutionPoints.length
-    ? "Error points: " + points.length + "; solution points: " + solutionPoints.length + "."
-    : "Error points: " + points.length + ".";
-  document.getElementById("plot-status").textContent =
-    filterNote + viewFilterNote + " " + meanNote + " " + solNote + " Age-of-correction points: " + age.count +
-    ". Zoom/pan on a time plot syncs others in the same group (solution or error plots).";
-  document.getElementById("plot-status").className = "";
+  let statusNote = filterNote + viewFilterNote;
+  if (isMoving) {
+    statusNote += " Moving session — height and precision plots only.";
+  } else {
+    statusNote += " Mean computed from: " + meanTypeLabel(filterInfo) + ".";
+    statusNote += solutionPoints.length
+      ? " Error points: " + points.length + "; solution points: " + solutionPoints.length + "."
+      : " Error points: " + points.length + ".";
+  }
+  if (filterInfo.driveWarning) {
+    statusNote += " Warning: static mode on data that looks like a drive test.";
+  }
+  statusNote += " Zoom/pan on a time plot syncs others in the same group.";
+  document.getElementById("plot-status").textContent = statusNote;
+  document.getElementById("plot-status").className = filterInfo.driveWarning ? "error" : "";
 }
 
 function attachPlotControlListeners() {
@@ -1157,16 +1258,19 @@ function loadInteractivePosition() {
     return fetchTextFile(url, optional);
   };
 
-  fetchStep("Loading position data...", "position_data.csv")
-    .then((posText) => fetchStep("Loading solution data...", "position_solution.csv", true)
-      .then((solText) => fetchStep("Loading plot filter metadata...", "plot_filter.txt", true)
-        .then((filterText) => ({ posText, solText, filterText }))))
-    .then(({ posText, solText, filterText }) => {
+  fetchStep("Loading plot filter metadata...", "plot_filter.txt", true)
+    .then((filterText) => {
+      plotFilterInfo = parsePlotFilter(filterText);
+      const isMoving = plotFilterInfo.session === "moving";
+      return fetchStep("Loading position data...", "position_data.csv")
+        .then((posText) => fetchStep("Loading solution data...", "position_solution.csv", true)
+          .then((solText) => ({ posText, solText, isMoving })));
+    })
+    .then(({ posText, solText, isMoving }) => {
       setPlotStatus("Parsing plot data...", "loading");
       const solutionPoints = solText ? parseX29Csv(solText) : [];
-      allPositionPoints = attachSolutionTypes(parsePositionCsv(posText), solutionPoints);
+      allPositionPoints = attachSolutionTypes(parsePositionCsv(posText, isMoving), solutionPoints);
       allSolutionPoints = solutionPoints;
-      plotFilterInfo = parsePlotFilter(filterText);
       const types = solutionTypesInData(allPositionPoints, allSolutionPoints);
       buildSolutionTypeFilterUI(types);
       attachPlotControlListeners();

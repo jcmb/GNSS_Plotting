@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250630i"></script>
+<script src="interactive_plot.js?v=20250817a"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -104,6 +104,14 @@
   .report-copy-btn:hover {
     background: #e8eef5;
   }
+  .report-warning {
+    color: #8a4b00;
+    background: #fff8e6;
+    border: 1px solid #e6c200;
+    border-radius: 4px;
+    padding: 8px 12px;
+    margin: 0.5em 0 0.75em 0;
+    line-height: 1.5;
   .report-empty,
   .report-error {
     color: #666;
@@ -133,7 +141,7 @@
     display: block;
   }
 </style>
-<script src="report_tables.js?v=20250630g"></script>
+<script src="report_tables.js?v=20250817a"></script>
 </head>
 <body onload="loadReportTables(); loadInteractivePosition();">
 <h1>Results for: 
@@ -156,9 +164,12 @@ Location: <!--#include virtual="kml.html" -->
 
 <div class="report-raw-data" aria-hidden="true">
   <script type="text/plain" id="raw-mean-info"><!--#include virtual="mean.info" --></script>
+  <script type="text/plain" id="raw-time-range"><!--#include virtual="time_range.txt" --></script>
   <script type="text/plain" id="raw-llh-mean"><!--#include virtual="llh.mean" --></script>
   <script type="text/plain" id="raw-sum-txt"><!--#include virtual="sum.txt" --></script>
   <script type="text/plain" id="raw-nee-mean"><!--#include virtual="nee.mean" --></script>
+  <script type="text/plain" id="raw-session-type"><!--#include virtual="session_type.txt" --></script>
+  <script type="text/plain" id="raw-plot-filter"><!--#include virtual="plot_filter.txt" --></script>
 </div>
 
 <h2>Interactive Position Plots</h2>
@@ -196,45 +207,45 @@ Location: <!--#include virtual="kml.html" -->
   <div id="plot-height-error" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card plot-static-only">
   <h3>NEU Error</h3>
   <div id="plot-enu" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card plot-static-only">
   <h3>H/U Error and Sigma</h3>
   <div id="plot-enu-sigma" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card plot-static-only">
   <h3>NE Error Scatter</h3>
   <div id="plot-ne-scatter" style="width: 100%; height: 480px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card plot-static-only">
   <h3>Cumulative Error Plots</h3>
   <div id="plot-cumulative" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card">
-  <h3>1D Sigma Ratio</h3>
+  <h3>1D Sigma (Vertical)</h3>
   <label><input type="checkbox" id="show-dop-1d"> Show PDOP/HDOP/VDOP</label>
   <div id="plot-sigma-1d" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card">
-  <h3>2D Sigma Ratio</h3>
+  <h3>2D Sigma (Horizontal)</h3>
   <label><input type="checkbox" id="show-dop-2d"> Show PDOP/HDOP/VDOP</label>
   <div id="plot-sigma-2d" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card">
-  <h3>3D Sigma Ratio</h3>
+  <h3>3D Sigma</h3>
   <label><input type="checkbox" id="show-dop-3d"> Show PDOP/HDOP/VDOP</label>
   <div id="plot-sigma-3d" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card plot-static-only">
   <h3>Error and Precision vs Age of Corrections</h3>
   <h4>1D (Vertical)</h4>
   <div id="plot-age-corr-1d" style="width: 100%; height: 380px;"></div>
@@ -244,8 +255,8 @@ Location: <!--#include virtual="kml.html" -->
   <div id="plot-age-corr-3d" style="width: 100%; height: 380px;"></div>
 </div>
 
-<h2>Range Summaries</h2>
-<div id="range-summaries-root">
+<h2 class="plot-static-only">Range Summaries</h2>
+<div id="range-summaries-root" class="plot-static-only">
   <p class="report-empty">Loading range summaries...</p>
 </div>
 <div class="report-raw-data" aria-hidden="true">

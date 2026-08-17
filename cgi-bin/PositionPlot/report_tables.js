@@ -55,6 +55,23 @@ function renderMeanInfo(text) {
   return sectionHtml("Mean / Reference", tableHtml(["Setting", "Value"], rows, "report-table"));
 }
 
+function renderTimeRange(text) {
+  const kv = {};
+  parseKeyValueLines(text).forEach(([key, value]) => {
+    kv[key] = value;
+  });
+  if (!kv["Start GPS"] && !kv["End GPS"]) return "";
+
+  const rows = [
+    ["Start", kv["Start GPS"] || "—", kv["Start Local"] || "—"],
+    ["End", kv["End GPS"] || "—", kv["End Local"] || "—"]
+  ];
+  return sectionHtml(
+    "Session Time Range",
+    tableHtml(["", "GPS", "Local Time"], rows, "report-table")
+  );
+}
+
 function normalizeReferenceRow(name, decimal, dms, std) {
   if (name !== "Height") {
     return [name, decimal || "—", dms || "—", std || "n/a"];
@@ -193,23 +210,136 @@ function gpsJamUrl(lat, lon) {
   return "https://gpsjam.org/?lat=" + lat.toFixed(5) + "&lon=" + lon.toFixed(5) + "&z=8.0";
 }
 
-function renderLocationMap(coords) {
+function parseSessionType(text) {
+  const kv = {};
+  parseKeyValueLines(text).forEach(([key, value]) => {
+    kv[key] = value;
+  });
+  return kv;
+}
+
+function parsePlotFilterSession(text) {
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("session:")) {
+      return trimmed.slice(8).trim();
+    }
+  }
+  return "static";
+}
+
+function sessionRequestLabel(value) {
+  if (value === "Automatic" || value === "-1" || value === "") return "Automatic";
+  if (value === "Static" || value === "0") return "Static";
+  if (value === "Moving" || value === "1") return "Moving";
+  return value || "Automatic";
+}
+
+function renderSessionType(text, plotFilterText) {
+  const kv = parseSessionType(text);
+  const sessionUsed = kv["Session used"] || parsePlotFilterSession(plotFilterText);
+  const isMoving = sessionUsed === "moving";
+
+  let body = "";
+  const rows = [];
+  if (kv["Session requested"]) {
+    rows.push(["Session requested", sessionRequestLabel(kv["Session requested"])]);
+  }
+  rows.push(["Session used", isMoving ? "Moving" : "Static"]);
+  if (kv["Detection ran"] === "yes") {
+    rows.push(["Motion detection", "Ran (2D, >10σ threshold)"]);
+    if (kv["Outlier fraction"]) {
+      rows.push(["Outlier fraction", kv["Outlier fraction"]]);
+    }
+    if (kv["Outlier epochs"]) {
+      rows.push(["Outlier epochs", kv["Outlier epochs"]]);
+    }
+  } else if (kv["Detection ran"] === "no") {
+    rows.push(["Motion detection", "Skipped (database point or forced mode)"]);
+  }
+  body += tableHtml(["Setting", "Value"], rows, "report-table");
+
+  if (kv["Drive test warning"] === "yes") {
+    body += '<p class="report-warning">Static mode was requested, but the data looks like a drive test. Error plots and reference statistics may not be meaningful.</p>';
+  }
+
+  return sectionHtml("Session Type", body);
+}
+
+function isTrajectorySession(text) {
+  return /^TRAJECTORY_SESSION/m.test(text.trim());
+}
+
+function parseTrajectoryCoords(text) {
+  const kv = {};
+  parseKeyValueLines(text).forEach(([key, value]) => {
+    kv[key] = value;
+  });
+  const latMin = parseFloat(kv["Latitude min"]);
+  const latMax = parseFloat(kv["Latitude max"]);
+  const lonMin = parseFloat(kv["Longitude min"]);
+  const lonMax = parseFloat(kv["Longitude max"]);
+  if (!Number.isFinite(latMin) || !Number.isFinite(latMax) ||
+      !Number.isFinite(lonMin) || !Number.isFinite(lonMax)) {
+    return null;
+  }
+  const heightMin = parseFloat(String(kv["Height min"] || "").replace(/ m$/i, ""));
+  const heightMax = parseFloat(String(kv["Height max"] || "").replace(/ m$/i, ""));
+  return {
+    lat: (latMin + latMax) / 2,
+    lon: (lonMin + lonMax) / 2,
+    height: Number.isFinite(heightMin) && Number.isFinite(heightMax)
+      ? (heightMin + heightMax) / 2
+      : null
+  };
+}
+
+function renderTrajectorySummary(text) {
+  if (!text.trim() || !isTrajectorySession(text)) return "";
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const intro = lines.filter((line) =>
+    /^TRAJECTORY_SESSION$/i.test(line) ||
+    /^Moving session/i.test(line)
+  );
+  const rows = parseKeyValueLines(
+    lines.filter((line) =>
+      !/^TRAJECTORY_SESSION$/i.test(line) &&
+      !/^Moving session/i.test(line)
+    ).join("\n")
+  );
+
+  let body = "";
+  if (intro.length) {
+    body += '<div class="report-meta">' + intro.map(escapeHtml).join("<br>") + "</div>";
+  }
+  if (rows.length) {
+    body += tableHtml(["Metric", "Value"], rows, "report-table");
+  }
+  return sectionHtml("Trajectory Summary", body);
+}
+
+function renderLocationMap(coords, isMoving) {
   if (!coords) {
-    return '<p class="report-empty">Location map unavailable (no reference coordinates).</p>';
+    const msg = isMoving
+      ? "Location map unavailable (no trajectory coordinates)."
+      : "Location map unavailable (no reference coordinates).";
+    return '<p class="report-empty">' + msg + "</p>";
   }
 
   const { lat, lon, height } = coords;
   const osmUrl = osmEmbedUrl(lat, lon);
   const jamUrl = gpsJamUrl(lat, lon);
   const heightText = Number.isFinite(height) ? " · Height " + height.toFixed(3) + " m" : "";
+  const label = isMoving ? "Trajectory center" : "Reference";
 
   let html = '<section class="report-location">';
   html += '<p class="report-location-coords">';
-  html += "Reference: " + lat.toFixed(6) + "°, " + lon.toFixed(6) + "°" + escapeHtml(heightText);
+  html += label + ": " + lat.toFixed(6) + "°, " + lon.toFixed(6) + "°" + escapeHtml(heightText);
   html += ' · <a href="' + escapeHtml(jamUrl) + '" target="_blank" rel="noopener noreferrer">';
   html += "GPS interference map (GPSJam)</a>";
   html += "</p>";
-  html += '<iframe class="report-location-map" title="Reference position map" loading="lazy"';
+  html += '<iframe class="report-location-map" title="Position map" loading="lazy"';
   html += ' src="' + escapeHtml(osmUrl) + '"></iframe>';
   html += "</section>";
   return html;
@@ -624,23 +754,43 @@ async function buildReportTables() {
   const root = document.getElementById("report-summary-root");
   if (!root) return;
 
-  const [meanInfo, llhMean, sumTxt, neeMean] = await Promise.all([
+  const [meanInfo, timeRange, llhMean, sumTxt, neeMean, sessionType, plotFilter] = await Promise.all([
     loadText("raw-mean-info", "mean.info"),
+    loadText("raw-time-range", "time_range.txt"),
     loadText("raw-llh-mean", "llh.mean"),
     loadText("raw-sum-txt", "sum.txt"),
-    loadText("raw-nee-mean", "nee.mean")
+    loadText("raw-nee-mean", "nee.mean"),
+    loadText("raw-session-type", "session_type.txt"),
+    loadText("raw-plot-filter", "plot_filter.txt")
   ]);
+
+  const sessionKv = parseSessionType(sessionType);
+  const sessionUsed = sessionKv["Session used"] || parsePlotFilterSession(plotFilter);
+  const isMoving = sessionUsed === "moving";
+
+  document.querySelectorAll(".plot-static-only").forEach((el) => {
+    el.style.display = isMoving ? "none" : "";
+  });
 
   const locationRoot = document.getElementById("report-location-root");
   if (locationRoot) {
-    locationRoot.innerHTML = renderLocationMap(parseReferenceCoords(llhMean));
+    const coords = isMoving
+      ? parseTrajectoryCoords(llhMean)
+      : parseReferenceCoords(llhMean);
+    locationRoot.innerHTML = renderLocationMap(coords, isMoving);
   }
 
   let html = "";
-  html += renderMeanInfo(meanInfo);
-  html += renderLlhMean(llhMean);
+  html += renderTimeRange(timeRange);
+  html += renderSessionType(sessionType, plotFilter);
+  if (isMoving) {
+    html += renderTrajectorySummary(llhMean);
+  } else {
+    html += renderMeanInfo(meanInfo);
+    html += renderLlhMean(llhMean);
+    html += renderNeeMean(neeMean);
+  }
   html += renderSumTxt(sumTxt);
-  html += renderNeeMean(neeMean);
 
   if (!html.trim()) {
     root.innerHTML = '<p class="report-empty">Summary data is not available.</p>';
@@ -650,7 +800,7 @@ async function buildReportTables() {
   }
 
   const rangeRoot = document.getElementById("range-summaries-root");
-  if (!rangeRoot) return;
+  if (!rangeRoot || isMoving) return;
 
   const rangeSpecs = [
     { id: "raw-range1cm", url: "range1cm.sum", title: "Height < 1 cm" },

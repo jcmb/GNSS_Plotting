@@ -166,7 +166,19 @@ Decimate:
 </tr>
 <tr>
 <td>
-Plot Range:
+Session type:
+</td>
+<td>
+<select name="SessionType">
+   <option value="-1" selected>Automatic</option>
+   <option value="0">Static</option>
+   <option value="1">Moving</option>
+</select>
+</td>
+</tr>
+<tr>
+<td>
+Plot axis range:
 </td>
 <td>
 <select name="Range">
@@ -234,6 +246,17 @@ Point Name (Optional):
     statusPhase.textContent = text;
   }
 
+  function escapeAttr(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/"/g, "&quot;")
+      .replace(/</g, "&lt;");
+  }
+
+  function setDetailHtml(html) {
+    statusDetail.innerHTML = html || "";
+  }
+
   function setDetail(text) {
     statusDetail.textContent = text || "";
   }
@@ -298,9 +321,14 @@ Point Name (Optional):
     var logText = extractPreLog(html);
     var headerText = extractStatusMessages(html);
     var complete = isProcessingComplete(html);
-    var reportUrl = extractReportUrl(html, true);
+    var reportUrl = extractReportUrl(html, finished) || extractReportUrl(html, false);
 
-    if (headerText) {
+    if (reportUrl) {
+      setDetailHtml(
+        'The report will be at <a href="' + escapeAttr(reportUrl) + '">' +
+        escapeAttr(reportUrl) + "</a>"
+      );
+    } else if (headerText) {
       setDetail(headerText.replace(/\n+/g, " ").trim());
     }
 

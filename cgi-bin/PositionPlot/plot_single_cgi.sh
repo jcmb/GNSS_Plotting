@@ -37,8 +37,10 @@ SaveFile=$9
 MeanSol=${10:-${GNSS_MEAN_SOL:--1}}
 MEAN_SOL_REQUEST="$MeanSol"
 ReportUrl=${11:-${GNSS_REPORT_URL:-/results/Position${Project}/${File}/}}
+SESSION_REQUEST=${12:--1}
 logger "Mean solution type request: $MEAN_SOL_REQUEST"
 logger "Report URL: $ReportUrl"
+logger "Session type request: $SESSION_REQUEST"
 
 echo "Point $Point"
 echo "Project $Project"
@@ -249,15 +251,144 @@ else
    mv $TMP_DIR$File.X29 $File.sol
 fi
 
+POINT_FROM_DB=0
+if [ "$Point" != "-1" ] && [ -n "$Lat" ]
+then
+   POINT_FROM_DB=1
+fi
 
-echo "Computing NEE Deltas"
-original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height  >$File.enu
+enu_filter_stream() {
+  local _src="$1"
+  if [ "$MEAN_SOL" = "all" ]; then
+    cat "$_src"
+  else
+    original-awk -F, -v sol="$MEAN_SOL" '($9 + 0) == (sol + 0)' "$_src"
+  fi
+}
 
-rm $File.sol
+echo "Computing provisional ENU for session detection"
+original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height >$File.enu.provisional
 
-echo ""
-echo "Computing NEE Mean"
-eval $(original-awk -f $normalDir/x29_mean2_enu.awk $MEAN_SOL $Sol_HRange $Sol_VRange $Fixed_Range <$File.enu)
+SESSION_USED="static"
+SESSION_DETECTED="static"
+DETECTION_RAN="no"
+OUTLIER_FRACTION="0"
+OUTLIER_COUNT="0"
+VALID_COUNT="0"
+DRIVE_WARNING="no"
+
+_run_motion_detect() {
+  enu_filter_stream "$File.enu.provisional" | $normalDir/detect_motion.py
+}
+
+case "$SESSION_REQUEST" in
+  1|moving)
+    SESSION_USED="moving"
+    ;;
+  0|static)
+    SESSION_USED="static"
+    if [ "$POINT_FROM_DB" != "1" ]
+    then
+       DETECTION_RAN="yes"
+       while IFS= read -r _det_line
+       do
+          case "$_det_line" in
+             detected:*) SESSION_DETECTED="${_det_line#detected: }" ;;
+             outlier_fraction:*) OUTLIER_FRACTION="${_det_line#outlier_fraction: }" ;;
+             outlier_count:*) OUTLIER_COUNT="${_det_line#outlier_count: }" ;;
+             valid_count:*) VALID_COUNT="${_det_line#valid_count: }" ;;
+          esac
+       done < <(_run_motion_detect)
+       if [ "$SESSION_DETECTED" = "moving" ]
+       then
+          DRIVE_WARNING="yes"
+       fi
+    fi
+    ;;
+  *)
+    if [ "$POINT_FROM_DB" = "1" ]
+    then
+       SESSION_USED="static"
+    else
+       DETECTION_RAN="yes"
+       while IFS= read -r _det_line
+       do
+          case "$_det_line" in
+             detected:*) SESSION_DETECTED="${_det_line#detected: }"; SESSION_USED="${_det_line#detected: }" ;;
+             outlier_fraction:*) OUTLIER_FRACTION="${_det_line#outlier_fraction: }" ;;
+             outlier_count:*) OUTLIER_COUNT="${_det_line#outlier_count: }" ;;
+             valid_count:*) VALID_COUNT="${_det_line#valid_count: }" ;;
+          esac
+       done < <(_run_motion_detect)
+    fi
+    ;;
+esac
+
+case "$SESSION_REQUEST" in
+  -1|""|auto)
+    SESSION_REQUEST_LABEL="Automatic"
+    ;;
+  0|static)
+    SESSION_REQUEST_LABEL="Static"
+    ;;
+  1|moving)
+    SESSION_REQUEST_LABEL="Moving"
+    ;;
+  *)
+    SESSION_REQUEST_LABEL="$SESSION_REQUEST"
+    ;;
+esac
+
+{
+echo "Session requested: $SESSION_REQUEST_LABEL"
+echo "Session used: $SESSION_USED"
+echo "Detection ran: $DETECTION_RAN"
+echo "Outlier fraction: ${OUTLIER_FRACTION}% (>10 sigma, 2D)"
+echo "Outlier epochs: $OUTLIER_COUNT / $VALID_COUNT"
+echo "Drive test warning: $DRIVE_WARNING"
+} > session_type.txt
+
+if [ "$SESSION_USED" = "moving" ]
+then
+   echo "Moving session — using trajectory (LLH) data"
+   logger "Moving session for $FileFull"
+
+   $normalDir/trajectory_summary.py <$File.sol | tee trajectory_summary.txt
+
+   {
+   echo "TRAJECTORY_SESSION"
+   echo "Moving session — no fixed reference position."
+   cat trajectory_summary.txt
+   } > llh.mean
+
+   $normalDir/kml_trajectory.py $File $File.sol
+   echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
+
+   echo ""
+   echo "Computing session time range"
+   $normalDir/time_range_report.py <$File.sol >time_range.txt
+
+   echo "Session: moving" | tee nee.mean
+   cat trajectory_summary.txt | tee -a nee.mean
+
+   cp $File.sol $File.trajectory
+   rm -f $File.enu.provisional $File.sol
+else
+   echo "Static session — ENU errors vs reference"
+   logger "Static session for $FileFull"
+
+   mv $File.enu.provisional $File.enu
+
+   echo ""
+   echo "Computing session time range"
+   $normalDir/time_range_report.py <$File.enu >time_range.txt
+
+   echo ""
+   echo "Computing NEE Mean"
+   eval $(original-awk -f $normalDir/x29_mean2_enu.awk $MEAN_SOL $Sol_HRange $Sol_VRange $Fixed_Range <$File.enu)
+
+   rm -f $File.sol
+fi
 
 {
 echo "Mean / reference computation"
@@ -286,8 +417,11 @@ else
    echo "Mean type used: $MEAN_SOL_NAME (type $MEAN_SOL)"
 fi
 echo "Records in mean: $Records"
+echo "Session used: $SESSION_USED"
 } > mean.info
 
+if [ "$SESSION_USED" != "moving" ]
+then
 enu_cdf_stream() {
   if [ "$MEAN_SOL" = "all" ]; then
     cat "$File.enu"
@@ -381,27 +515,44 @@ echo ""| tee -a nee.mean
 echo "Records: $Records" | tee -a nee.mean
 echo "Mean Solution Type: $MEAN_SOL_NAME ($MEAN_SOL)" | tee -a nee.mean
 echo ""| tee -a nee.mean
+fi
 
 
 echo Generating interactive plot data for $FileFull
 logger "Generating interactive plot data for $FileFull"
 
 echo "$FileFull" >file.html
+
+_write_plot_filter() {
+   if [ "$ALL_SOL_TYPES" = "1" ]; then
+      echo "all" > plot_filter.txt
+   elif [ -n "$PLOT_FILTER_SOL" ]; then
+      echo "type:$PLOT_FILTER_SOL" > plot_filter.txt
+   else
+      echo "none" > plot_filter.txt
+   fi
+   echo "mean:$MEAN_SOL" >> plot_filter.txt
+   echo "mean_name:$MEAN_SOL_NAME" >> plot_filter.txt
+   echo "mean_request:$MEAN_SOL_REQUEST" >> plot_filter.txt
+   echo "session:$SESSION_USED" >> plot_filter.txt
+   echo "session_request:$SESSION_REQUEST" >> plot_filter.txt
+   echo "drive_warning:$DRIVE_WARNING" >> plot_filter.txt
+}
+
+if [ "$SESSION_USED" = "moving" ]
+then
+   $normalDir/x29_secs.py <$File.trajectory > position_data.csv
+   cp $File.trajectory position_solution.csv
+   rm -f $File.trajectory
+   _write_plot_filter
+   gzip -9 -f position_data.csv position_solution.csv
+   echo -n "$File,moving" > $File.sum.csv
+else
 #cp $normalDir/plot_index.html index.shtml
 mv $File.enu file
 cp file position_solution.csv
 $normalDir/x29_secs.py < file > position_data.csv
-if [ "$ALL_SOL_TYPES" = "1" ]; then
-   echo "all" > plot_filter.txt
-elif [ -n "$PLOT_FILTER_SOL" ]; then
-   echo "type:$PLOT_FILTER_SOL" > plot_filter.txt
-else
-   echo "none" > plot_filter.txt
-fi
-echo "mean:$MEAN_SOL" >> plot_filter.txt
-echo "mean_name:$MEAN_SOL_NAME" >> plot_filter.txt
-echo "mean_request:$MEAN_SOL_REQUEST" >> plot_filter.txt
-
+_write_plot_filter
 gzip -9 -f position_data.csv position_solution.csv
 
 $normalDir/out_range.py -R 0.0105 < file --OUTAGE outage1cm.csv --DETAIL /dev/null --SUMMARY range1cm.sum
@@ -423,6 +574,8 @@ echo -n "$range_1cm," >> $File.sum.csv
 echo -n "$range_2cm," >> $File.sum.csv
 echo -n "$range_2_sigma," >> $File.sum.csv
 echo  "$range_3_sigma" >> $File.sum.csv
+rm file
+fi
 
 echo "<a href=\"$File.sum.csv\">$File.sum.csv</a>">sum.html
 
@@ -441,9 +594,7 @@ rm outage2sig.csv
 rm outage3sig.csv
 #rm range1cm.csv
 #rm range2cm.csv
-rm range2sig.csv
-rm range3sig.csv
-rm file
+rm -f range2sig.csv range3sig.csv
 wait
 echo Processing completed
 echo "<p><strong>Processing complete.</strong></p>"
