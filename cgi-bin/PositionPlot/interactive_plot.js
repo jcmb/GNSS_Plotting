@@ -493,9 +493,21 @@ function timePlotLayout(xaxisLayout, mode) {
   };
 }
 
-function axisData(points, mode) {
+function sharedTimeOrigin(...pointSets) {
+  let minT = Infinity;
+  pointSets.forEach((pts) => {
+    pts.forEach((p) => {
+      if (Number.isFinite(p.t) && p.t < minT) minT = p.t;
+    });
+  });
+  return Number.isFinite(minT) ? minT : 0;
+}
+
+function axisData(points, mode, timeOrigin) {
   if (mode === "seconds") {
-    const t0 = points[0].t;
+    const t0 = timeOrigin !== undefined
+      ? timeOrigin
+      : (points.length ? points[0].t : 0);
     return {
       x: points.map((p) => p.t - t0),
       layout: {
@@ -744,10 +756,28 @@ const POSITION_TIME_PLOT_IDS = [
   "plot-sigma-3d"
 ];
 
+const MOVING_POSITION_TIME_PLOT_IDS = [
+  "plot-height-error",
+  "plot-sigma-1d",
+  "plot-sigma-2d",
+  "plot-sigma-3d"
+];
+
 const TIME_LINKED_PLOT_IDS = [
   ...SOLUTION_TIME_PLOT_IDS,
   ...POSITION_TIME_PLOT_IDS
 ];
+
+function activeTimePlotIds(isMoving) {
+  const ids = [
+    ...SOLUTION_TIME_PLOT_IDS,
+    ...(isMoving ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
+  ];
+  return ids.filter((id) => {
+    const el = document.getElementById(id);
+    return el && el.data;
+  });
+}
 
 const ALL_PLOT_IDS = [
   ...TIME_LINKED_PLOT_IDS,
@@ -797,6 +827,21 @@ function rangeKey(range) {
   return String(range[0]) + "|" + String(range[1]);
 }
 
+function extractXRangeFromRelayout(eventData) {
+  if (!eventData || eventData["xaxis.autorange"] === true) return null;
+  const range = eventData["xaxis.range"];
+  if (Array.isArray(range) && range.length === 2) return range;
+  const x0 = eventData["xaxis.range[0]"];
+  const x1 = eventData["xaxis.range[1]"];
+  if (x0 !== undefined && x1 !== undefined) return [x0, x1];
+  return null;
+}
+
+function plotHasData(plotId) {
+  const el = document.getElementById(plotId);
+  return !!(el && el.data);
+}
+
 function relayoutWhenReady(elementId, update) {
   const result = Plotly.relayout(elementId, update);
   if (result && typeof result.then === "function") {
@@ -814,7 +859,7 @@ function syncXRangeToPeers(sourceId, plotIds, range) {
   lastSyncedRangeKey = key;
 
   const updates = plotIds
-    .filter((targetId) => targetId !== sourceId)
+    .filter((targetId) => targetId !== sourceId && plotHasData(targetId))
     .map((targetId) => relayoutWhenReady(targetId, {
       "xaxis.autorange": false,
       "xaxis.range": range
@@ -838,14 +883,9 @@ function linkTimePlotZoom(plotIds) {
     sourceEl.on("plotly_relayout", (eventData) => {
       if (!eventData || zoomSyncInProgress) return;
 
-      // Autorange/reset on one plot must not propagate; it causes relayout storms.
-      if (eventData["xaxis.autorange"] === true) return;
+      const range = extractXRangeFromRelayout(eventData);
+      if (!range) return;
 
-      const x0 = eventData["xaxis.range[0]"];
-      const x1 = eventData["xaxis.range[1]"];
-      if (x0 === undefined || x1 === undefined) return;
-
-      const range = [x0, x1];
       const key = rangeKey(range);
 
       // Ignore relayout echoes from plots we just updated programmatically.
@@ -955,8 +995,9 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   purgeAllPlots();
 
   const solPoints = solutionPoints.length ? solutionPoints : points;
-  const axis = axisData(points, mode);
-  const solAxis = axisData(solPoints, mode);
+  const timeOrigin = sharedTimeOrigin(points, solPoints);
+  const axis = axisData(points, mode, timeOrigin);
+  const solAxis = axisData(solPoints, mode, timeOrigin);
   const x = axis.x;
   const solX = solAxis.x;
   const north = points.map((p) => Math.abs(p.n));
@@ -1164,12 +1205,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   );
   }
 
-  linkTimePlotZoom(SOLUTION_TIME_PLOT_IDS);
-  if (!isMoving) {
-    linkTimePlotZoom(POSITION_TIME_PLOT_IDS);
-  } else {
-    linkTimePlotZoom(["plot-height-error"]);
-  }
+  linkTimePlotZoom(activeTimePlotIds(isMoving));
 
   const filterMode = filterInfo.filter;
   const typesShown = solutionTypesInData(points, solPoints);
@@ -1193,7 +1229,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   if (filterInfo.driveWarning) {
     statusNote += " Warning: static mode on data that looks like a drive test.";
   }
-  statusNote += " Zoom/pan on a time plot syncs others in the same group.";
+  statusNote += " Zoom/pan on any time-based plot syncs all visible time plots.";
   document.getElementById("plot-status").textContent = statusNote;
   document.getElementById("plot-status").className = filterInfo.driveWarning ? "error" : "";
 }
