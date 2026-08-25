@@ -837,9 +837,104 @@ function extractXRangeFromRelayout(eventData) {
   return null;
 }
 
-function plotHasData(plotId) {
+function xComparable(value) {
+  if (value == null) return NaN;
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return Number(value);
+}
+
+function yAxisLayoutKey(trace) {
+  const id = trace.yaxis || "y";
+  return id === "y" ? "yaxis" : "yaxis" + id.slice(1);
+}
+
+function shouldRescaleYForPlot(plotId) {
+  if (plotId === "plot-solution-latency") return false;
   const el = document.getElementById(plotId);
-  return !!(el && el.data);
+  if (!el || !el.layout) return true;
+  const yaxis = el.layout.yaxis || {};
+  return !(yaxis.tickmode === "array" && Array.isArray(yaxis.tickvals) && yaxis.tickvals.length <= 25);
+}
+
+function yRangeUsesToZero(plotId, axisKey) {
+  const el = document.getElementById(plotId);
+  if (!el || !el.layout) return axisKey === "yaxis";
+  const axis = el.layout[axisKey] || {};
+  return axis.rangemode === "tozero";
+}
+
+function buildYRangeUpdates(plotId, xRange) {
+  const el = document.getElementById(plotId);
+  if (!el || !el.data || !xRange) return {};
+
+  const xLo = Math.min(xComparable(xRange[0]), xComparable(xRange[1]));
+  const xHi = Math.max(xComparable(xRange[0]), xComparable(xRange[1]));
+  if (!Number.isFinite(xLo) || !Number.isFinite(xHi)) return {};
+
+  const byAxis = {};
+  el.data.forEach((trace) => {
+    const axisKey = yAxisLayoutKey(trace);
+    const xs = trace.x || [];
+    const ys = trace.y || [];
+    for (let i = 0; i < xs.length; i += 1) {
+      const xc = xComparable(xs[i]);
+      if (!Number.isFinite(xc) || xc < xLo || xc > xHi) continue;
+      const yv = ys[i];
+      if (!Number.isFinite(yv)) continue;
+      if (!byAxis[axisKey]) {
+        byAxis[axisKey] = { min: Infinity, max: -Infinity };
+      }
+      byAxis[axisKey].min = Math.min(byAxis[axisKey].min, yv);
+      byAxis[axisKey].max = Math.max(byAxis[axisKey].max, yv);
+    }
+  });
+
+  const updates = {};
+  Object.keys(byAxis).forEach((axisKey) => {
+    let min = byAxis[axisKey].min;
+    let max = byAxis[axisKey].max;
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return;
+
+    const span = max - min;
+    const pad = span > 0 ? span * 0.08 : Math.max(Math.abs(max) * 0.08, 0.01);
+    if (yRangeUsesToZero(plotId, axisKey)) {
+      min = max <= 0 ? 0 : Math.max(0, min - pad);
+    } else {
+      min = min - pad;
+    }
+    max = max + pad;
+    if (min >= max) {
+      min -= 0.5;
+      max += 0.5;
+    }
+    updates[axisKey + ".autorange"] = false;
+    updates[axisKey + ".range"] = [min, max];
+  });
+  return updates;
+}
+
+function buildViewRelayout(plotId, xRange) {
+  const update = {
+    "xaxis.autorange": false,
+    "xaxis.range": xRange
+  };
+  if (shouldRescaleYForPlot(plotId)) {
+    Object.assign(update, buildYRangeUpdates(plotId, xRange));
+  }
+  return update;
+}
+
+function buildAutorangeRelayout() {
+  return {
+    "xaxis.autorange": true,
+    "yaxis.autorange": true,
+    "yaxis2.autorange": true,
+    "yaxis3.autorange": true
+  };
 }
 
 function relayoutWhenReady(elementId, update) {
@@ -850,8 +945,13 @@ function relayoutWhenReady(elementId, update) {
   return Promise.resolve();
 }
 
-function syncXRangeToPeers(sourceId, plotIds, range) {
-  const key = rangeKey(range);
+function plotHasData(plotId) {
+  const el = document.getElementById(plotId);
+  return !!(el && el.data);
+}
+
+function syncViewToPeers(sourceId, plotIds, xRange) {
+  const key = rangeKey(xRange);
   if (!key) return;
 
   zoomSyncInProgress = true;
@@ -859,11 +959,26 @@ function syncXRangeToPeers(sourceId, plotIds, range) {
   lastSyncedRangeKey = key;
 
   const updates = plotIds
-    .filter((targetId) => targetId !== sourceId && plotHasData(targetId))
-    .map((targetId) => relayoutWhenReady(targetId, {
-      "xaxis.autorange": false,
-      "xaxis.range": range
-    }));
+    .filter((targetId) => plotHasData(targetId))
+    .map((targetId) => relayoutWhenReady(targetId, buildViewRelayout(targetId, xRange)));
+
+  Promise.all(updates).finally(() => {
+    window.setTimeout(() => {
+      zoomSyncInProgress = false;
+      zoomSyncSourceId = null;
+    }, 150);
+  });
+}
+
+function syncAutorangeToPeers(sourceId, plotIds) {
+  zoomSyncInProgress = true;
+  zoomSyncSourceId = sourceId;
+  lastSyncedRangeKey = null;
+
+  const update = buildAutorangeRelayout();
+  const updates = plotIds
+    .filter((targetId) => plotHasData(targetId))
+    .map((targetId) => relayoutWhenReady(targetId, update));
 
   Promise.all(updates).finally(() => {
     window.setTimeout(() => {
@@ -883,6 +998,17 @@ function linkTimePlotZoom(plotIds) {
     sourceEl.on("plotly_relayout", (eventData) => {
       if (!eventData || zoomSyncInProgress) return;
 
+      if (eventData["xaxis.autorange"] === true) {
+        if (zoomSyncTimer) {
+          window.clearTimeout(zoomSyncTimer);
+        }
+        zoomSyncTimer = window.setTimeout(() => {
+          zoomSyncTimer = null;
+          syncAutorangeToPeers(sourceId, plotIds);
+        }, 75);
+        return;
+      }
+
       const range = extractXRangeFromRelayout(eventData);
       if (!range) return;
 
@@ -898,7 +1024,7 @@ function linkTimePlotZoom(plotIds) {
       }
       zoomSyncTimer = window.setTimeout(() => {
         zoomSyncTimer = null;
-        syncXRangeToPeers(sourceId, plotIds, range);
+        syncViewToPeers(sourceId, plotIds, range);
       }, 75);
     });
   });
@@ -1229,7 +1355,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   if (filterInfo.driveWarning) {
     statusNote += " Warning: static mode on data that looks like a drive test.";
   }
-  statusNote += " Zoom/pan on any time-based plot syncs all visible time plots.";
+  statusNote += " Zoom/pan on any time-based plot syncs time and rescales Y to the visible window.";
   document.getElementById("plot-status").textContent = statusNote;
   document.getElementById("plot-status").className = filterInfo.driveWarning ? "error" : "";
 }
