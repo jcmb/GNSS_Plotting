@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250825b"></script>
+<script src="interactive_plot.js?v=20250827c"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -14,6 +14,77 @@
     padding: 8px;
     margin: 10px 0;
     background: #fff;
+  }
+  .plot-card.plot-card-closed {
+    display: none !important;
+  }
+  .plot-card.plot-card-dragging {
+    opacity: 0.55;
+  }
+  .plot-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 6px 0;
+    cursor: default;
+  }
+  .plot-card-header h3 {
+    flex: 1;
+    margin: 0;
+    font-size: 1.15em;
+    color: #222;
+  }
+  .plot-card-drag-handle {
+    cursor: grab;
+    color: #888;
+    font-size: 1.1em;
+    line-height: 1;
+    user-select: none;
+    padding: 2px 4px;
+    border-radius: 3px;
+  }
+  .plot-card-drag-handle:hover {
+    color: #444;
+    background: #f0f0f0;
+  }
+  .plot-card-drag-handle:active {
+    cursor: grabbing;
+  }
+  .plot-card-close {
+    border: none;
+    background: transparent;
+    color: #666;
+    font-size: 1.4em;
+    line-height: 1;
+    padding: 0 6px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  .plot-card-close:hover {
+    color: #a00;
+    background: #fee;
+  }
+  #plot-restore-bar {
+    display: none;
+    margin: 8px 0;
+  }
+  #plot-restore-bar .plot-restore-btn {
+    font-size: 0.85em;
+    padding: 4px 10px;
+    margin-right: 6px;
+    border: 1px solid #9ab;
+    border-radius: 4px;
+    background: #f5f8fb;
+    color: #234;
+    cursor: pointer;
+  }
+  #plot-restore-bar .plot-restore-btn:hover {
+    background: #e8eef5;
+  }
+  .plot-layout-hint {
+    color: #666;
+    font-size: 0.9em;
+    margin: 4px 0 10px 0;
   }
   .filter-panel {
     border: 1px solid #ccc;
@@ -112,6 +183,7 @@
     padding: 8px 12px;
     margin: 0.5em 0 0.75em 0;
     line-height: 1.5;
+  }
   .report-empty,
   .report-error {
     color: #666;
@@ -187,65 +259,78 @@ Location: <!--#include virtual="kml.html" -->
   <div id="sol-type-filters"></div>
 </div>
 
-<div class="plot-card">
+<p class="plot-layout-hint">Drag the ⋮⋮ handle to reorder graphs. Click × to close a graph; restore closed graphs from the bar below.</p>
+<div id="plot-restore-bar" class="filter-panel" aria-live="polite"></div>
+
+<div id="interactive-plot-cards">
+
+<div class="plot-card" data-card-id="plot-solution-latency">
   <h3>Solution and Latency Combined</h3>
   <div id="plot-solution-latency" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card" data-card-id="plot-latency-dist">
   <h3>Latency Distribution</h3>
   <div id="plot-latency-dist" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card" data-card-id="plot-sv">
   <h3>SVs Used and Tracked</h3>
   <div id="plot-sv" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card" data-card-id="plot-height-error">
   <h3>Height Error</h3>
   <div id="plot-height-error" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card plot-static-only">
+<div class="plot-card" data-card-id="plot-height-sigma">
+  <h3>Height Error and Sigma</h3>
+  <div id="plot-height-sigma" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-static-only" data-card-id="plot-enu">
   <h3>NEU Error</h3>
   <div id="plot-enu" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card plot-static-only">
+<div class="plot-card plot-static-only" data-card-id="plot-enu-sigma">
   <h3>H/U Error and Sigma</h3>
   <div id="plot-enu-sigma" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card plot-static-only">
+<div class="plot-card plot-static-only" data-card-id="plot-ne-scatter">
   <h3>NE Error Scatter</h3>
   <div id="plot-ne-scatter" style="width: 100%; height: 480px;"></div>
 </div>
 
-<div class="plot-card plot-static-only">
+<div class="plot-card plot-static-only" data-card-id="plot-cumulative">
   <h3>Cumulative Error Plots</h3>
   <div id="plot-cumulative" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card" data-card-id="plot-sigma-1d">
   <h3>1D Sigma (Vertical)</h3>
   <label><input type="checkbox" id="show-dop-1d"> Show PDOP/HDOP/VDOP</label>
+  <label><input type="checkbox" id="show-sol-1d"> Show position type</label>
   <div id="plot-sigma-1d" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card" data-card-id="plot-sigma-2d">
   <h3>2D Sigma (Horizontal)</h3>
   <label><input type="checkbox" id="show-dop-2d"> Show PDOP/HDOP/VDOP</label>
+  <label><input type="checkbox" id="show-sol-2d"> Show position type</label>
   <div id="plot-sigma-2d" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card">
+<div class="plot-card" data-card-id="plot-sigma-3d">
   <h3>3D Sigma</h3>
   <label><input type="checkbox" id="show-dop-3d"> Show PDOP/HDOP/VDOP</label>
+  <label><input type="checkbox" id="show-sol-3d"> Show position type</label>
   <div id="plot-sigma-3d" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card plot-static-only">
+<div class="plot-card plot-static-only" data-card-id="plot-age-corr">
   <h3>Error and Precision vs Age of Corrections</h3>
   <h4>1D (Vertical)</h4>
   <div id="plot-age-corr-1d" style="width: 100%; height: 380px;"></div>
@@ -253,6 +338,8 @@ Location: <!--#include virtual="kml.html" -->
   <div id="plot-age-corr-2d" style="width: 100%; height: 380px;"></div>
   <h4>3D</h4>
   <div id="plot-age-corr-3d" style="width: 100%; height: 380px;"></div>
+</div>
+
 </div>
 
 <h2 class="plot-static-only">Range Summaries</h2>

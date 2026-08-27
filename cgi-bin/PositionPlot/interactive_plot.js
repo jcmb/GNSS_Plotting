@@ -144,7 +144,7 @@ function applyTraceColor(trace) {
 }
 
 function drawPlot(elementId, traces, layout, config) {
-  Plotly.newPlot(
+  return Plotly.newPlot(
     elementId,
     traces.map(applyTraceColor),
     { ...layout, colorway: ERROR_COLORWAY },
@@ -187,6 +187,41 @@ function latencyYAxis(overrides) {
     zeroline: true,
     ...(overrides || {})
   };
+}
+
+function traceIsShownOnPlot(trace) {
+  return trace.visible !== false && trace.visible !== "legendonly";
+}
+
+function syncOverlayAxesFromTraces(elementId, axisConfig) {
+  const el = document.getElementById(elementId);
+  if (!el || !el.data) return;
+
+  const update = {};
+  Object.entries(axisConfig).forEach(([axisKey, cfg]) => {
+    const anyVisible = el.data.some((trace) =>
+      cfg.traces.includes(trace.name) && traceIsShownOnPlot(trace)
+    );
+    update[axisKey + ".visible"] = anyVisible;
+    update[axisKey + ".showticklabels"] = anyVisible;
+    update[axisKey + ".showline"] = anyVisible;
+    update[axisKey + ".title"] = anyVisible ? cfg.title : "";
+  });
+  Plotly.relayout(elementId, update);
+}
+
+function attachOverlayAxisLegendSync(elementId, axisConfig) {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+
+  const runSync = () => syncOverlayAxesFromTraces(elementId, axisConfig);
+  el.removeAllListeners("plotly_restyle");
+  el.on("plotly_restyle", (eventData) => {
+    if (eventData && Object.prototype.hasOwnProperty.call(eventData, "visible")) {
+      runSync();
+    }
+  });
+  runSync();
 }
 
 function mapSolutionType(raw) {
@@ -565,6 +600,45 @@ function withDopTraces(show, x, points) {
   ];
 }
 
+function withSolutionTypeTrace(show, x, points) {
+  if (!show) return [];
+  return [{
+    x,
+    y: points.map((p) => p.solution),
+    name: "Solution Type",
+    mode: "lines",
+    yaxis: "y3",
+    line: { color: SOLUTION_TYPE_LINE_COLOR, width: 2 },
+    marker: { color: SOLUTION_TYPE_LINE_COLOR }
+  }];
+}
+
+function sigmaPlotOverlayAxes(showDop, showSol, points) {
+  const axes = {};
+  if (showDop) {
+    axes.yaxis2 = { title: "DOP", overlaying: "y", side: "right", showgrid: false };
+  }
+  if (showSol) {
+    axes.yaxis3 = {
+      ...solutionYAxis(points),
+      title: "Solution Type",
+      overlaying: "y",
+      side: "right",
+      anchor: "free",
+      position: showDop ? 0.92 : 1.0,
+      showgrid: false,
+      automargin: true
+    };
+  }
+  return axes;
+}
+
+function sigmaPlotRightMargin(showDop, showSol) {
+  if (showDop && showSol) return 120;
+  if (showDop || showSol) return 80;
+  return 30;
+}
+
 function vdopTrace(x, points, yaxis) {
   return applyTraceColor({
     type: "scatter",
@@ -749,6 +823,7 @@ const SOLUTION_TIME_PLOT_IDS = [
 
 const POSITION_TIME_PLOT_IDS = [
   "plot-height-error",
+  "plot-height-sigma",
   "plot-enu",
   "plot-enu-sigma",
   "plot-sigma-1d",
@@ -758,6 +833,7 @@ const POSITION_TIME_PLOT_IDS = [
 
 const MOVING_POSITION_TIME_PLOT_IDS = [
   "plot-height-error",
+  "plot-height-sigma",
   "plot-sigma-1d",
   "plot-sigma-2d",
   "plot-sigma-3d"
@@ -774,6 +850,7 @@ function activeTimePlotIds(isMoving) {
     ...(isMoving ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
   ];
   return ids.filter((id) => {
+    if (!shouldDrawPlot(id)) return false;
     const el = document.getElementById(id);
     return el && el.data;
   });
@@ -786,6 +863,274 @@ const ALL_PLOT_IDS = [
   "plot-cumulative",
   "plot-ne-scatter"
 ];
+
+const DEFAULT_PLOT_CARD_ORDER = [
+  "plot-solution-latency",
+  "plot-latency-dist",
+  "plot-sv",
+  "plot-height-error",
+  "plot-height-sigma",
+  "plot-enu",
+  "plot-enu-sigma",
+  "plot-ne-scatter",
+  "plot-cumulative",
+  "plot-sigma-1d",
+  "plot-sigma-2d",
+  "plot-sigma-3d",
+  "plot-age-corr"
+];
+
+let plotCardChromeInitialized = false;
+let draggedPlotCard = null;
+
+function plotCardLayoutStorageKey() {
+  return "gnssPlotCardLayout:" + window.location.pathname;
+}
+
+function getPlotCardLayout() {
+  try {
+    const raw = sessionStorage.getItem(plotCardLayoutStorageKey());
+    if (!raw) return { order: null, hidden: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      order: Array.isArray(parsed.order) ? parsed.order : null,
+      hidden: Array.isArray(parsed.hidden) ? parsed.hidden : []
+    };
+  } catch (err) {
+    return { order: null, hidden: [] };
+  }
+}
+
+function savePlotCardLayout(layout) {
+  try {
+    sessionStorage.setItem(plotCardLayoutStorageKey(), JSON.stringify(layout));
+  } catch (err) {
+    // ignore quota / private browsing
+  }
+}
+
+function plotCardElement(cardId) {
+  return document.querySelector(`.plot-card[data-card-id="${cardId}"]`);
+}
+
+function plotCardForPlotElement(plotId) {
+  const el = document.getElementById(plotId);
+  return el ? el.closest(".plot-card") : null;
+}
+
+function isPlotCardClosed(cardId) {
+  return getPlotCardLayout().hidden.includes(cardId);
+}
+
+function shouldDrawPlot(plotId) {
+  const card = plotCardForPlotElement(plotId);
+  if (!card || !card.dataset.cardId) return true;
+  return !isPlotCardClosed(card.dataset.cardId);
+}
+
+function plotIdsInCard(card) {
+  if (!card) return [];
+  return Array.from(card.querySelectorAll("[id^='plot-']"))
+    .map((el) => el.id)
+    .filter((id) => id.startsWith("plot-"));
+}
+
+function purgePlotElementsInCard(card) {
+  plotIdsInCard(card).forEach((id) => {
+    const el = document.getElementById(id);
+    if (el && el.data) Plotly.purge(id);
+  });
+}
+
+function plotCardTitle(cardId) {
+  const card = plotCardElement(cardId);
+  const heading = card?.querySelector(".plot-card-header h3, h3");
+  return heading ? heading.textContent.trim() : cardId;
+}
+
+function applyPlotCardClosedState() {
+  document.querySelectorAll("#interactive-plot-cards .plot-card[data-card-id]").forEach((card) => {
+    card.classList.toggle("plot-card-closed", isPlotCardClosed(card.dataset.cardId));
+  });
+  updatePlotRestoreBar();
+}
+
+function applyPlotCardOrder() {
+  const container = document.getElementById("interactive-plot-cards");
+  if (!container) return;
+  const layout = getPlotCardLayout();
+  const order = layout.order || DEFAULT_PLOT_CARD_ORDER;
+  const cards = new Map();
+  container.querySelectorAll(".plot-card[data-card-id]").forEach((card) => {
+    cards.set(card.dataset.cardId, card);
+  });
+  order.forEach((cardId) => {
+    const card = cards.get(cardId);
+    if (card) {
+      container.appendChild(card);
+      cards.delete(cardId);
+    }
+  });
+  cards.forEach((card) => container.appendChild(card));
+}
+
+function savePlotCardOrderFromDom() {
+  const container = document.getElementById("interactive-plot-cards");
+  if (!container) return;
+  const order = Array.from(container.querySelectorAll(".plot-card[data-card-id]"))
+    .map((card) => card.dataset.cardId);
+  const layout = getPlotCardLayout();
+  layout.order = order;
+  savePlotCardLayout(layout);
+}
+
+function updatePlotRestoreBar() {
+  const bar = document.getElementById("plot-restore-bar");
+  if (!bar) return;
+  bar.innerHTML = "";
+  const hidden = getPlotCardLayout().hidden;
+  if (!hidden.length) {
+    bar.style.display = "none";
+    return;
+  }
+  bar.style.display = "";
+  const label = document.createElement("strong");
+  label.textContent = "Hidden graphs: ";
+  bar.appendChild(label);
+  hidden.forEach((cardId) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "plot-restore-btn";
+    btn.textContent = plotCardTitle(cardId);
+    btn.addEventListener("click", () => restorePlotCard(cardId));
+    bar.appendChild(btn);
+  });
+}
+
+function closePlotCard(cardId) {
+  const layout = getPlotCardLayout();
+  if (!layout.hidden.includes(cardId)) layout.hidden.push(cardId);
+  savePlotCardLayout(layout);
+  const card = plotCardElement(cardId);
+  if (card) {
+    card.classList.add("plot-card-closed");
+    purgePlotElementsInCard(card);
+  }
+  updatePlotRestoreBar();
+  linkTimePlotZoom(activeTimePlotIds(plotFilterInfo.session === "moving"));
+}
+
+function restorePlotCard(cardId) {
+  const layout = getPlotCardLayout();
+  layout.hidden = layout.hidden.filter((id) => id !== cardId);
+  savePlotCardLayout(layout);
+  const card = plotCardElement(cardId);
+  if (card) card.classList.remove("plot-card-closed");
+  updatePlotRestoreBar();
+  rerenderPositionPlots();
+}
+
+function getDragAfterElement(container, y) {
+  const cards = Array.from(container.querySelectorAll(".plot-card:not(.plot-card-dragging)"));
+  let closest = { offset: Number.NEGATIVE_INFINITY, element: null };
+  cards.forEach((child) => {
+    const box = child.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+    if (offset < 0 && offset > closest.offset) {
+      closest = { offset, element: child };
+    }
+  });
+  return closest.element;
+}
+
+function enhancePlotCard(card) {
+  if (card.dataset.chromeInit === "1") return;
+  card.dataset.chromeInit = "1";
+  const cardId = card.dataset.cardId;
+  if (!cardId) return;
+
+  const h3 = card.querySelector(":scope > h3");
+  if (!h3) return;
+
+  const header = document.createElement("div");
+  header.className = "plot-card-header";
+
+  const handle = document.createElement("span");
+  handle.className = "plot-card-drag-handle";
+  handle.title = "Drag to reorder";
+  handle.textContent = "⋮⋮";
+  handle.draggable = true;
+  handle.addEventListener("dragstart", (event) => {
+    draggedPlotCard = card;
+    card.classList.add("plot-card-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", cardId);
+  });
+  handle.addEventListener("dragend", () => {
+    card.classList.remove("plot-card-dragging");
+    draggedPlotCard = null;
+  });
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "plot-card-close";
+  closeBtn.title = "Close graph";
+  closeBtn.setAttribute("aria-label", "Close graph");
+  closeBtn.textContent = "×";
+  closeBtn.addEventListener("click", () => closePlotCard(cardId));
+
+  header.appendChild(handle);
+  header.appendChild(h3);
+  header.appendChild(closeBtn);
+  card.insertBefore(header, card.firstChild);
+}
+
+function initPlotCardChrome() {
+  const container = document.getElementById("interactive-plot-cards");
+  if (!container) return;
+
+  container.querySelectorAll(".plot-card[data-card-id]").forEach(enhancePlotCard);
+
+  if (!plotCardChromeInitialized) {
+    plotCardChromeInitialized = true;
+    container.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (!draggedPlotCard) return;
+      const after = getDragAfterElement(container, event.clientY);
+      if (after == null) {
+        container.appendChild(draggedPlotCard);
+      } else if (after !== draggedPlotCard) {
+        container.insertBefore(draggedPlotCard, after);
+      }
+    });
+    container.addEventListener("drop", (event) => {
+      event.preventDefault();
+      if (draggedPlotCard) {
+        draggedPlotCard.classList.remove("plot-card-dragging");
+        draggedPlotCard = null;
+      }
+      savePlotCardOrderFromDom();
+    });
+  }
+
+  applyPlotCardOrder();
+  applyPlotCardClosedState();
+}
+
+function drawPlotIfOpen(plotId, traces, layout, config) {
+  if (!shouldDrawPlot(plotId)) return Promise.resolve();
+  return drawPlot(plotId, traces, layout, config);
+}
+
+function plotLatencyDistributionIfOpen(elementId, dist) {
+  if (!shouldDrawPlot(elementId)) return;
+  plotLatencyDistribution(elementId, dist);
+}
+
+function plotAgeCorrectionChartIfOpen(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey) {
+  if (!shouldDrawPlot(elementId)) return;
+  plotAgeCorrectionChart(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey);
+}
 
 function removeLegacy2d3dPlot() {
   document.querySelectorAll(".plot-card h3").forEach((heading) => {
@@ -852,12 +1197,18 @@ function yAxisLayoutKey(trace) {
   return id === "y" ? "yaxis" : "yaxis" + id.slice(1);
 }
 
+function isCategoricalYAxis(plotId, axisKey) {
+  const el = document.getElementById(plotId);
+  if (!el || !el.layout) return false;
+  const axis = el.layout[axisKey] || {};
+  return axis.tickmode === "array" && Array.isArray(axis.tickvals) && axis.tickvals.length <= 25;
+}
+
 function shouldRescaleYForPlot(plotId) {
   if (plotId === "plot-solution-latency") return false;
   const el = document.getElementById(plotId);
   if (!el || !el.layout) return true;
-  const yaxis = el.layout.yaxis || {};
-  return !(yaxis.tickmode === "array" && Array.isArray(yaxis.tickvals) && yaxis.tickvals.length <= 25);
+  return !isCategoricalYAxis(plotId, "yaxis");
 }
 
 function yRangeUsesToZero(plotId, axisKey) {
@@ -895,6 +1246,7 @@ function buildYRangeUpdates(plotId, xRange) {
 
   const updates = {};
   Object.keys(byAxis).forEach((axisKey) => {
+    if (isCategoricalYAxis(plotId, axisKey)) return;
     let min = byAxis[axisKey].min;
     let max = byAxis[axisKey].max;
     if (!Number.isFinite(min) || !Number.isFinite(max)) return;
@@ -1069,6 +1421,11 @@ function applySessionPlotVisibility(isMoving) {
     const heading = heightCard.closest(".plot-card")?.querySelector("h3");
     if (heading) heading.textContent = isMoving ? "Height" : "Height Error";
   }
+  const heightSigmaCard = document.getElementById("plot-height-sigma");
+  if (heightSigmaCard) {
+    const heading = heightSigmaCard.closest(".plot-card")?.querySelector("h3");
+    if (heading) heading.textContent = isMoving ? "Height and Sigma" : "Height Error and Sigma";
+  }
 }
 
 function sigma3dSeries(points) {
@@ -1117,6 +1474,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const isMoving = filterInfo.session === "moving";
   applySessionPlotVisibility(isMoving);
+  initPlotCardChrome();
 
   purgeAllPlots();
 
@@ -1142,7 +1500,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const commonLayout = timePlotLayout(axis.layout, mode);
 
-  drawPlot("plot-solution-latency", [
+  drawPlotIfOpen("plot-solution-latency", [
     {
       x: solX,
       y: solPoints.map((p) => p.solution),
@@ -1168,16 +1526,32 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     yaxis2: latencyYAxis({ overlaying: "y", side: "right", automargin: true })
   });
 
-  plotLatencyDistribution("plot-latency-dist", latencyDistribution(solPoints));
+  plotLatencyDistributionIfOpen("plot-latency-dist", latencyDistribution(solPoints));
 
-  drawPlot("plot-sv", [
+  drawPlotIfOpen("plot-sv", [
     { x: solX, y: solPoints.map((p) => p.tracked), name: "Tracked", mode: "lines" },
-    { x: solX, y: solPoints.map((p) => p.used), name: "Used", mode: "lines" }
+    { x: solX, y: solPoints.map((p) => p.used), name: "Used", mode: "lines" },
+    {
+      x: solX,
+      y: solPoints.map((p) => p.solution),
+      name: "Solution Type",
+      mode: "lines",
+      yaxis: "y2",
+      line: { color: SOLUTION_TYPE_LINE_COLOR, width: 2.5 },
+      marker: { color: SOLUTION_TYPE_LINE_COLOR }
+    }
   ], {
     ...commonLayout,
+    margin: { ...commonLayout.margin, r: 100 },
     xaxis: solAxis.layout,
     title: "SVs Used and Tracked",
-    yaxis: { title: "SV Count" }
+    yaxis: { title: "SV Count" },
+    yaxis2: {
+      ...solutionYAxis(solPoints),
+      overlaying: "y",
+      side: "right",
+      automargin: true
+    }
   });
 
   const heightTraces = [
@@ -1201,10 +1575,32 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     },
     legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   };
-  drawPlot("plot-height-error", heightTraces, heightLayout);
+  drawPlotIfOpen("plot-height-error", heightTraces, heightLayout).then(() => {
+    attachOverlayAxisLegendSync("plot-height-error", {
+      yaxis2: { title: "Latency (s)", traces: ["Latency (s)"] },
+      yaxis3: { title: "VDOP", traces: ["VDOP"] }
+    });
+  });
+
+  drawPlotIfOpen("plot-height-sigma", [
+    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up"),
+    coloredLine(x, vSigma, "V Sigma", "up", { yaxis: "y2", line: { dash: "dot" } })
+  ], {
+    ...commonLayout,
+    margin: { ...commonLayout.margin, r: 50 },
+    title: isMoving ? "Height and Sigma" : "Height Error and Sigma",
+    yaxis: { title: isMoving ? "Height (m)" : "Height Error (m)", zeroline: !isMoving },
+    yaxis2: {
+      title: "V Sigma (m)",
+      overlaying: "y",
+      side: "right",
+      rangemode: "tozero",
+      showgrid: false
+    }
+  });
 
   if (!isMoving) {
-  drawPlot("plot-enu", [
+  drawPlotIfOpen("plot-enu", [
     coloredLine(x, north, "North Error", "north"),
     coloredLine(x, east, "East Error", "east"),
     coloredLine(x, up, "Height Error", "up"),
@@ -1217,7 +1613,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     yaxis2: latencyYAxis({ overlaying: "y", side: "right" })
   });
 
-  drawPlot("plot-enu-sigma", [
+  drawPlotIfOpen("plot-enu-sigma", [
     coloredLine(x, err2d, "H Error", "d2"),
     coloredLine(x, up, "U Error", "up"),
     coloredLine(x, horizontalSigma(points), "H Sigma", "d2", { line: { dash: "dot" } }),
@@ -1234,7 +1630,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const usedSv = points.map((p) => (Number.isFinite(p.used) ? p.used : null));
   const maxUsedSv = Math.max(1, ...usedSv.filter(Number.isFinite));
-  drawPlot("plot-ne-scatter", [{
+  drawPlotIfOpen("plot-ne-scatter", [{
     x: points.map((p) => p.e),
     y: points.map((p) => p.n),
     mode: "markers",
@@ -1255,7 +1651,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const cN = cumulativePercent(north);
   const cE = cumulativePercent(east);
   const cU = cumulativePercent(up);
-  drawPlot("plot-cumulative", [
+  drawPlotIfOpen("plot-cumulative", [
     coloredLine(cN.x, cN.y, "North Cumulative", "north"),
     coloredLine(cE.x, cE.y, "East Cumulative", "east"),
     coloredLine(cU.x, cU.y, "Height Cumulative", "up")
@@ -1271,41 +1667,50 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const showDop1 = document.getElementById("show-dop-1d").checked;
   const showDop2 = document.getElementById("show-dop-2d").checked;
   const showDop3 = document.getElementById("show-dop-3d").checked;
+  const showSol1 = document.getElementById("show-sol-1d").checked;
+  const showSol2 = document.getElementById("show-sol-2d").checked;
+  const showSol3 = document.getElementById("show-sol-3d").checked;
 
-  drawPlot("plot-sigma-1d", [
+  drawPlotIfOpen("plot-sigma-1d", [
     coloredLine(x, vSigma, "V Sigma", "up"),
-    ...withDopTraces(showDop1, x, points)
+    ...withDopTraces(showDop1, x, points),
+    ...withSolutionTypeTrace(showSol1, x, points)
   ], {
     ...commonLayout,
+    margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(showDop1, showSol1) },
     title: "1D Sigma (Vertical)",
     yaxis: { title: "Sigma (m)", rangemode: "tozero" },
-    yaxis2: { title: "DOP", overlaying: "y", side: "right", showgrid: false }
+    ...sigmaPlotOverlayAxes(showDop1, showSol1, points)
   });
 
-  drawPlot("plot-sigma-2d", [
+  drawPlotIfOpen("plot-sigma-2d", [
     coloredLine(x, hSigma, "H Sigma", "d2"),
-    ...withDopTraces(showDop2, x, points)
+    ...withDopTraces(showDop2, x, points),
+    ...withSolutionTypeTrace(showSol2, x, points)
   ], {
     ...commonLayout,
+    margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(showDop2, showSol2) },
     title: "2D Sigma (Horizontal)",
     yaxis: { title: "Sigma (m)", rangemode: "tozero" },
-    yaxis2: { title: "DOP", overlaying: "y", side: "right", showgrid: false }
+    ...sigmaPlotOverlayAxes(showDop2, showSol2, points)
   });
 
-  drawPlot("plot-sigma-3d", [
+  drawPlotIfOpen("plot-sigma-3d", [
     coloredLine(x, s3d, "3D Sigma", "d3"),
-    ...withDopTraces(showDop3, x, points)
+    ...withDopTraces(showDop3, x, points),
+    ...withSolutionTypeTrace(showSol3, x, points)
   ], {
     ...commonLayout,
+    margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(showDop3, showSol3) },
     title: "3D Sigma",
     yaxis: { title: "Sigma (m)", rangemode: "tozero" },
-    yaxis2: { title: "DOP", overlaying: "y", side: "right", showgrid: false }
+    ...sigmaPlotOverlayAxes(showDop3, showSol3, points)
   });
 
   if (!isMoving) {
   const age = ageCorrectionSeries(points);
   const ageBins = binAgeCorrectionRows(age.rows, 1);
-  plotAgeCorrectionChart(
+  plotAgeCorrectionChartIfOpen(
     "plot-age-corr-1d",
     "1D Error and Sigma vs Age of Corrections",
     ageBins,
@@ -1313,7 +1718,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     "1D Error |U|", "1D Sigma (V)",
     "up"
   );
-  plotAgeCorrectionChart(
+  plotAgeCorrectionChartIfOpen(
     "plot-age-corr-2d",
     "2D Error and Sigma vs Age of Corrections",
     ageBins,
@@ -1321,7 +1726,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     "2D Error (H)", "2D Sigma (H)",
     "d2"
   );
-  plotAgeCorrectionChart(
+  plotAgeCorrectionChartIfOpen(
     "plot-age-corr-3d",
     "3D Error and Sigma vs Age of Corrections",
     ageBins,
@@ -1332,6 +1737,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   }
 
   linkTimePlotZoom(activeTimePlotIds(isMoving));
+  applyPlotCardClosedState();
 
   const filterMode = filterInfo.filter;
   const typesShown = solutionTypesInData(points, solPoints);
@@ -1368,6 +1774,9 @@ function attachPlotControlListeners() {
   document.getElementById("show-dop-1d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-dop-2d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-dop-3d").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-sol-1d").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-sol-2d").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-sol-3d").addEventListener("change", rerenderPositionPlots);
 }
 
 function setPlotStatus(message, state) {
@@ -1413,6 +1822,7 @@ function loadInteractivePosition() {
     return;
   }
   removeLegacy2d3dPlot();
+  initPlotCardChrome();
   setPlotStatus("Loading interactive plot data...", "loading");
 
   const fetchStep = (label, url, optional) => {
