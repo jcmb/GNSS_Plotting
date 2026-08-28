@@ -98,6 +98,14 @@ const TRACE_NAME_TO_COLOR = {
   "H Error": "d2",
   "H Sigma": "d2",
   "V Sigma": "up",
+  "North velocity": "north",
+  "East velocity": "east",
+  "Up velocity": "up",
+  "vLat": "north",
+  "vLon": "east",
+  "vHgt": "up",
+  "Horizontal speed": "d2",
+  "3D speed": "d3",
   "North Cumulative": "north",
   "East Cumulative": "east",
   "Height Cumulative": "up",
@@ -279,6 +287,9 @@ function parsePositionCsv(text, isMoving) {
         lat: Number(f[10]),
         lon: Number(f[11]),
         absHeight: Number(f[12]),
+        vLat: Number(f[13]),
+        vLon: Number(f[14]),
+        vHgt: Number(f[15]),
         n: 0,
         e: 0,
         u: Number(f[12]),
@@ -617,6 +628,32 @@ function verticalSigma(points) {
   return points.map((p) => (Number.isFinite(p.vprec) ? p.vprec : null));
 }
 
+function velocitySeries(points) {
+  const vn = [];
+  const ve = [];
+  const vu = [];
+  const speedH = [];
+  const speed3d = [];
+
+  for (let i = 0; i < points.length; i += 1) {
+    const { vLat, vLon, vHgt } = points[i];
+    vn.push(Number.isFinite(vLat) ? vLat : null);
+    ve.push(Number.isFinite(vLon) ? vLon : null);
+    vu.push(Number.isFinite(vHgt) ? vHgt : null);
+    if (Number.isFinite(vLat) && Number.isFinite(vLon)) {
+      speedH.push(Math.hypot(vLat, vLon));
+    } else {
+      speedH.push(null);
+    }
+    if (Number.isFinite(vLat) && Number.isFinite(vLon) && Number.isFinite(vHgt)) {
+      speed3d.push(Math.hypot(vLat, vLon, vHgt));
+    } else {
+      speed3d.push(null);
+    }
+  }
+  return { vn, ve, vu, speedH, speed3d };
+}
+
 function d2(points) {
   return points.map((p) => Math.sqrt(p.n * p.n + p.e * p.e));
 }
@@ -868,6 +905,8 @@ const POSITION_TIME_PLOT_IDS = [
 const MOVING_POSITION_TIME_PLOT_IDS = [
   "plot-height-error",
   "plot-height-sigma",
+  "plot-velocity-neu",
+  "plot-velocity-speed",
   "plot-sigma-1d",
   "plot-sigma-2d",
   "plot-sigma-3d"
@@ -904,6 +943,8 @@ const DEFAULT_PLOT_CARD_ORDER = [
   "plot-sv",
   "plot-height-error",
   "plot-height-sigma",
+  "plot-velocity-neu",
+  "plot-velocity-speed",
   "plot-enu",
   "plot-enu-sigma",
   "plot-ne-scatter",
@@ -1450,6 +1491,9 @@ function applySessionPlotVisibility(isMoving) {
   document.querySelectorAll(".plot-static-only").forEach((el) => {
     el.style.display = isMoving ? "none" : "";
   });
+  document.querySelectorAll(".plot-moving-only").forEach((el) => {
+    el.style.display = isMoving ? "" : "none";
+  });
   const heightCard = document.getElementById("plot-height-error");
   if (heightCard) {
     const heading = heightCard.closest(".plot-card")?.querySelector("h3");
@@ -1633,6 +1677,27 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     }
   });
 
+  if (isMoving) {
+    const vel = velocitySeries(points);
+    drawPlotIfOpen("plot-velocity-neu", [
+      coloredLine(x, vel.vn, "vLat", "north"),
+      coloredLine(x, vel.ve, "vLon", "east"),
+      coloredLine(x, vel.vu, "vHgt", "up")
+    ], {
+      ...commonLayout,
+      title: "Velocity (NEU)",
+      yaxis: { title: "Velocity (m/s)" }
+    });
+    drawPlotIfOpen("plot-velocity-speed", [
+      coloredLine(x, vel.speedH, "Horizontal speed", "d2"),
+      coloredLine(x, vel.speed3d, "3D speed", "d3", { line: { dash: "dot" } })
+    ], {
+      ...commonLayout,
+      title: "Speed",
+      yaxis: { title: "Speed (m/s)", rangemode: "tozero" }
+    });
+  }
+
   if (!isMoving) {
   drawPlotIfOpen("plot-enu", [
     coloredLine(x, north, "North Error", "north"),
@@ -1785,7 +1850,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     : "";
   let statusNote = filterNote + viewFilterNote;
   if (isMoving) {
-    statusNote += " Moving session — height and precision plots only.";
+    statusNote += " Moving session — velocity, height, and precision plots.";
   } else {
     statusNote += " Mean computed from: " + meanTypeLabel(filterInfo) + ".";
     statusNote += solutionPoints.length
