@@ -25,7 +25,7 @@ Installation
 
 copy the files from www to a location on the web server
 copy cgi-bin into cgi-bin/TrackingPlot on the web server, make all the files executable (chmod +x)
-copy cgi-bin/antenna_common.js into the web server libraries directory as antenna_common.js
+ensure antenna_common.js is deployed alongside the TrackingPlot pages (same directory as the .shtml files)
 copy scripts/cleanup_data_results.sh to the server (for example /usr/local/lib/trackingplot/scripts/) and make it executable
 install scripts/cleanup_data_results.cron on the server to run the cleanup daily (see the file for install notes)
 copy scripts/cleanup_gnss_backup.sh to the server and make it executable
