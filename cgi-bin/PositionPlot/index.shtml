@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250827c"></script>
+<script src="interactive_plot.js?v=20250828a"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -205,15 +205,46 @@
     color: #333;
     line-height: 1.5;
   }
-  .report-location-map {
+  .report-location-map-wrap {
+    position: relative;
     width: 100%;
     height: 360px;
     border: 1px solid #c8c8c8;
     border-radius: 6px;
+    overflow: hidden;
+  }
+  .report-location-map {
+    width: 100%;
+    height: 100%;
+    border: 0;
     display: block;
   }
+  .report-location-map-shield {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    text-align: center;
+    background: rgba(255, 255, 255, 0.01);
+    color: #444;
+    font-size: 0.9em;
+    cursor: pointer;
+    user-select: none;
+  }
+  .report-location-map-shield span {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #c8c8c8;
+    border-radius: 6px;
+    padding: 8px 12px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  }
+  .report-location-map-wrap.is-active .report-location-map-shield {
+    display: none;
+  }
 </style>
-<script src="report_tables.js?v=20250817a"></script>
+<script src="report_tables.js?v=20250828a"></script>
 </head>
 <body onload="loadReportTables(); loadInteractivePosition();">
 <h1>Results for: 
@@ -250,6 +281,7 @@ Location: <!--#include virtual="kml.html" -->
 <label for="axis-mode">X axis mode:</label>
 <select id="axis-mode">
   <option value="local">Local time</option>
+  <option value="utc">UTC time</option>
   <option value="seconds">Seconds</option>
   <option value="gps">GPS</option>
 </select>

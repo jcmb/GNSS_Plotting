@@ -509,12 +509,51 @@ function formatLocalTime(unixSec) {
   return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
 }
 
+function formatUtcTime(unixSec) {
+  const d = new Date(unixSec * 1000);
+  const pad = (n) => String(n).padStart(2, "0");
+  return pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds());
+}
+
+function utcPlotDate(unixSec) {
+  const d = new Date(unixSec * 1000);
+  return new Date(d.getTime() + d.getTimezoneOffset() * 60000);
+}
+
+function usesDateTimeAxis(mode) {
+  return mode === "local" || mode === "utc";
+}
+
+function dateTimeAxisLayout(points, mode) {
+  const firstT = points.length ? points[0].t : 0;
+  if (mode === "utc") {
+    return {
+      x: points.map((p) => utcPlotDate(p.t)),
+      layout: {
+        title: "UTC Time (" + formatUtcTime(firstT) + ")",
+        type: "date",
+        tickformat: "%H:%M:%S",
+        hoverformat: "%Y-%m-%d %H:%M:%S"
+      }
+    };
+  }
+  return {
+    x: points.map((p) => new Date(p.t * 1000)),
+    layout: {
+      title: "Local Time (" + formatLocalTime(firstT) + ")",
+      type: "date",
+      tickformat: "%H:%M:%S",
+      hoverformat: "%Y-%m-%d %H:%M:%S"
+    }
+  };
+}
+
 function timePlotLayout(xaxisLayout, mode) {
   return {
     margin: {
       l: 60,
       r: 30,
-      t: mode === "local" ? 58 : 50,
+      t: usesDateTimeAxis(mode) ? 58 : 50,
       b: 45
     },
     xaxis: xaxisLayout,
@@ -562,15 +601,10 @@ function axisData(points, mode, timeOrigin) {
       layout: gpsAxisLayout(points, x)
     };
   }
-  return {
-    x: points.map((p) => new Date(p.t * 1000)),
-    layout: {
-      title: "Local Time (" + formatLocalTime(points[0].t) + ")",
-      type: "date",
-      tickformat: "%H:%M:%S",
-      hoverformat: "%Y-%m-%d %H:%M:%S"
-    }
-  };
+  if (mode === "utc" || mode === "local") {
+    return dateTimeAxisLayout(points, mode);
+  }
+  return dateTimeAxisLayout(points, "local");
 }
 
 function horizontalSigma(points) {
@@ -1520,7 +1554,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     }
   ], {
     ...timePlotLayout(solAxis.layout, mode),
-    margin: { l: 100, r: 60, t: mode === "local" ? 58 : 50, b: 45 },
+    margin: { l: 100, r: 60, t: usesDateTimeAxis(mode) ? 58 : 50, b: 45 },
     title: "Solution and Latency Combined",
     yaxis: solutionYAxis(solPoints),
     yaxis2: latencyYAxis({ overlaying: "y", side: "right", automargin: true })

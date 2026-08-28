@@ -339,10 +339,52 @@ function renderLocationMap(coords, isMoving) {
   html += ' · <a href="' + escapeHtml(jamUrl) + '" target="_blank" rel="noopener noreferrer">';
   html += "GPS interference map (GPSJam)</a>";
   html += "</p>";
+  html += '<div class="report-location-map-wrap">';
   html += '<iframe class="report-location-map" title="Position map" loading="lazy"';
   html += ' src="' + escapeHtml(osmUrl) + '"></iframe>';
+  html += '<div class="report-location-map-shield" role="button" tabindex="0"';
+  html += ' aria-label="Click to interact with map. Page scroll works until the map is activated.">';
+  html += "<span>Click map to zoom and pan · scroll page normally otherwise</span>";
+  html += "</div></div>";
   html += "</section>";
   return html;
+}
+
+function attachLocationMapGuards(root) {
+  if (!root) return;
+
+  root.querySelectorAll(".report-location-map-wrap").forEach((wrap) => {
+    const shield = wrap.querySelector(".report-location-map-shield");
+    if (!shield || wrap.dataset.mapGuardInit === "1") return;
+    wrap.dataset.mapGuardInit = "1";
+
+    const activate = () => {
+      wrap.classList.add("is-active");
+    };
+    const deactivate = () => {
+      wrap.classList.remove("is-active");
+    };
+
+    shield.addEventListener("click", activate);
+    shield.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activate();
+      }
+    });
+
+    document.addEventListener("pointerdown", (event) => {
+      if (!wrap.classList.contains("is-active")) return;
+      if (wrap.contains(event.target)) return;
+      deactivate();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && wrap.classList.contains("is-active")) {
+        deactivate();
+      }
+    });
+  });
 }
 
 function referenceModeLabel(text) {
@@ -778,6 +820,7 @@ async function buildReportTables() {
       ? parseTrajectoryCoords(llhMean)
       : parseReferenceCoords(llhMean);
     locationRoot.innerHTML = renderLocationMap(coords, isMoving);
+    attachLocationMapGuards(locationRoot);
   }
 
   let html = "";
