@@ -17,7 +17,7 @@
 <div id="main-content">
 
 <script src="/libraries/jquery-1.10.2.min.js"></script>
-<script src="/libraries/antenna_common.js"></script>
+<script src="antenna_common.js"></script>
 <script src="/libraries/highcharts.js"></script>
 <script src="/libraries/highcharts-more.js"></script>
 <script src="/libraries/exporting.js"></script>
