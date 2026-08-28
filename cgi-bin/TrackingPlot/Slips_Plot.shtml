@@ -31,10 +31,11 @@
 
 <!--#include virtual="Buttons.html" -->
 <script>
-initAntennaPage("antenna-selector", function(antennas, antenna) {
+initAntennaPage("antenna-selector", function(antennas, antenna, compareMode) {
     plotAntennas = antennas;
     plotAntenna = antenna;
-    create_Buttons("SLIPS", antennas, antenna);
+    plotCompareMode = compareMode;
+    create_Buttons("SLIPS", antennas, compareMode ? "0" : antenna);
 
     var System=getURLParameter("SYSTEM")
     var Freq=getURLParameter("FREQ")
@@ -62,21 +63,71 @@ initAntennaPage("antenna-selector", function(antennas, antenna) {
 
 var plotAntennas = ["0"];
 var plotAntenna = "0";
+var plotCompareMode = false;
 
 function toRadians (angle) {
   return angle * (Math.PI / 180);
 }
 
+function buildSlipSeries(rows) {
+    var lastSlip = [];
+    for (var i = 0; i <= 32; i++) {
+        lastSlip[i] = -1;
+    }
+    var slips = [];
+    for (var az = 0; az <= 359; az++) {
+        slips[az] = [];
+        for (var elev = 0; elev <= 90; elev++) {
+            slips[az][elev] = 0;
+        }
+    }
+    var totalSlips = 0;
+    rows.forEach(function(row) {
+        var sv = row.sv - 1;
+        var currentSlip = row.slip;
+        var elev = row.elev;
+        var az = row.az;
+        if (az === 360) {
+            az = 0;
+        }
+        if (lastSlip[sv] !== -1 && lastSlip[sv] !== currentSlip &&
+            Math.abs(lastSlip[sv] - currentSlip) <= 5) {
+            slips[az][elev]++;
+            totalSlips++;
+        }
+        lastSlip[sv] = currentSlip;
+    });
+
+    var data = [];
+    for (az = 0; az <= 359; az++) {
+        for (elev = 0; elev <= 90; elev++) {
+            if (slips[az][elev]) {
+                data.push({
+                    x: Math.sin(toRadians(az)) * (90 - elev),
+                    y: Math.cos(toRadians(az)) * (90 - elev),
+                    Elev: elev,
+                    Az: az,
+                    Slips: slips[az][elev]
+                });
+            }
+        }
+    }
+    return { data: data, totalSlips: totalSlips };
+}
+
 function create_plot(System,Freq,Signal) {
 //    $("body").css("cursor", "progress");
     $("#status").text("Processing")
+    if (plotCompareMode && isTripleAntennaLayout(plotAntennas)) {
+        create_compare_plot(System, Freq, Signal);
+        return;
+    }
 
-    var options = {
+    var options = interactiveChartOptions({
         chart: {
             renderTo: 'container',
             type: 'scatter',
             markersize: 1,
-            zoomType:"xy",
             animation:false,
             height: 600,
             width: 600,
@@ -152,7 +203,7 @@ function create_plot(System,Freq,Signal) {
             }
         },
 
-        }
+        });
 
     series_data=[];
     options.series=[]
@@ -318,6 +369,94 @@ function create_plot(System,Freq,Signal) {
         }
     })
   }
+
+function create_compare_plot(System, Freq, Signal) {
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: 'container',
+            type: 'scatter',
+            animation: false,
+            height: 600,
+            width: 600
+        },
+        legend: { enabled: true },
+        title: {
+            text: 'Slips Compare (' + System + ' ' + Freq + '-' + Signal + ')'
+        },
+        xAxis: {
+            min: -90,
+            max: 90,
+            labels: { enabled: false },
+            title: { enabled: false }
+        },
+        yAxis: {
+            min: -90,
+            max: 90,
+            labels: { enabled: false },
+            title: { enabled: false }
+        },
+        tooltip: {
+            formatter: function() {
+                return '<b>' + this.series.name + '</b><br/>' +
+                    'Slips:' + this.point.Slips + ' Elev: ' + this.point.Elev + ' Az: ' + this.point.Az;
+            }
+        },
+        plotOptions: {
+            series: { turboThreshold: 0 },
+            scatter: { marker: { radius: 3 } }
+        },
+        series: []
+    });
+
+    for (var ring = 1; ring <= 4; ring++) {
+        options.series.push({
+            name: 'Ring ' + ring,
+            showInLegend: false,
+            enableMouseTracking: false,
+            marker: { enabled: false },
+            data: []
+        });
+    }
+
+    var antIds = compareAntennaIds(plotAntennas);
+    antIds.forEach(function(antId) {
+        options.series.push({
+            name: antennaLabel(antId),
+            color: antennaColor(antId),
+            marker: { radius: 3 },
+            data: []
+        });
+    });
+
+    var requests = antIds.map(function(antId, index) {
+        return loadBandSnr(plotAntennas, antId, System, Freq, Signal).then(function(rows) {
+            return { index: index, rows: rows };
+        });
+    });
+
+    $("#status").text("Loading compare data");
+    whenAll(requests).done(function(results) {
+        var totalSlips = 0;
+        results.forEach(function(result) {
+            var built = buildSlipSeries(result.rows);
+            options.series[4 + result.index].data = built.data;
+            totalSlips += built.totalSlips;
+        });
+
+        for (var Az = 0; Az <= 359; Az++) {
+            options.series[0].data.push({ x: Math.sin(toRadians(Az)) * 80, y: Math.cos(toRadians(Az)) * 80 });
+            options.series[1].data.push({ x: Math.sin(toRadians(Az)) * 60, y: Math.cos(toRadians(Az)) * 60 });
+            options.series[2].data.push({ x: Math.sin(toRadians(Az)) * 30, y: Math.cos(toRadians(Az)) * 30 });
+            options.series[3].data.push({ x: Math.sin(toRadians(Az)) * 90, y: Math.cos(toRadians(Az)) * 90 });
+        }
+
+        options.title.text = 'Slips Compare (' + System + ' ' + Freq + '-' + Signal + ') Total Slips: ' + totalSlips;
+        new Highcharts.Chart(options);
+        $("#status").text("");
+    }).fail(function() {
+        $("#status").text("Unable to load compare slips data.");
+    });
+}
 
 </script>
 

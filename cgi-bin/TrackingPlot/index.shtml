@@ -34,6 +34,20 @@ Processing is still running. Interactive plots and PNGs will appear when complet
 <br/>
 <a href="SV_Tracking_Plot.shtml">Single SV Tracking</a>
 </div>
+<div id="compare-diff-links" style="display:none;">
+<h2>Compare / Diff (Antennas 0, 1, 2)</h2>
+<a href="SNR_Plot.shtml?MODE=compare">Compare SNR</a>
+<br/>
+<a href="Tracking_Plot.shtml?MODE=compare">Compare Tracking</a>
+<br/>
+<a href="Slips_Plot.shtml?MODE=compare">Compare Slips</a>
+<br/>
+<a href="SV_SNR_Plot.shtml?MODE=compare">Compare Single SV</a>
+<br/>
+<a href="Diff_SNR_Plot.shtml">Diff SNR</a>
+<br/>
+<a href="Diff_Tracking_Plot.shtml">Diff Tracking</a>
+</div>
 </div>
 
 <div id="main-content">
@@ -63,6 +77,9 @@ initAntennaPage("antenna-selector", function(antennas, antenna) {
         var href = $(this).attr("href");
         $(this).attr("href", appendAntennaQuery(href, antenna, antennas));
     });
+    if (isTripleAntennaLayout(antennas)) {
+        $("#compare-diff-links").show();
+    }
 });
 
 function checkProcessingStatus() {

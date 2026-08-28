@@ -197,8 +197,9 @@ $.get(File_Name, function(data) {
 
 }
 
-initAntennaPage("antenna-selector", function(antennas, antenna) {
-    loadTrackedSvButtons(antennas, antenna);
+initAntennaPage("antenna-selector", function(antennas, antenna, compareMode) {
+    plotCompareMode = compareMode;
+    loadTrackedSvButtons(antennas, compareMode ? "0" : antenna);
 });
 
 </script>

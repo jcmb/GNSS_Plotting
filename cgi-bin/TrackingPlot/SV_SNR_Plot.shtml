@@ -26,8 +26,13 @@ var System;
 var Sv;
 var plotAntennas = ["0"];
 var plotAntenna = "0";
+var plotCompareMode = false;
 
 function create_plot(System,SV,Mode) {
+    if (plotCompareMode && isTripleAntennaLayout(plotAntennas)) {
+        create_compare_plot(System, SV, Mode);
+        return;
+    }
 
 
     if (System == "GPS") {
@@ -42,12 +47,11 @@ function create_plot(System,SV,Mode) {
         Max_Bands=2;
         }
 
-    var options = {
+    var options = interactiveChartOptions({
         chart: {
             renderTo: 'container',
             type: 'line',
             markersize: 1,
-            zoomType:"xy",
         },
 
         legend: {
@@ -128,7 +132,7 @@ function create_plot(System,SV,Mode) {
             }
         },
 
-        }
+        });
 
     series_data=[];
     elev_data=[];
@@ -269,9 +273,123 @@ function create_plot(System,SV,Mode) {
         });
     }
 
-initAntennaPage("antenna-selector", function(antennas, antenna) {
+function create_compare_plot(System, SV, Mode) {
+    if (System == "GPS") {
+        Max_Bands = 4;
+    } else if (System == "GLONASS") {
+        Max_Bands = 3;
+    } else if (System == "SBAS") {
+        Max_Bands = 2;
+    } else {
+        Max_Bands = 2;
+    }
+
+    var bandNames = bandNamesForSystem(System, Max_Bands);
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: 'container',
+            type: 'line'
+        },
+        legend: { enabled: true },
+        title: {
+            text: 'SV Compare (' + System + ': ' + SV + ')'
+        },
+        xAxis: {
+            type: 'datetime',
+            title: { text: 'Time' }
+        },
+        yAxis: [
+            {
+                endOnTick: false,
+                title: { text: Mode === "SIGNAL" ? 'Signal' : 'SNR' }
+            },
+            {
+                min: 0,
+                max: 89,
+                tickInterval: 15,
+                opposite: true,
+                title: { text: 'Elevation' }
+            }
+        ],
+        plotOptions: {
+            series: { turboThreshold: 0 }
+        },
+        series: []
+    });
+
+    var antIds = compareAntennaIds(plotAntennas);
+    antIds.forEach(function(antId) {
+        for (var band = 1; band <= Max_Bands; band++) {
+            options.series.push({
+                name: antennaLabel(antId) + ' ' + (bandNames[band - 1] || ('Band ' + band)),
+                color: antennaColor(antId),
+                data: [],
+                yAxis: 0
+            });
+        }
+        options.series.push({
+            name: antennaLabel(antId) + ' Elevation',
+            color: antennaColor(antId),
+            dashStyle: 'ShortDot',
+            marker: { enabled: false },
+            data: [],
+            yAxis: 1,
+            showInLegend: false
+        });
+    });
+
+    var requests = antIds.map(function(antId, antIndex) {
+        return loadSvSnr(plotAntennas, antId, System, SV, Max_Bands).then(function(rows) {
+            return { antIndex: antIndex, rows: rows };
+        });
+    });
+
+    whenAll(requests).done(function(results) {
+        results.forEach(function(result) {
+            var elevSeriesIndex = (result.antIndex * (Max_Bands + 1)) + Max_Bands;
+            var lastSlip = [];
+            for (var i = 1; i <= Max_Bands; i++) {
+                lastSlip[i] = -1;
+            }
+            result.rows.forEach(function(row) {
+                options.series[elevSeriesIndex].data.push({
+                    x: row.epoch,
+                    y: row.elev
+                });
+                for (var band = 1; band <= Max_Bands; band++) {
+                    var seriesIndex = (result.antIndex * (Max_Bands + 1)) + (band - 1);
+                    var bandData = row.bands[band - 1];
+                    if (!bandData || bandData.snr === null) {
+                        options.series[seriesIndex].data.push({ x: row.epoch, y: null });
+                        continue;
+                    }
+                    var currentSlip = bandData.slip;
+                    var point = {
+                        x: row.epoch,
+                        y: Mode === "SIGNAL" ? band : bandData.snr,
+                        Az: row.az,
+                        SNR: bandData.snr
+                    };
+                    if (lastSlip[band] !== -1 && lastSlip[band] !== currentSlip) {
+                        point.marker = {
+                            symbol: 'url(/images/Sign-Alert-icon.png)'
+                        };
+                    }
+                    options.series[seriesIndex].data.push(point);
+                    lastSlip[band] = currentSlip;
+                }
+            });
+        });
+        new Highcharts.Chart(options);
+    }).fail(function() {
+        $("#container").text("Unable to load compare SV SNR data.");
+    });
+}
+
+initAntennaPage("antenna-selector", function(antennas, antenna, compareMode) {
     plotAntennas = antennas;
     plotAntenna = antenna;
+    plotCompareMode = compareMode;
 
     System=getURLParameter("SYSTEM")
     Sv=getURLParameter("SV")

@@ -31,10 +31,11 @@
 
 <!--#include virtual="Buttons.html" -->
 <script>
-initAntennaPage("antenna-selector", function(antennas, antenna) {
+initAntennaPage("antenna-selector", function(antennas, antenna, compareMode) {
     plotAntennas = antennas;
     plotAntenna = antenna;
-    create_Buttons("TRACKING", antennas, antenna);
+    plotCompareMode = compareMode;
+    create_Buttons("TRACKING", antennas, compareMode ? "0" : antenna);
 
     var System=getURLParameter("SYSTEM")
     var Freq=getURLParameter("FREQ")
@@ -62,10 +63,15 @@ initAntennaPage("antenna-selector", function(antennas, antenna) {
 
 var plotAntennas = ["0"];
 var plotAntenna = "0";
+var plotCompareMode = false;
 
 function create_plot(System,Freq,Signal) {
 //    $("body").css("cursor", "progress");
     $("#status").text("Processing")
+    if (plotCompareMode && isTripleAntennaLayout(plotAntennas)) {
+        create_compare_plot(System, Freq, Signal);
+        return;
+    }
     var Max_SVs = 1
 
     if (System == "GPS") {
@@ -89,12 +95,11 @@ function create_plot(System,Freq,Signal) {
         }
 
 
-    var options = {
+    var options = interactiveChartOptions({
         chart: {
             renderTo: 'container',
             type: 'scatter',
             markersize: 1,
-            zoomType:"xy",
             animation:false,
         },
 
@@ -150,7 +155,7 @@ function create_plot(System,Freq,Signal) {
             }
         },
 
-        }
+        });
 
     series_data=[];
     options.series=[]
@@ -270,6 +275,97 @@ function create_plot(System,Freq,Signal) {
         }
     })
   }
+
+function appendTrackingPoint(series, row, lastSlipState) {
+    var sv = row.sv - 1;
+    var currentSlip = row.slip;
+    var point = {
+        x: row.epoch,
+        y: sv + 1,
+        Elev: row.elev,
+        Az: row.az,
+        SNR: row.snr
+    };
+    if (lastSlipState[sv] !== -1 && lastSlipState[sv] !== currentSlip &&
+        Math.abs(lastSlipState[sv] - currentSlip) <= 5) {
+        point.marker = {
+            symbol: 'url(http://trimbletools.com/Sign-Alert-icon.png)'
+        };
+    }
+    series.data.push(point);
+    lastSlipState[sv] = currentSlip;
+}
+
+function create_compare_plot(System, Freq, Signal) {
+    var limits = trackingLimits(System);
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: 'container',
+            type: 'scatter',
+            animation: false
+        },
+        legend: { enabled: true },
+        title: {
+            text: 'Tracking Compare (' + System + ' ' + Freq + '-' + Signal + ')'
+        },
+        xAxis: {
+            type: 'datetime',
+            title: { text: 'GPS Time' }
+        },
+        yAxis: {
+            min: limits.min,
+            max: limits.max,
+            endOnTick: false,
+            title: { text: 'SV' }
+        },
+        tooltip: {
+            formatter: function() {
+                return '<b>' + this.series.name + '</b><br/>' +
+                    'Elev: ' + this.point.Elev + ' Az: ' + this.point.Az + ' SNR: ' + this.point.SNR;
+            }
+        },
+        plotOptions: {
+            series: { turboThreshold: 0 },
+            scatter: {
+                marker: { radius: 1 }
+            }
+        },
+        series: []
+    });
+
+    var antIds = compareAntennaIds(plotAntennas);
+    antIds.forEach(function(antId) {
+        options.series.push({
+            name: antennaLabel(antId),
+            color: antennaColor(antId),
+            data: []
+        });
+    });
+
+    var requests = antIds.map(function(antId, index) {
+        return loadBandSnr(plotAntennas, antId, System, Freq, Signal).then(function(rows) {
+            return { index: index, rows: rows };
+        });
+    });
+
+    $("#status").text("Loading compare data");
+    whenAll(requests).done(function(results) {
+        results.forEach(function(result) {
+            var lastSlip = [];
+            for (var i = 0; i < limits.max; i++) {
+                lastSlip[i] = -1;
+            }
+            result.rows.forEach(function(row) {
+                appendTrackingPoint(options.series[result.index], row, lastSlip);
+            });
+        });
+        $("#status").text("Creating Plot");
+        new Highcharts.Chart(options);
+        $("#status").text("");
+    }).fail(function() {
+        $("#status").text("Unable to load compare tracking data.");
+    });
+}
 
 </script>
 

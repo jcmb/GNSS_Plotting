@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+   <meta charset="utf-8" />
+   <title>Diff SNR</title>
+</head>
+<body class="page">
+<div class="container">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="./">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content">
+
+<script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="/libraries/antenna_common.js"></script>
+<script src="/libraries/highcharts.js"></script>
+<script src="/libraries/highcharts-more.js"></script>
+<script src="/libraries/exporting.js"></script>
+<h1 id="title">Diff SNR (Ant0 - Ant1): <!--#include virtual="file.html" --></h1>
+<div id="antenna-selector"></div>
+<div id="container"></div>
+
+<!--#include virtual="Buttons.html" -->
+<p/>
+<script>
+var plotAntennas = ["0"];
+var plotAntenna = "0";
+
+initAntennaPage("antenna-selector", function(antennas, antenna) {
+    plotAntennas = antennas;
+    plotAntenna = antenna;
+    if (!isTripleAntennaLayout(antennas)) {
+        $("#container").text("Diff SNR is available only for antennas 0, 1, and 2.");
+        return;
+    }
+    create_Buttons("SNR", antennas, "0");
+
+    var System = getURLParameter("SYSTEM");
+    var Freq = getURLParameter("FREQ");
+    var Signal = getURLParameter("SIGNAL");
+
+    if (System == "null") {
+        System = "GPS";
+    }
+    if (Freq == "null") {
+        Freq = "L1";
+    }
+    if (Signal == "null") {
+        Signal = "CA";
+    }
+
+    create_plot(System, Freq, Signal);
+});
+
+function create_plot(System, Freq, Signal) {
+    $("body").css("cursor", "progress");
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: 'container',
+            defaultSeriesType: 'spline'
+        },
+        title: {
+            text: 'SNR Diff Ant0 - Ant1 (' + System + ' ' + Freq + '-' + Signal + ')'
+        },
+        xAxis: {
+            min: 10,
+            max: 90,
+            title: { text: 'Elevation' }
+        },
+        yAxis: {
+            title: { text: 'SNR Difference (dB)' },
+            plotLines: [{
+                value: 0,
+                color: '#999999',
+                width: 1
+            }]
+        },
+        series: [{
+            name: 'Ant0 - Ant1',
+            color: '#007bff',
+            lineWidth: 2,
+            marker: { enabled: false },
+            data: []
+        }]
+    });
+
+    whenAll([
+        loadBandMean(plotAntennas, "0", System, Freq, Signal),
+        loadBandMean(plotAntennas, "1", System, Freq, Signal)
+    ]).done(function(results) {
+        options.series[0].data = diffMeanSeries(results[0], results[1]);
+        new Highcharts.Chart(options);
+        $("body").css("cursor", "default");
+    }).fail(function() {
+        $("#container").text("Unable to load diff SNR data.");
+        $("body").css("cursor", "default");
+    });
+}
+</script>
+</div>
+</div>
+</div>
+</body>
+</html>

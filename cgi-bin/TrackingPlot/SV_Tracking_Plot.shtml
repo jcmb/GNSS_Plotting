@@ -50,9 +50,14 @@ ogo"> </a>
   }
 
   var Max_Bands = 1
+  var plotCompareMode = false;
 
 
   function create_plot(System,SV) {
+    if (plotCompareMode && isTripleAntennaLayout(trackedAntennas)) {
+        create_compare_plot(System, SV);
+        return;
+    }
 
 
     if (System == "GPS") {
@@ -78,13 +83,11 @@ ogo"> </a>
     $("#status").text("Loading data from server")
 
 
-    var options = {
-
+    var options = interactiveChartOptions({
         chart: {
             renderTo: 'container',
             type: 'scatter',
             markersize: 2,
-            zoomType:"xy",
         },
 
         legend: {
@@ -180,7 +183,7 @@ ogo"> </a>
             }
         },
 
-        }
+        });
 
     elev_data=[];
     options.series=[]
@@ -332,6 +335,119 @@ ogo"> </a>
 
     }
     )
+  }
+
+  function create_compare_plot(System, SV) {
+    if (System == "GPS") {
+        Max_Bands = 4;
+    } else if (System == "GLONASS") {
+        Max_Bands = 4;
+    } else if (System == "GAL" || System == "BDS" || System == "SBAS") {
+        Max_Bands = 2;
+    }
+
+    var bandNames = bandNamesForSystem(System, Max_Bands);
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: 'container',
+            type: 'scatter'
+        },
+        legend: { enabled: true },
+        title: {
+            text: 'SV Tracking Compare (' + System + ': ' + SV + ')'
+        },
+        xAxis: {
+            type: 'datetime',
+            title: { text: 'Time' }
+        },
+        yAxis: [
+            {
+                endOnTick: false,
+                title: { text: 'SNRs' }
+            },
+            {
+                min: 0,
+                max: 89,
+                tickIntervall: 10,
+                opposite: true,
+                title: { text: 'Elevation' }
+            }
+        ],
+        plotOptions: {
+            series: { turboThreshold: 0 },
+            scatter: { marker: { radius: 2 } }
+        },
+        series: []
+    });
+
+    var antIds = compareAntennaIds(trackedAntennas);
+    antIds.forEach(function(antId) {
+        options.series.push({
+            name: antennaLabel(antId) + ' Elevation',
+            color: antennaColor(antId),
+            yAxis: 1,
+            data: []
+        });
+        for (var band = 1; band <= Max_Bands; band++) {
+            options.series.push({
+                name: antennaLabel(antId) + ' ' + (bandNames[band - 1] || ('Band ' + band)),
+                color: antennaColor(antId),
+                yAxis: 0,
+                data: []
+            });
+        }
+    });
+
+    var requests = antIds.map(function(antId, antIndex) {
+        return loadSvSnr(trackedAntennas, antId, System, SV, Max_Bands).then(function(rows) {
+            return { antIndex: antIndex, rows: rows };
+        });
+    });
+
+    $("#status").text("Loading compare data");
+    whenAll(requests).done(function(results) {
+        results.forEach(function(result) {
+            var baseIndex = result.antIndex * (Max_Bands + 1);
+            var lastSlip = [];
+            for (var i = 1; i <= Max_Bands; i++) {
+                lastSlip[i] = -1;
+            }
+            result.rows.forEach(function(row) {
+                options.series[baseIndex].data.push({
+                    x: row.epoch,
+                    y: row.elev,
+                    Az: row.az,
+                    SNR: row.bands[0] ? row.bands[0].snr : null
+                });
+                for (var band = 1; band <= Max_Bands; band++) {
+                    var bandData = row.bands[band - 1];
+                    var series = options.series[baseIndex + band];
+                    if (!bandData || bandData.snr === null) {
+                        series.data.push({ x: row.epoch, y: null });
+                        continue;
+                    }
+                    var currentSlip = bandData.slip;
+                    var point = {
+                        x: row.epoch,
+                        y: bandData.snr,
+                        SNR: bandData.snr
+                    };
+                    if (lastSlip[band] !== -1 && lastSlip[band] !== currentSlip &&
+                        Math.abs(lastSlip[band] - currentSlip) <= 5) {
+                        point.marker = {
+                            symbol: 'url(/images/Sign-Alert-icon.png)'
+                        };
+                    }
+                    series.data.push(point);
+                    lastSlip[band] = currentSlip;
+                }
+            });
+        });
+        new Highcharts.Chart(options);
+        $("#status").text("");
+    }).fail(function() {
+        $("#status").text("Unable to load compare SV tracking data.");
+    });
   }
 
   var System=getURLParameter("SYSTEM")

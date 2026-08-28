@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+   <meta charset="utf-8" />
+   <title>Diff Tracking</title>
+</head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="./">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content">
+
+<script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="/libraries/antenna_common.js"></script>
+<script src="/libraries/highcharts.js"></script>
+<script src="/libraries/highcharts-more.js"></script>
+<script src="/libraries/exporting.js"></script>
+<h1 id="title">Diff Tracking (Ant0 - Ant1): <!--#include virtual="file.html" --></h1>
+<div id="antenna-selector"></div>
+<p/>
+<div id="container"></div>
+<div id="status"></div><br/>
+
+<!--#include virtual="Buttons.html" -->
+<script>
+var plotAntennas = ["0"];
+var plotAntenna = "0";
+
+initAntennaPage("antenna-selector", function(antennas, antenna) {
+    plotAntennas = antennas;
+    plotAntenna = antenna;
+    if (!isTripleAntennaLayout(antennas)) {
+        $("#container").text("Diff Tracking is available only for antennas 0, 1, and 2.");
+        return;
+    }
+    create_Buttons("TRACKING", antennas, "0");
+
+    var System = getURLParameter("SYSTEM");
+    var Freq = getURLParameter("FREQ");
+    var Signal = getURLParameter("SIGNAL");
+
+    if (System == "null") {
+        System = "GPS";
+    }
+    if (Freq == "null") {
+        Freq = "L1";
+    }
+    if (Signal == "null") {
+        Signal = "CA";
+    }
+
+    create_plot(System, Freq, Signal);
+});
+
+function trackingKey(row) {
+    return String(row.epoch) + ":" + String(row.sv);
+}
+
+function create_plot(System, Freq, Signal) {
+    $("#status").text("Loading diff data");
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: 'container',
+            type: 'scatter',
+            animation: false
+        },
+        legend: { enabled: true },
+        title: {
+            text: 'SNR Diff Ant0 - Ant1 (' + System + ' ' + Freq + '-' + Signal + ')'
+        },
+        xAxis: {
+            type: 'datetime',
+            title: { text: 'GPS Time' }
+        },
+        yAxis: {
+            title: { text: 'SNR Difference (dB)' },
+            plotLines: [{
+                value: 0,
+                color: '#999999',
+                width: 1
+            }]
+        },
+        tooltip: {
+            formatter: function() {
+                var extra = this.point.slipDiff ? ' (slip mismatch)' : '';
+                return '<b>SV ' + this.point.sv + '</b><br/>' +
+                    'SNR diff: ' + this.point.y + extra;
+            }
+        },
+        plotOptions: {
+            series: { turboThreshold: 0 },
+            scatter: { marker: { radius: 2 } }
+        },
+        series: [
+            {
+                name: 'SNR diff',
+                color: '#007bff',
+                data: []
+            },
+            {
+                name: 'Slip mismatch',
+                color: '#dc3545',
+                data: []
+            }
+        ]
+    });
+
+    whenAll([
+        loadBandSnr(plotAntennas, "0", System, Freq, Signal),
+        loadBandSnr(plotAntennas, "1", System, Freq, Signal)
+    ]).done(function(results) {
+        var aligned = alignRowsByKey(results[0], results[1], trackingKey);
+        aligned.forEach(function(pair) {
+            var snrDiff = diffNumeric(pair.a.snr, pair.b.snr);
+            if (snrDiff === null) {
+                return;
+            }
+            var slipDiff = pair.a.slip !== pair.b.slip &&
+                Math.abs(pair.a.slip - pair.b.slip) <= 5;
+            var point = {
+                x: pair.a.epoch,
+                y: snrDiff,
+                sv: pair.a.sv,
+                slipDiff: slipDiff
+            };
+            if (slipDiff) {
+                point.marker = {
+                    symbol: 'url(http://trimbletools.com/Sign-Alert-icon.png)'
+                };
+                options.series[1].data.push(point);
+            } else {
+                options.series[0].data.push(point);
+            }
+        });
+        $("#status").text("Creating Plot");
+        new Highcharts.Chart(options);
+        $("#status").text("");
+    }).fail(function() {
+        $("#status").text("Unable to load diff tracking data.");
+    });
+}
+</script>
+</div>
+</div>
+</div>
+</body>
+</html>

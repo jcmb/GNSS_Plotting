@@ -31,10 +31,11 @@ ogo"> </a>
 <!--#include virtual="Buttons.html" -->
 <p/>
 <script>
-initAntennaPage("antenna-selector", function(antennas, antenna) {
+initAntennaPage("antenna-selector", function(antennas, antenna, compareMode) {
     plotAntennas = antennas;
     plotAntenna = antenna;
-    create_Buttons("SNR", antennas, antenna);
+    plotCompareMode = compareMode;
+    create_Buttons("SNR", antennas, compareMode ? "0" : antenna);
 
     var System=getURLParameter("SYSTEM")
     var Freq=getURLParameter("FREQ")
@@ -60,16 +61,21 @@ initAntennaPage("antenna-selector", function(antennas, antenna) {
 
 var plotAntennas = ["0"];
 var plotAntenna = "0";
+var plotCompareMode = false;
 
 function create_plot(System,Freq,Signal) {
     $("body").css("cursor", "progress");
+    if (plotCompareMode && isTripleAntennaLayout(plotAntennas)) {
+        create_compare_plot(System, Freq, Signal);
+        return;
+    }
+
     File_Name=antennaFilePrefix(plotAntennas, plotAntenna) + System + "-" + Freq + "-" + Signal +".MEAN";
 //    console.log(File_Name)
-    var options = {
+    var options = interactiveChartOptions({
         chart: {
             renderTo: 'container',
             defaultSeriesType: 'spline',
-            zoomType:"xy",
         },
         title: {
             text: 'SNRs ( ' + System + " " +Freq + "-" + Signal + ' )'
@@ -148,7 +154,7 @@ function create_plot(System,Freq,Signal) {
                 }
             }
             ]
-        }
+        });
 
     series_data=[];
     series_data[0]=new Array()
@@ -233,6 +239,52 @@ function create_plot(System,Freq,Signal) {
         $("body").css("cursor", "default");
         });
     }
+
+function create_compare_plot(System, Freq, Signal) {
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: 'container',
+            defaultSeriesType: 'spline',
+        },
+        title: {
+            text: 'SNR Compare (' + System + ' ' + Freq + '-' + Signal + ')'
+        },
+        xAxis: {
+            min: 10,
+            max: 90,
+            title: { text: 'Elevation' }
+        },
+        yAxis: {
+            min: 0,
+            title: { text: 'SNR' }
+        },
+        series: []
+    });
+
+    var requests = [];
+    compareAntennaIds(plotAntennas).forEach(function(antId) {
+        requests.push(loadBandMean(plotAntennas, antId, System, Freq, Signal).then(function(rows) {
+            return { id: antId, rows: rows };
+        }));
+    });
+
+    whenAll(requests).done(function(results) {
+        results.forEach(function(result) {
+            options.series.push({
+                name: antennaLabel(result.id),
+                color: antennaColor(result.id),
+                lineWidth: 2,
+                marker: { enabled: false },
+                data: meanSeriesFromRows(result.rows)
+            });
+        });
+        new Highcharts.Chart(options);
+        $("body").css("cursor", "default");
+    }).fail(function() {
+        $("#container").text("Unable to load compare SNR data.");
+        $("body").css("cursor", "default");
+    });
+}
 
 </script>
 </div>

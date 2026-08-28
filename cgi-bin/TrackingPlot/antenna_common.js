@@ -1,6 +1,16 @@
 var trackedAntennas = ["0"];
 var selectedAntenna = "0";
 var RX_PARAM = "RX";
+var MODE_PARAM = "MODE";
+var COMPARE_ANTENNAS = ["0", "1", "2"];
+
+var ANTENNA_COLORS = {
+    "0": "#007bff",
+    "1": "#ff7f0e",
+    "2": "#2ca02c"
+};
+
+var textFileCache = {};
 
 function getURLParameter(name) {
     var match = RegExp(name + '=' + '(.+?)(&|$)').exec(location.search);
@@ -12,6 +22,30 @@ function getURLParameter(name) {
 
 function urlParameterPresent(value) {
     return value && value !== "null";
+}
+
+function isCompareMode() {
+    return getURLParameter(MODE_PARAM) === "compare";
+}
+
+function isTripleAntennaLayout(antennas) {
+    if (!antennas || antennas.length !== 3) {
+        return false;
+    }
+    var sorted = sortAntennaIds(antennas);
+    return sorted[0] === "0" && sorted[1] === "1" && sorted[2] === "2";
+}
+
+function antennaLabel(id) {
+    id = String(id);
+    if (id === "2") {
+        return "Combination (2)";
+    }
+    return "Antenna " + id;
+}
+
+function antennaColor(id) {
+    return ANTENNA_COLORS[String(id)] || "#666666";
 }
 
 function parseAntennaList(data) {
@@ -111,6 +145,23 @@ function bandBaseName(trackedLine, antennaPrefix) {
     return trackedLine;
 }
 
+function currentQueryParts() {
+    return location.search.replace(/^\?/, "").split("&").filter(function(part) {
+        return part.length > 0;
+    });
+}
+
+function stripQueryParams(parts, names) {
+    return parts.filter(function(part) {
+        for (var i = 0; i < names.length; i++) {
+            if (part.indexOf(names[i] + "=") === 0) {
+                return false;
+            }
+        }
+        return true;
+    });
+}
+
 function appendAntennaQuery(url, antenna, antennas) {
     if (!antennas || antennas.length <= 1) {
         return url;
@@ -121,8 +172,32 @@ function appendAntennaQuery(url, antenna, antennas) {
     return url + "?" + RX_PARAM + "=" + encodeURIComponent(antenna);
 }
 
+function buildPlotSearch(antennas, antenna, compare) {
+    var params = stripQueryParams(currentQueryParts(), [RX_PARAM, MODE_PARAM]);
+    if (hasMultipleAntennas(antennas)) {
+        if (compare) {
+            params.push(MODE_PARAM + "=compare");
+        } else {
+            params.push(RX_PARAM + "=" + encodeURIComponent(antenna));
+        }
+    }
+    return params.length ? "?" + params.join("&") : "";
+}
+
 function navigatePlot(url) {
+    if (isCompareMode() && isTripleAntennaLayout(trackedAntennas)) {
+        var base = url.split("?")[0];
+        var extra = url.indexOf("?") >= 0 ? url.split("?")[1] : "";
+        var params = stripQueryParams(extra ? extra.split("&") : [], [RX_PARAM, MODE_PARAM]);
+        params.push(MODE_PARAM + "=compare");
+        location.href = base + "?" + params.join("&");
+        return;
+    }
     location.href = appendAntennaQuery(url, selectedAntenna, trackedAntennas);
+}
+
+function navigateView(antennas, antenna, compare) {
+    location.search = buildPlotSearch(antennas, antenna, compare);
 }
 
 function renderAntennaSelector(containerId, antennas, antenna, onChange) {
@@ -133,44 +208,57 @@ function renderAntennaSelector(containerId, antennas, antenna, onChange) {
     }
 
     container.show();
-    var html = "<p><strong>Antenna:</strong> ";
-    for (var i = 0; i < antennas.length; i++) {
-        var id = String(antennas[i]);
-        var label = "Antenna " + id;
-        if (id === String(antenna)) {
+    var html = "<p><strong>View:</strong> ";
+    var compareMode = isCompareMode();
+    var ids = isTripleAntennaLayout(antennas) ? COMPARE_ANTENNAS : antennas;
+
+    for (var i = 0; i < ids.length; i++) {
+        var id = String(ids[i]);
+        var label = antennaLabel(id);
+        if (!compareMode && id === String(antenna)) {
             html += "<strong>" + label + "</strong> ";
         } else {
             html += "<a href=\"#\" data-antenna=\"" + id + "\">" + label + "</a> ";
         }
     }
+
+    if (isTripleAntennaLayout(antennas)) {
+        if (compareMode) {
+            html += "<strong>Compare</strong>";
+        } else {
+            html += "<a href=\"#\" data-compare=\"1\">Compare</a>";
+        }
+    }
+
     html += "</p>";
     container.html(html);
     container.find("a[data-antenna]").click(function(event) {
         event.preventDefault();
-        onChange($(this).attr("data-antenna"));
+        onChange($(this).attr("data-antenna"), false);
+    });
+    container.find("a[data-compare]").click(function(event) {
+        event.preventDefault();
+        onChange(antenna, true);
     });
 }
 
 function initAntennaPage(containerId, onReady) {
     loadTrackedAntennas(function(antennas) {
         antennas = normalizeAntennaList(antennas);
+        var compareMode = isCompareMode() && isTripleAntennaLayout(antennas);
         var antennaParam = getURLParameter(RX_PARAM);
         var antenna = antennas[0];
-        if (hasMultipleAntennas(antennas) && urlParameterPresent(antennaParam)) {
+        if (!compareMode && hasMultipleAntennas(antennas) && urlParameterPresent(antennaParam)) {
             antenna = antennaParam;
         }
         setAntennaContext(antennas, antenna);
-        renderAntennaSelector(containerId, antennas, antenna, function(newAntenna) {
+        renderAntennaSelector(containerId, antennas, antenna, function(newAntenna, compare) {
             if (!hasMultipleAntennas(antennas)) {
                 return;
             }
-            var params = location.search.replace(/^\?/, "").split("&").filter(function(part) {
-                return part && part.indexOf(RX_PARAM + "=") !== 0;
-            });
-            params.push(RX_PARAM + "=" + encodeURIComponent(newAntenna));
-            location.search = "?" + params.join("&");
+            navigateView(antennas, newAntenna, compare);
         });
-        onReady(antennas, antenna);
+        onReady(antennas, antenna, compareMode);
     });
 }
 
@@ -184,6 +272,275 @@ function trackedLineMatchesAntenna(line, antennas, antenna) {
 
 function svButtonId(line, antennas, antenna) {
     var prefix = antennaFilePrefix(antennas, antenna);
-    var rest = bandBaseName(line, prefix);
-    return rest;
+    return bandBaseName(line, prefix);
+}
+
+function highchartsMajorVersion() {
+    if (typeof Highcharts === "undefined" || !Highcharts.version) {
+        return 7;
+    }
+    return parseInt(String(Highcharts.version).split(".")[0], 10) || 7;
+}
+
+function interactiveChartOptions(overrides) {
+    var major = highchartsMajorVersion();
+    var chart = {
+        resetZoomButton: {
+            theme: {
+                display: "block"
+            }
+        }
+    };
+
+    if (major >= 8) {
+        chart.zooming = { type: "xy" };
+        chart.panning = { enabled: true, type: "xy" };
+        chart.panKey = "shift";
+    } else {
+        chart.zoomType = "xy";
+        chart.panning = true;
+        chart.panKey = "shift";
+    }
+
+    return $.extend(true, {
+        chart: chart,
+        exporting: {
+            enabled: true
+        }
+    }, overrides || {});
+}
+
+function loadTextFile(url) {
+    if (textFileCache[url]) {
+        return textFileCache[url];
+    }
+    textFileCache[url] = $.ajax({
+        url: url,
+        cache: false,
+        dataType: "text"
+    });
+    return textFileCache[url];
+}
+
+function bandFileName(antennas, antenna, system, freq, signal, ext) {
+    return antennaFilePrefix(antennas, antenna) + system + "-" + freq + "-" + signal + ext;
+}
+
+function svFileName(antennas, antenna, system, sv, ext) {
+    return antennaFilePrefix(antennas, antenna) + system + "-" + sv + ext;
+}
+
+function parseMeanRows(data) {
+    var rows = [];
+    parseAntennaList(data).forEach(function(line) {
+        var items = line.split(',');
+        if (!items[0]) {
+            return;
+        }
+        rows.push({
+            elevation: parseFloat(items[0]),
+            count: parseFloat(items[1]),
+            mean: parseFloat(items[2]),
+            sigma: parseFloat(items[3]),
+            min: parseFloat(items[4]),
+            max: parseFloat(items[5])
+        });
+    });
+    return rows;
+}
+
+function parseSnrRows(data) {
+    var rows = [];
+    data.split('\n').forEach(function(line) {
+        line = line.replace(/\r/g, '');
+        if (!line) {
+            return;
+        }
+        var items = line.split(',');
+        if (!items[0]) {
+            return;
+        }
+        rows.push({
+            epoch: items[0],
+            sv: parseInt(items[1], 10),
+            elev: parseInt(items[2], 10),
+            az: parseInt(items[3], 10),
+            snr: parseFloat(items[4]),
+            slip: parseInt(items[5], 10)
+        });
+    });
+    return rows;
+}
+
+function parseSvSnrRows(data, maxBands) {
+    var rows = [];
+    data.split('\n').forEach(function(line) {
+        line = line.replace(/\r/g, '');
+        if (!line) {
+            return;
+        }
+        var items = line.split(',');
+        if (!items[0]) {
+            return;
+        }
+        var row = {
+            epoch: items[0],
+            elev: parseFloat(items[1]),
+            az: items[2],
+            bands: []
+        };
+        for (var i = 1; i <= maxBands; i++) {
+            var snr = items[1 + (i * 2)];
+            var slip = items[2 + (i * 2)];
+            row.bands.push({
+                snr: snr ? parseFloat(snr) : null,
+                slip: slip ? parseInt(slip, 10) : null
+            });
+        }
+        rows.push(row);
+    });
+    return rows;
+}
+
+function loadBandMean(antennas, antenna, system, freq, signal) {
+    var url = bandFileName(antennas, antenna, system, freq, signal, ".MEAN");
+    return loadTextFile(url).then(parseMeanRows);
+}
+
+function loadBandSnr(antennas, antenna, system, freq, signal) {
+    var url = bandFileName(antennas, antenna, system, freq, signal, ".SNR");
+    return loadTextFile(url).then(parseSnrRows);
+}
+
+function loadSvSnr(antennas, antenna, system, sv, maxBands) {
+    var url = svFileName(antennas, antenna, system, sv, ".SNR-SV");
+    return loadTextFile(url).then(function(data) {
+        return parseSvSnrRows(data, maxBands);
+    });
+}
+
+function alignRowsByKey(rowsA, rowsB, keyFn) {
+    var mapB = {};
+    rowsB.forEach(function(row) {
+        mapB[keyFn(row)] = row;
+    });
+    var aligned = [];
+    rowsA.forEach(function(rowA) {
+        var key = keyFn(rowA);
+        if (mapB[key]) {
+            aligned.push({ a: rowA, b: mapB[key], key: key });
+        }
+    });
+    return aligned;
+}
+
+function diffNumeric(a, b) {
+    if (a === null || a === undefined || b === null || b === undefined) {
+        return null;
+    }
+    if (isNaN(a) || isNaN(b)) {
+        return null;
+    }
+    return a - b;
+}
+
+function whenAll(requests) {
+    var deferred = $.Deferred();
+    if (!requests.length) {
+        deferred.resolve([]);
+        return deferred.promise();
+    }
+    $.when.apply($, requests).done(function() {
+        var results = [];
+        for (var i = 0; i < requests.length; i++) {
+            results.push(arguments[i]);
+        }
+        deferred.resolve(results);
+    }).fail(function() {
+        deferred.reject.apply(deferred, arguments);
+    });
+    return deferred.promise();
+}
+
+function compareAntennaIds(antennas) {
+    if (isTripleAntennaLayout(antennas)) {
+        return COMPARE_ANTENNAS.slice();
+    }
+    return [selectedAntenna];
+}
+
+function meanSeriesFromRows(rows) {
+    var points = [];
+    rows.forEach(function(row) {
+        if (row.count > 0 && !isNaN(row.mean)) {
+            points.push([row.elevation, row.mean]);
+        }
+    });
+    return points;
+}
+
+function diffMeanSeries(rowsA, rowsB) {
+    var aligned = alignRowsByKey(rowsA, rowsB, function(row) {
+        return String(row.elevation);
+    });
+    var points = [];
+    aligned.forEach(function(pair) {
+        var delta = diffNumeric(pair.a.mean, pair.b.mean);
+        if (delta !== null) {
+            points.push([pair.a.elevation, delta]);
+        }
+    });
+    return points;
+}
+
+function bandNamesForSystem(System, maxBands) {
+    if (System === "GPS") {
+        return ["L1 C/A", "L2 E", "L2 CS", "L5 IQ"].slice(0, maxBands);
+    }
+    if (System === "GLONASS") {
+        return ["L1 C/A", "L1 P", "L2 C/A", "L2 P"].slice(0, maxBands);
+    }
+    if (System === "GAL") {
+        return ["E1 C/A", "E5 AltBoc"].slice(0, maxBands);
+    }
+    if (System === "BDS") {
+        return ["B1", "B2"].slice(0, maxBands);
+    }
+    if (System === "SBAS") {
+        return ["L1 C/A", "L5 IQ"].slice(0, maxBands);
+    }
+    var names = [];
+    for (var i = 1; i <= maxBands; i++) {
+        names.push("Band " + i);
+    }
+    return names;
+}
+
+function maxBandsForSystem(System) {
+    if (System === "GPS") {
+        return 4;
+    }
+    if (System === "GLONASS") {
+        return 4;
+    }
+    if (System === "GAL" || System === "BDS" || System === "SBAS") {
+        return 2;
+    }
+    return 2;
+}
+
+function trackingLimits(System) {
+    var Min_SVs = 1;
+    var Max_SVs = 1;
+    if (System === "GPS") {
+        Max_SVs = 32;
+    } else if (System === "GAL") {
+        Max_SVs = 30;
+    } else if (System === "GLONASS") {
+        Max_SVs = 24;
+    } else if (System === "SBAS") {
+        Min_SVs = 120;
+        Max_SVs = 158;
+    }
+    return { min: Min_SVs, max: Max_SVs };
 }

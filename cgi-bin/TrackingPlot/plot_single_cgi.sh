@@ -79,6 +79,9 @@ ln -s "$normalDir"/SNR_Plot.shtml
 ln -s "$normalDir"/Tracking_Plot.shtml
 ln -s "$normalDir"/Slips_Plot.shtml
 ln -s "$normalDir"/SV_Tracking_Plot.shtml
+ln -s "$normalDir"/SV_SNR_Plot.shtml
+ln -s "$normalDir"/Diff_SNR_Plot.shtml
+ln -s "$normalDir"/Diff_Tracking_Plot.shtml
 ln -s "$normalDir"/Buttons.html
 ln -s "$normalDir"/Tracking_Buttons.html
 ln -s "$normalDir"/index.shtml
