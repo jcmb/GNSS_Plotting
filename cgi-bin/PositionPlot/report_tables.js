@@ -210,6 +210,17 @@ function gpsJamUrl(lat, lon) {
   return "https://gpsjam.org/?lat=" + lat.toFixed(5) + "&lon=" + lon.toFixed(5) + "&z=8.0";
 }
 
+function parsePlotFilterFlags(text) {
+  const flags = { truth: false };
+  text.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("truth:")) {
+      flags.truth = trimmed.slice(6).trim() === "yes";
+    }
+  });
+  return flags;
+}
+
 function parseSessionType(text) {
   const kv = {};
   parseKeyValueLines(text).forEach(([key, value]) => {
@@ -246,6 +257,9 @@ function renderSessionType(text, plotFilterText) {
     rows.push(["Session requested", sessionRequestLabel(kv["Session requested"])]);
   }
   rows.push(["Session used", isMoving ? "Moving" : "Static"]);
+  if (kv["Truth file"] === "yes") {
+    rows.push(["Truth reference", "ATS truth file"]);
+  }
   if (kv["Detection ran"] === "yes") {
     rows.push(["Motion detection", "Ran (2D, >10σ threshold)"]);
     if (kv["Outlier fraction"]) {
@@ -808,7 +822,8 @@ async function buildReportTables() {
 
   const sessionKv = parseSessionType(sessionType);
   const sessionUsed = sessionKv["Session used"] || parsePlotFilterSession(plotFilter);
-  const isMoving = sessionUsed === "moving";
+  const plotFilterFlags = parsePlotFilterFlags(plotFilter);
+  const isMoving = sessionUsed === "moving" && !plotFilterFlags.truth;
 
   document.querySelectorAll(".plot-static-only").forEach((el) => {
     el.style.display = isMoving ? "none" : "";
@@ -827,6 +842,8 @@ async function buildReportTables() {
   html += renderTimeRange(timeRange);
   html += renderSessionType(sessionType, plotFilter);
   if (isMoving) {
+    html += renderTrajectorySummary(llhMean);
+  } else if (plotFilterFlags.truth) {
     html += renderTrajectorySummary(llhMean);
   } else {
     html += renderMeanInfo(meanInfo);

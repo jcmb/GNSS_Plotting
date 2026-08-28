@@ -199,6 +199,22 @@ print "<body><h1>Processing $filename:</h1>\n";
 
 $upload_file = JCMBSoft_Config::upload_dir().$filename;
 
+my $truth_upload = "";
+if ($query->param('truth_file')) {
+    my $truth_filename = $query->param('truth_file');
+    if ($truth_filename =~ m/^.*(\\|\/)(.*)/) {
+        $truth_filename = $2;
+    }
+    $truth_filename =~ tr/ /_/;
+    $truth_filename =~ s/[^$safe_filename_characters]//g;
+    if ($truth_filename =~ /^([$safe_filename_characters]+)$/) {
+        $truth_filename = $1;
+    } else {
+        die "Truth filename contains invalid characters";
+    }
+    $truth_upload = JCMBSoft_Config::upload_dir() . $name . "_truth_" . $truth_filename;
+}
+
 if ($file_uploaded) {
     print "Getting uploaded file<br>";
     my $upload_filehandle = $query->upload("file");
@@ -217,6 +233,21 @@ if ($file_uploaded) {
     }
 
     close UPLOADFILE;
+}
+
+if ($truth_upload) {
+    print "Getting uploaded truth file<br>";
+    my $truth_upload_filehandle = $query->upload("truth_file");
+    if (!open(UPLOADTRUTH, ">$truth_upload")) {
+        print "\n could not open truth output file" . $truth_upload;
+        die "$!";
+    }
+    binmode UPLOADTRUTH;
+    while (<$truth_upload_filehandle>) {
+        print UPLOADTRUTH;
+    }
+    close UPLOADTRUTH;
+    $ENV{GNSS_TRUTH_ATS} = $truth_upload;
 }
 
 if ($file_linked) {
@@ -244,14 +275,14 @@ print "<pre>\n";
 if ( JCMBSoft_Config::TrimbleTools() ) {
 #    print "/bin/bash"," /home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh"," ",$upload_file,"*",$extension,"*",$Sol,"*",$Point,"*",$Ant,"*",$TrimbleTools,"*",$Decimate,"*",$project,"*\n";
     syslog (LOG_INFO,"Starting processing: " . $upload_file);
-    exec ("/bin/bash","/home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url,$SessionType);
+    exec ("/bin/bash","/home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url,$SessionType,$truth_upload);
     syslog (LOG_INFO,"Processing finished: " . $upload_file);
 }
 else  
    {
    print "./start_single.sh"," ",$upload_file," ",$extension," ",$Sol," ",$Point," ",$Ant," ",$Decimate," ",$Fixed_Range," ",$project,"\n";
    syslog (LOG_INFO,"Starting processing: " . $upload_file);
-   system "./start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url,$SessionType;
+   system "./start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url,$SessionType,$truth_upload;
    syslog (LOG_INFO,"Processing finished: " . $upload_file);
    }
 

@@ -38,7 +38,14 @@ MeanSol=${10:-${GNSS_MEAN_SOL:--1}}
 MEAN_SOL_REQUEST="$MeanSol"
 ReportUrl=${11:-${GNSS_REPORT_URL:-/results/Position${Project}/${File}/}}
 SESSION_REQUEST=${12:--1}
+TRUTH_FILE=${13:-${GNSS_TRUTH_ATS:-}}
+TRUTH_MODE=no
+if [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+then
+   TRUTH_MODE=yes
+fi
 logger "Mean solution type request: $MEAN_SOL_REQUEST"
+logger "Truth file: ${TRUTH_FILE:-none} (mode=$TRUTH_MODE)"
 logger "Report URL: $ReportUrl"
 logger "Session type request: $SESSION_REQUEST"
 
@@ -266,9 +273,6 @@ enu_filter_stream() {
   fi
 }
 
-echo "Computing provisional ENU for session detection"
-original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height >$File.enu.provisional
-
 SESSION_USED="static"
 SESSION_DETECTED="static"
 DETECTION_RAN="no"
@@ -280,6 +284,15 @@ DRIVE_WARNING="no"
 _run_motion_detect() {
   enu_filter_stream "$File.enu.provisional" | $normalDir/detect_motion.py
 }
+
+if [ "$TRUTH_MODE" = "yes" ]
+then
+   SESSION_USED="moving"
+   SESSION_DETECTED="moving"
+   echo "ATS truth file provided — moving session with truth-referenced errors"
+else
+echo "Computing provisional ENU for session detection"
+original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height >$File.enu.provisional
 
 case "$SESSION_REQUEST" in
   1|moving)
@@ -323,6 +336,7 @@ case "$SESSION_REQUEST" in
     fi
     ;;
 esac
+fi
 
 case "$SESSION_REQUEST" in
   -1|""|auto)
@@ -342,13 +356,54 @@ esac
 {
 echo "Session requested: $SESSION_REQUEST_LABEL"
 echo "Session used: $SESSION_USED"
+if [ "$TRUTH_MODE" = "yes" ]
+then
+echo "Truth file: yes"
+fi
 echo "Detection ran: $DETECTION_RAN"
 echo "Outlier fraction: ${OUTLIER_FRACTION}% (>10 sigma, 2D)"
 echo "Outlier epochs: $OUTLIER_COUNT / $VALID_COUNT"
 echo "Drive test warning: $DRIVE_WARNING"
 } > session_type.txt
 
-if [ "$SESSION_USED" = "moving" ]
+if [ "$TRUTH_MODE" = "yes" ]
+then
+   echo "ATS truth session — ENU errors vs interpolated truth"
+   logger "ATS truth session for $FileFull"
+
+   TRUTH_SOL_ARGS=""
+   if [ "$MEAN_SOL" != "all" ] && [ -n "$MEAN_SOL" ]
+   then
+      TRUTH_SOL_ARGS="--sol-type $MEAN_SOL"
+   fi
+
+   if ! $normalDir/truth_gnss_enu.py --ats "$TRUTH_FILE" --sol "$File.sol" \
+        --out "$File.enu" --report truth_report.txt $TRUTH_SOL_ARGS
+   then
+      echo "ERROR: ATS truth alignment failed"
+      logger "ATS truth alignment failed for $FileFull"
+      exit 1
+   fi
+
+   $normalDir/kml_trajectory.py $File $File.sol
+   echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
+
+   {
+   echo "TRAJECTORY_SESSION"
+   echo "Moving session with ATS truth reference."
+   cat truth_report.txt
+   } > llh.mean
+
+   echo ""
+   echo "Computing session time range"
+   $normalDir/time_range_report.py <$File.enu >time_range.txt
+
+   echo ""
+   echo "Computing NEE Mean"
+   eval $(original-awk -f $normalDir/x29_mean2_enu.awk $MEAN_SOL $Sol_HRange $Sol_VRange $Fixed_Range <$File.enu)
+
+   rm -f $File.enu.provisional $File.sol
+elif [ "$SESSION_USED" = "moving" ]
 then
    echo "Moving session — using trajectory (LLH) data"
    logger "Moving session for $FileFull"
@@ -393,7 +448,10 @@ fi
 {
 echo "Mean / reference computation"
 echo "=========================="
-if grep -q "From Database" llh.mean 2>/dev/null
+if grep -q "ATS truth" llh.mean 2>/dev/null
+then
+   echo "Reference LLH: ATS truth trajectory"
+elif grep -q "From Database" llh.mean 2>/dev/null
 then
    echo "Reference LLH: Point database"
 else
@@ -420,7 +478,7 @@ echo "Records in mean: $Records"
 echo "Session used: $SESSION_USED"
 } > mean.info
 
-if [ "$SESSION_USED" != "moving" ]
+if [ "$SESSION_USED" != "moving" ] || [ "$TRUTH_MODE" = "yes" ]
 then
 enu_cdf_stream() {
   if [ "$MEAN_SOL" = "all" ]; then
@@ -537,9 +595,47 @@ _write_plot_filter() {
    echo "session:$SESSION_USED" >> plot_filter.txt
    echo "session_request:$SESSION_REQUEST" >> plot_filter.txt
    echo "drive_warning:$DRIVE_WARNING" >> plot_filter.txt
+   if [ "$TRUTH_MODE" = "yes" ]
+   then
+      echo "truth:yes" >> plot_filter.txt
+      if [ -f truth_report.txt ]
+      then
+         grep '^truth_height_offset:' truth_report.txt >> plot_filter.txt || true
+      fi
+   else
+      echo "truth:no" >> plot_filter.txt
+   fi
 }
 
-if [ "$SESSION_USED" = "moving" ]
+if [ "$TRUTH_MODE" = "yes" ]
+then
+   cp $File.enu file
+   cp file position_solution.csv
+   $normalDir/x29_secs.py < file > position_data.csv
+   _write_plot_filter
+   gzip -9 -f position_data.csv position_solution.csv
+
+   $normalDir/out_range.py -R 0.0105 < file --OUTAGE outage1cm.csv --DETAIL /dev/null --SUMMARY range1cm.sum
+   $normalDir/out_range.py -R 0.0205 < file --OUTAGE outage2cm.csv --DETAIL /dev/null --SUMMARY range2cm.sum
+   $normalDir/out_range.py -R 0.0305 < file --OUTAGE outage2sig.csv --DETAIL range2sig.csv --SUMMARY range2sig.sum
+   $normalDir/out_range.py -R 0.0455 < file --OUTAGE outage3sig.csv --DETAIL range3sig.csv --SUMMARY range3sig.sum
+
+   range_1cm=`$normalDir/range_summary.pl <range1cm.sum`
+   range_2cm=`$normalDir/range_summary.pl <range2cm.sum`
+   range_2_sigma=`$normalDir/range_summary.pl <range2sig.sum`
+   range_3_sigma=`$normalDir/range_summary.pl <range3sig.sum`
+   echo -n "$File," > $File.sum.csv
+   echo -n "$Elev_Range," >> $File.sum.csv
+   echo -n "$cdf_68," >> $File.sum.csv
+   echo -n "$cdf_95," >> $File.sum.csv
+   echo -n "$sigma_cdf_68," >> $File.sum.csv
+   echo -n "$sigma_cdf_95," >> $File.sum.csv
+   echo -n "$range_1cm," >> $File.sum.csv
+   echo -n "$range_2cm," >> $File.sum.csv
+   echo -n "$range_2_sigma," >> $File.sum.csv
+   echo  "$range_3_sigma" >> $File.sum.csv
+   rm file
+elif [ "$SESSION_USED" = "moving" ]
 then
    $normalDir/x29_secs.py <$File.trajectory > position_data.csv
    cp $File.trajectory position_solution.csv

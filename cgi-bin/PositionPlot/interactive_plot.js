@@ -405,7 +405,9 @@ let plotFilterInfo = {
   meanRequest: "",
   session: "static",
   sessionRequest: "-1",
-  driveWarning: false
+  driveWarning: false,
+  truth: false,
+  truthHeightOffset: null
 };
 let plotListenersAttached = false;
 
@@ -878,10 +880,11 @@ const TIME_LINKED_PLOT_IDS = [
   ...POSITION_TIME_PLOT_IDS
 ];
 
-function activeTimePlotIds(isMoving) {
+function activeTimePlotIds(isMoving, hasTruth) {
+  const movingPlotsOnly = isMoving && !hasTruth;
   const ids = [
     ...SOLUTION_TIME_PLOT_IDS,
-    ...(isMoving ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
+    ...(movingPlotsOnly ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
   ];
   return ids.filter((id) => {
     if (!shouldDrawPlot(id)) return false;
@@ -1051,7 +1054,7 @@ function closePlotCard(cardId) {
     purgePlotElementsInCard(card);
   }
   updatePlotRestoreBar();
-  linkTimePlotZoom(activeTimePlotIds(plotFilterInfo.session === "moving"));
+  linkTimePlotZoom(activeTimePlotIds(plotFilterInfo.session === "moving", plotFilterInfo.truth));
 }
 
 function restorePlotCard(cardId) {
@@ -1425,6 +1428,8 @@ function parsePlotFilter(text) {
   let session = "static";
   let sessionRequest = "-1";
   let driveWarning = false;
+  let truth = false;
+  let truthHeightOffset = null;
   for (const line of lines) {
     if (!line) continue;
     if (line.startsWith("mean_name:")) {
@@ -1439,16 +1444,32 @@ function parsePlotFilter(text) {
       session = line.slice(8);
     } else if (line.startsWith("drive_warning:")) {
       driveWarning = line.slice(14).trim() === "yes";
+    } else if (line.startsWith("truth:")) {
+      truth = line.slice(6).trim() === "yes";
+    } else if (line.startsWith("truth_height_offset:")) {
+      const value = Number(line.slice(20).trim());
+      truthHeightOffset = Number.isFinite(value) ? value : null;
     } else {
       filter = line;
     }
   }
-  return { filter, mean, meanName, meanRequest, session, sessionRequest, driveWarning };
+  return {
+    filter,
+    mean,
+    meanName,
+    meanRequest,
+    session,
+    sessionRequest,
+    driveWarning,
+    truth,
+    truthHeightOffset
+  };
 }
 
-function applySessionPlotVisibility(isMoving) {
+function applySessionPlotVisibility(isMoving, hasTruth) {
+  const hideStatic = isMoving && !hasTruth;
   document.querySelectorAll(".plot-static-only").forEach((el) => {
-    el.style.display = isMoving ? "none" : "";
+    el.style.display = hideStatic ? "none" : "";
   });
   const heightCard = document.getElementById("plot-height-error");
   if (heightCard) {
@@ -1506,8 +1527,10 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     return;
   }
 
-  const isMoving = filterInfo.session === "moving";
-  applySessionPlotVisibility(isMoving);
+  const isMovingSession = filterInfo.session === "moving";
+  const hasTruth = !!filterInfo.truth;
+  const isMoving = isMovingSession && !hasTruth;
+  applySessionPlotVisibility(isMovingSession, hasTruth);
   initPlotCardChrome();
 
   purgeAllPlots();
@@ -1770,7 +1793,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   );
   }
 
-  linkTimePlotZoom(activeTimePlotIds(isMoving));
+  linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth));
   applyPlotCardClosedState();
 
   const filterMode = filterInfo.filter;
@@ -1784,8 +1807,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     ? " View filter: " + typesShown.map(solutionTypeName).join(", ") + "."
     : "";
   let statusNote = filterNote + viewFilterNote;
-  if (isMoving) {
+  if (isMovingSession && !hasTruth) {
     statusNote += " Moving session — height and precision plots only.";
+  } else if (hasTruth) {
+    statusNote += " Moving session with ATS truth — error plots vs interpolated truth.";
+    if (filterInfo.truthHeightOffset != null) {
+      statusNote += " Height offset (GNSS - ATS): "
+        + filterInfo.truthHeightOffset.toFixed(4) + " m.";
+    }
   } else {
     statusNote += " Mean computed from: " + meanTypeLabel(filterInfo) + ".";
     statusNote += solutionPoints.length
