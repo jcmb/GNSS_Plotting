@@ -396,30 +396,54 @@ Point Name (Optional):
   }
 
   function extractPreLog(html) {
-  var parts = [];
-  var searchFrom = 0;
-  while (true) {
-    var start = html.indexOf("<pre>", searchFrom);
-    if (start === -1) {
-      break;
+    var parts = [];
+    var searchFrom = 0;
+    while (true) {
+      var start = html.indexOf("<pre>", searchFrom);
+      if (start === -1) {
+        break;
+      }
+      start += 5;
+      var end = html.indexOf("</pre>", start);
+      if (end === -1) {
+        parts.push(html.slice(start));
+        break;
+      }
+      parts.push(html.slice(start, end));
+      searchFrom = end + 6;
     }
-    start += 5;
-    var end = html.indexOf("</pre>", start);
-    if (end === -1) {
-      parts.push(html.slice(start));
-      break;
-    }
-    parts.push(html.slice(start, end));
-    searchFrom = end + 6;
+    return parts.join("\n").replace(/<[^>]+>/g, "");
   }
-  return parts.join("\n").replace(/<[^>]+>/g, "");
-}
 
-function showProcessingLog(text) {
-  processingLog.className = "visible";
-  processingLog.textContent = text || "";
-  processingLog.scrollTop = processingLog.scrollHeight;
-}
+  function showProcessingLog(text) {
+    processingLog.className = "visible";
+    processingLog.textContent = text || "";
+    processingLog.scrollTop = processingLog.scrollHeight;
+  }
+
+  function waitForProcessingComplete(resultsUrl, callback) {
+    var processingUrl = resultsUrl.replace(/\/?$/, "/") + ".processing";
+    var pollIntervalMs = 3000;
+
+    function poll() {
+      var check = new XMLHttpRequest();
+      check.open("GET", processingUrl + "?_=" + Date.now(), true);
+      check.onload = function () {
+        if (check.status === 200) {
+          setPhase("Processing on server...");
+          window.setTimeout(poll, pollIntervalMs);
+          return;
+        }
+        callback();
+      };
+      check.onerror = function () {
+        callback();
+      };
+      check.send();
+    }
+
+    poll();
+  }
 
   function extractStatusMessages(html) {
     var bodyMatch = html.match(/<body[^>]*>([\s\S]*)/i);
@@ -571,6 +595,18 @@ function showProcessingLog(text) {
         return;
       }
       updateFromResponse(xhr.responseText, true);
+      var reportUrl = extractReportUrl(xhr.responseText, false);
+      if (reportUrl) {
+        setPhase("Processing on server...");
+        setDetailHtml(
+          'Building report at <a href="' + escapeAttr(reportUrl) + '">' +
+          escapeAttr(reportUrl) + "</a>. Large files may take several minutes."
+        );
+        waitForProcessingComplete(reportUrl, function () {
+          window.location.assign(reportUrl);
+        });
+        return;
+      }
       if (!isProcessingComplete(xhr.responseText) || !extractReportUrl(xhr.responseText, true)) {
         setPhase("Processing finished.");
         form.className = "";

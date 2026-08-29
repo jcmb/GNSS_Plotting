@@ -97,6 +97,7 @@ RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
 logger "$RESULT_DIR"
 mkdir -p "$RESULT_DIR"
 cd "$RESULT_DIR" && rm * 2> /dev/null
+echo "Processing started $(date)" > .processing
 TMP_DIR=/run/shm/
 
 logger `pwd`
@@ -732,6 +733,7 @@ rm outage3sig.csv
 #rm range2cm.csv
 rm -f range2sig.csv range3sig.csv
 wait
+rm -f .processing
 echo Processing completed
 echo "<p><strong>Processing complete.</strong></p>"
 echo "<p><a href=\"${ReportUrl}\">Open report</a> (redirecting&hellip;)</p>"

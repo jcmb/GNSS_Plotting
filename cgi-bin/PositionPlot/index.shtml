@@ -246,7 +246,10 @@
 </style>
 <script src="report_tables.js?v=20250829c"></script>
 </head>
-<body onload="loadReportTables(); loadInteractivePosition();">
+<body onload="loadReportTables(); loadInteractivePosition(); checkProcessingStatus();">
+<div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">
+Processing is still running. Summary tables and interactive plots will fill in when complete.
+</div>
 <h1>Results for: 
 <!--#include virtual="file.html" -->
 </h1>
@@ -401,5 +404,28 @@ Location: <!--#include virtual="kml.html" -->
   <h3>Latency Distribution</h3>
   <div id="plot-latency-dist" style="width: 100%; height: 420px;"></div>
 </div>
+
+<script>
+function checkProcessingStatus() {
+  var banner = document.getElementById("processing-banner");
+  if (!banner) {
+    return;
+  }
+  var check = new XMLHttpRequest();
+  check.open("GET", ".processing?_=" + Date.now(), true);
+  check.onload = function () {
+    if (check.status === 200) {
+      banner.style.display = "block";
+      window.setTimeout(checkProcessingStatus, 3000);
+      return;
+    }
+    banner.style.display = "none";
+  };
+  check.onerror = function () {
+    banner.style.display = "none";
+  };
+  check.send();
+}
+</script>
 
 </body></html>

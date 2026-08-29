@@ -23,6 +23,27 @@ sub urldecode {
     return $s;
 }
 
+sub gnss_results_dir {
+    my $cfg_dir = "$Bin/../../admin/GNSS";
+    my $cfg = "$cfg_dir/GNSS_Paths.cfg";
+    if ( !-f $cfg ) {
+        $cfg = '/mnt/GPS_Admin/admin/GNSS/GNSS_Paths.cfg';
+    }
+    if ( -f $cfg ) {
+        open my $fh, '<', $cfg or return '/mnt/Data/results';
+        while ( my $line = <$fh> ) {
+            if ( $line =~ /^\s*GNSS_RESULTS_DIR\s*=\s*(.+?)\s*$/ ) {
+                my $dir = $1;
+                $dir =~ s/^["']|["']$//g;
+                close $fh;
+                return $dir if $dir ne '';
+            }
+        }
+        close $fh;
+    }
+    return '/mnt/Data/results';
+}
+
 
 $CGI::POST_MAX = 1100 * 1024 * 1024; # 1.1 GB file max
 my $query = new CGI;
@@ -239,26 +260,34 @@ if ($file_linked) {
 
 print "Data is being processed: This will normally takes a few seconds but can take longer for very large files.<br>";
 print "The report will be at <a href=\"$report_url\">$report_url</a><br/>\n";
-#print "The report will not have Summary, Spread or Latitude unless you use the link<br>\n";
-
-#print "bash -c ./start_single.sh \"$upload_file\" \"$extension\" $Sol ";
-#print system "./start_single.sh",$upload_file,$extension,$Sol;
 print "<p/>Processing will continue if you navigate away from this page<br/>";
-print "<pre>\n";
 
-
-if ( JCMBSoft_Config::TrimbleTools() ) {
-#    print "/bin/bash"," /home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh"," ",$upload_file,"*",$extension,"*",$Sol,"*",$Point,"*",$Ant,"*",$TrimbleTools,"*",$Decimate,"*",$project,"*\n";
-    syslog (LOG_INFO,"Starting processing: " . $upload_file);
-    exec ("/bin/bash","/home8/trimblet/public_html/cgi-bin/PositionPlot/start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url,$SessionType,$truth_upload);
-    syslog (LOG_INFO,"Processing finished: " . $upload_file);
+my $results_dir = gnss_results_dir() . "/Position$project$Point_Dir/$name";
+system( 'mkdir', '-p', $results_dir );
+if ( open my $processing, '>', "$results_dir/.processing" ) {
+    print {$processing} "started\n";
+    close $processing;
 }
-else  
-   {
-   print "./start_single.sh"," ",$upload_file," ",$extension," ",$Sol," ",$Point," ",$Ant," ",$Decimate," ",$Fixed_Range," ",$project,"\n";
-   syslog (LOG_INFO,"Starting processing: " . $upload_file);
-   system "./start_single.sh",$upload_file,$extension,$Sol,$Point,$Ant,$Decimate,$Fixed_Range,$project,$SaveFile,$MeanSol,$report_url,$SessionType,$truth_upload;
-   syslog (LOG_INFO,"Processing finished: " . $upload_file);
-   }
 
-closelog()
+my $start_script = "$Bin/start_single.sh";
+unless ( -x $start_script ) {
+    print "<p>Processing script is not available on the server.</p></body></html>";
+    closelog();
+    exit;
+}
+
+syslog( LOG_INFO, "Starting processing: " . $upload_file );
+system(
+    $start_script, $upload_file, $extension, $Sol, $Point, $Ant,
+    $Decimate, $Fixed_Range, $project, $SaveFile, $MeanSol,
+    $report_url, $SessionType, $truth_upload
+);
+syslog( LOG_INFO, "Processing queued: " . $upload_file );
+
+print "<p><strong>Upload complete.</strong> Opening the report page while processing continues.</p>";
+print "<meta http-equiv=\"refresh\" content=\"0;url=$report_url\">";
+print "<script>window.location.replace(\"$report_url\");</script>";
+print "</body></html>";
+
+closelog();
+exit;
