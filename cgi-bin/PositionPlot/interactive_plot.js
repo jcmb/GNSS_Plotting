@@ -90,6 +90,21 @@ const DOP_COLORS = {
   VDOP: "#17becf"
 };
 
+const Y2_AXIS_RIGHT_MARGIN = 50;
+
+function reservedRightY2Axis(overrides) {
+  return {
+    overlaying: "y",
+    side: "right",
+    showgrid: false,
+    showticklabels: false,
+    showline: false,
+    title: "",
+    ticklen: 0,
+    ...(overrides || {})
+  };
+}
+
 const TRACE_NAME_TO_COLOR = {
   "North Error": "north",
   "East Error": "east",
@@ -244,10 +259,11 @@ function syncOverlayAxesFromTraces(elementId, axisConfig) {
     const anyVisible = el.data.some((trace) =>
       cfg.traces.includes(trace.name) && traceIsShownOnPlot(trace)
     );
-    update[axisKey + ".visible"] = anyVisible;
+    update[axisKey + ".visible"] = true;
     update[axisKey + ".showticklabels"] = anyVisible;
     update[axisKey + ".showline"] = anyVisible;
     update[axisKey + ".title"] = anyVisible ? cfg.title : "";
+    update[axisKey + ".ticklen"] = anyVisible ? 5 : 0;
   });
   Plotly.relayout(elementId, update);
 }
@@ -599,11 +615,12 @@ function timePlotLayout(xaxisLayout, mode) {
   return {
     margin: {
       l: 60,
-      r: 30,
+      r: Y2_AXIS_RIGHT_MARGIN,
       t: usesDateTimeAxis(mode) ? 58 : 50,
       b: 45
     },
     xaxis: xaxisLayout,
+    yaxis2: reservedRightY2Axis(),
     legend: {
       orientation: "h",
       y: 1.02,
@@ -813,7 +830,7 @@ function sigmaPlotOverlayAxes(showDop, showSol, points) {
 function sigmaPlotRightMargin(showDop, showSol) {
   if (showDop && showSol) return 120;
   if (showDop || showSol) return 80;
-  return 30;
+  return Y2_AXIS_RIGHT_MARGIN;
 }
 
 function vdopTrace(x, points, yaxis) {
@@ -858,7 +875,7 @@ function plotErrorSigmaRatioChart(
 ) {
   const { sigmaLegendOnly = true } = options;
   const color = ERROR_COLORS[colorKey];
-  drawPlot(elementId, [
+  return drawPlot(elementId, [
     coloredLine(x, errY, errName, colorKey),
     {
       type: "scatter",
@@ -882,7 +899,7 @@ function plotErrorSigmaRatioChart(
     }
   ], {
     ...layoutBase,
-    margin: { ...layoutBase.margin, r: 50 },
+    margin: { ...layoutBase.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title,
     yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
     yaxis2: {
@@ -894,6 +911,10 @@ function plotErrorSigmaRatioChart(
       showgrid: false
     },
     legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+  }).then(() => {
+    attachOverlayAxisLegendSync(elementId, {
+      yaxis2: { title: "Sigma ratio", traces: [ratioName] }
+    });
   });
 }
 
@@ -1740,7 +1761,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   ];
   const heightLayout = {
     ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
+    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: isMoving ? "Height" : "Height Error",
     yaxis: latencyPrimaryYAxis(),
     yaxis2: overlayLeftYAxis({
@@ -1775,7 +1796,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
   const heightSigmaLayout = {
     ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
+    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: isMoving ? "Height and Sigma" : "Height Error and Sigma",
     yaxis: {
       title: isMoving ? "Height (m)" : "Height Error (m)",
@@ -1835,7 +1856,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     coloredLine(x, up, "Height Error", "up", { yaxis: "y2" })
   ], {
     ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
+    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: "NEU Error",
     yaxis: latencyPrimaryYAxis(),
     yaxis2: overlayLeftYAxis({ title: "Error (m)" })
@@ -1859,7 +1880,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     ], "y2")
   ], {
     ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
+    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: "H/U Error and Sigma",
     yaxis: latencyPrimaryYAxis(),
     yaxis2: overlayLeftYAxis({ title: "Meters", rangemode: "tozero", zeroline: true }),
@@ -1891,8 +1912,8 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const c2d = cumulativePercent(err2d);
   const cU = cumulativePercent(up);
   drawPlotIfOpen("plot-cumulative", [
-    coloredLine(cN.x, cN.y, "North Cumulative", "north"),
-    coloredLine(cE.x, cE.y, "East Cumulative", "east"),
+    coloredLine(cN.x, cN.y, "North Cumulative", "north", { visible: "legendonly" }),
+    coloredLine(cE.x, cE.y, "East Cumulative", "east", { visible: "legendonly" }),
     coloredLine(c2d.x, c2d.y, "2D Cumulative", "d2"),
     coloredLine(cU.x, cU.y, "Height Cumulative", "up")
   ], {
