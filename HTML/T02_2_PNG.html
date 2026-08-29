@@ -84,18 +84,8 @@
     margin-left: 8px;
     font-weight: bold;
   }
-  .testing-reuse-panel {
-    margin: 8px 0 0 0;
-    padding: 8px 10px;
-    border: 1px dashed #999;
-    background: #fafafa;
-  }
-  .testing-reuse-panel label {
-    margin-right: 12px;
-  }
-  .testing-reuse-panel input[type="text"] {
-    width: 18em;
-    margin: 4px 12px 4px 0;
+  .testing-mode-label {
+    font-weight: bold;
   }
 </style>
 </head>
@@ -145,17 +135,10 @@ Local timezone:
 </tr>
 <tr>
 <td colspan="2">
-<div class="testing-reuse-panel">
-  <strong>Testing: reuse files on server</strong> (skip re-upload after the first run)
-  <div>
-    <label><input type="checkbox" name="reuse_gnss" id="reuse-gnss" value="1"> Reuse GNSS file</label>
-    <input type="text" name="reuse_gnss_name" id="reuse-gnss-name" size="40" placeholder="e.g. session.T02">
-  </div>
-  <div>
-    <label><input type="checkbox" name="reuse_truth" id="reuse-truth" value="1"> Reuse ATS truth file</label>
-    <input type="text" name="reuse_truth_name" id="reuse-truth-name" size="40" placeholder="e.g. truth.log (not the prefixed name)">
-  </div>
-</div>
+<label class="testing-mode-label" for="testing-mode">
+  <input type="checkbox" name="testing_mode" id="testing-mode" value="1">
+  Testing (keep uploads on server; skip re-upload when the filename matches a cached copy)
+</label>
 </td>
 </tr>
 </table>
@@ -380,29 +363,21 @@ Point Name (Optional):
     initUploadTimezone();
   }
 
-  function initReuseFields() {
-    var reuseGnss = document.getElementById("reuse-gnss");
-    var reuseGnssName = document.getElementById("reuse-gnss-name");
-    var reuseTruth = document.getElementById("reuse-truth");
-    var reuseTruthName = document.getElementById("reuse-truth-name");
-    if (!reuseGnss || !reuseGnssName || !reuseTruth || !reuseTruthName) return;
-
-    var savedGnss = window.localStorage.getItem("gnssPlotReuseGnssName");
-    var savedTruth = window.localStorage.getItem("gnssPlotReuseTruthName");
-    if (savedGnss) {
-      reuseGnssName.value = savedGnss;
-      reuseGnss.checked = true;
+  function initTestingMode() {
+    var testingMode = document.getElementById("testing-mode");
+    if (!testingMode) return;
+    if (window.localStorage.getItem("gnssPlotTestingMode") === "1") {
+      testingMode.checked = true;
     }
-    if (savedTruth) {
-      reuseTruthName.value = savedTruth;
-      reuseTruth.checked = true;
-    }
+    testingMode.addEventListener("change", function () {
+      window.localStorage.setItem("gnssPlotTestingMode", testingMode.checked ? "1" : "0");
+    });
   }
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initReuseFields);
+    document.addEventListener("DOMContentLoaded", initTestingMode);
   } else {
-    initReuseFields();
+    initTestingMode();
   }
 
   var form = document.getElementById("gnss-plot-form");
@@ -629,35 +604,21 @@ Point Name (Optional):
   function beginSubmit() {
     var fileInput = document.getElementById("gnss-file");
     var truthInput = document.getElementById("truth-file");
-    var reuseGnss = document.getElementById("reuse-gnss");
-    var reuseGnssName = document.getElementById("reuse-gnss-name");
-    var reuseTruth = document.getElementById("reuse-truth");
-    var reuseTruthName = document.getElementById("reuse-truth-name");
+    var testingModeEl = document.getElementById("testing-mode");
+    var testingMode = testingModeEl && testingModeEl.checked;
     var hasFile = fileInput.files && fileInput.files.length > 0;
     var gnssFile = hasFile ? fileInput.files[0] : null;
     var atsFile = truthInput.files && truthInput.files.length > 0 ? truthInput.files[0] : null;
-    var useReuseGnss = reuseGnss && reuseGnss.checked && reuseGnssName.value.trim();
-    var useReuseTruth = reuseTruth && reuseTruth.checked && reuseTruthName.value.trim();
 
-    if (!hasFile && !useReuseGnss) {
-      window.alert("Select a GNSS file to upload, or enable reuse with the server filename.");
-      return;
-    }
-    if (useReuseTruth && atsFile) {
-      window.alert("Choose either an ATS upload or reuse on server, not both.");
-      return;
-    }
-    if (!useReuseTruth && !atsFile && reuseTruth && reuseTruth.checked) {
-      window.alert("Enter the ATS truth filename to reuse on the server.");
+    if (!hasFile) {
+      window.alert("Select a GNSS file to upload.");
       return;
     }
 
-    if (useReuseGnss) {
-      window.localStorage.setItem("gnssPlotReuseGnssName", reuseGnssName.value.trim());
-    }
-    if (useReuseTruth) {
-      window.localStorage.setItem("gnssPlotReuseTruthName", reuseTruthName.value.trim());
-    }
+    var cachedGnss = window.localStorage.getItem("gnssPlotCachedGnss");
+    var cachedTruth = window.localStorage.getItem("gnssPlotCachedTruth");
+    var skipGnssUpload = testingMode && cachedGnss && gnssFile.name === cachedGnss;
+    var skipTruthUpload = testingMode && atsFile && cachedTruth && atsFile.name === cachedTruth;
 
     if (activeXhr) {
       activeXhr.abort();
@@ -668,23 +629,24 @@ Point Name (Optional):
     form.className = "form-disabled";
     submitBtn.disabled = true;
     statusPanel.className = "active";
-    atsProgressBlock.hidden = !atsFile;
+    atsProgressBlock.hidden = !atsFile || skipTruthUpload;
 
-    if (useReuseGnss && !hasFile) {
+    if (skipGnssUpload && (!atsFile || skipTruthUpload)) {
+      setPhase("Processing on server...");
+      setDetail("Using cached GNSS" + (skipTruthUpload ? " and ATS" : "") + " files on the server.");
       setGnssUploadPercent(100, false);
-      if (useReuseTruth && !atsFile) {
-        setPhase("Processing on server...");
-        setDetail("Reusing GNSS and ATS files already on the server.");
-      } else if (atsFile) {
-        setPhase("Uploading ATS truth file...");
-        setDetail("Reusing GNSS on server; uploading " + atsFile.name + " only.");
-      } else {
-        setPhase("Processing on server...");
-        setDetail("Reusing GNSS file on server (" + reuseGnssName.value.trim() + ").");
+      if (skipTruthUpload) {
+        setAtsUploadPercent(100, false);
       }
-    } else if (useReuseTruth && !atsFile) {
+    } else if (skipGnssUpload) {
+      setPhase("Uploading ATS truth file...");
+      setDetail("Using cached GNSS; uploading " + atsFile.name + " only.");
+      setGnssUploadPercent(100, false);
+    } else if (skipTruthUpload) {
       setPhase("Uploading GNSS file...");
-      setDetail("Uploading " + gnssFile.name + "; reusing ATS truth on server.");
+      setDetail("Uploading " + gnssFile.name + "; using cached ATS truth on the server.");
+      setGnssUploadPercent(0, false);
+      setAtsUploadPercent(100, false);
     } else {
       setPhase(atsFile ? "Uploading files..." : "Uploading GNSS file...");
       setDetail(
@@ -693,31 +655,39 @@ Point Name (Optional):
           : "Sending " + gnssFile.name + " to the server."
       );
       setGnssUploadPercent(0, false);
-    }
-    if (atsFile) {
-      setAtsUploadPercent(0, false);
+      if (atsFile) {
+        setAtsUploadPercent(0, false);
+      }
     }
 
     var xhr = new XMLHttpRequest();
     activeXhr = xhr;
     var formData = new FormData(form);
+    formData.set("gnss_basename", gnssFile.name);
+    formData.set("truth_basename", atsFile ? atsFile.name : "");
+    if (skipGnssUpload) {
+      formData.delete("file");
+      formData.set("skip_gnss_upload", "1");
+    }
+    if (skipTruthUpload) {
+      formData.delete("truth_file");
+      formData.set("skip_truth_upload", "1");
+    }
 
     xhr.open("POST", form.action, true);
     xhr.withCredentials = true;
 
     xhr.upload.addEventListener("progress", function (event) {
-      var progressGnssFile = gnssFile;
-      if (!progressGnssFile && useReuseGnss) {
-        progressGnssFile = { size: 0, name: reuseGnssName.value.trim() };
-      }
-      updateUploadProgress(event, progressGnssFile, atsFile);
+      var progressGnssFile = skipGnssUpload ? { size: 0, name: gnssFile.name } : gnssFile;
+      var progressAtsFile = skipTruthUpload ? null : atsFile;
+      updateUploadProgress(event, progressGnssFile, progressAtsFile);
       if (event.lengthComputable) {
         var gnssSize = progressGnssFile ? progressGnssFile.size : 0;
-        var totalSize = gnssSize + (atsFile ? atsFile.size : 0);
+        var totalSize = gnssSize + (progressAtsFile ? progressAtsFile.size : 0);
         if (totalSize === 0 || event.loaded >= totalSize) {
           setPhase("Upload complete. Processing on server...");
           setGnssUploadPercent(100, false);
-          if (atsFile) {
+          if (progressAtsFile) {
             setAtsUploadPercent(100, false);
           }
         }
@@ -729,7 +699,7 @@ Point Name (Optional):
         if (xhr.readyState === XMLHttpRequest.LOADING) {
           setPhase("Processing on server...");
           setGnssUploadPercent(100, false);
-          if (atsFile) {
+          if (atsFile && !skipTruthUpload) {
             setAtsUploadPercent(100, false);
           }
           var streamLog = extractPreLog(xhr.responseText);
@@ -765,6 +735,12 @@ Point Name (Optional):
         return;
       }
       updateFromResponse(xhr.responseText, true);
+      if (testingMode && isProcessingComplete(xhr.responseText)) {
+        window.localStorage.setItem("gnssPlotCachedGnss", gnssFile.name);
+        if (atsFile) {
+          window.localStorage.setItem("gnssPlotCachedTruth", atsFile.name);
+        }
+      }
       if (!redirectScheduled && !isProcessingComplete(xhr.responseText)) {
         var finalLog = extractPreLog(xhr.responseText);
         if (finalLog) {

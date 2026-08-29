@@ -153,7 +153,10 @@ set_processing_status "Finished viewdat for $File"
 
 #wait
 
-rm $1
+if [ "${GNSS_KEEP_UPLOADS:-}" != "1" ]
+then
+   rm -f "$1"
+fi
 
 # Skipping creating the file
 #   echo "Decimation interval: " $Decimate

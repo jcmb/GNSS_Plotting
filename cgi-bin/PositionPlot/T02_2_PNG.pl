@@ -54,6 +54,15 @@ sub sanitize_upload_basename {
     return $1;
 }
 
+sub drain_upload_handle {
+    my ($handle) = @_;
+    return if !$handle;
+    while ( defined( my $line = <$handle> ) ) {
+        1;
+    }
+    close $handle;
+}
+
 sub gnss_results_dir {
     my $cfg_dir = "$Bin/../../admin/GNSS";
     my $cfg = "$cfg_dir/GNSS_Paths.cfg";
@@ -81,12 +90,14 @@ my $query = new CGI;
 my $gnss_user = JCMBSoft_Config::enforce_access($query);
 my $safe_filename_characters = "a-zA-Z0-9_.-";
 
+my $testing_mode = defined $query->param('testing_mode');
+my $skip_gnss_upload = defined $query->param('skip_gnss_upload');
+my $skip_truth_upload = defined $query->param('skip_truth_upload');
+my $gnss_basename = sanitize_upload_basename( scalar $query->param('gnss_basename') );
+my $truth_basename = sanitize_upload_basename( scalar $query->param('truth_basename') );
+
 my $filename = $query->param('file');
 my $file_link = $query->param('file_link');
-my $reuse_gnss_name = sanitize_upload_basename( scalar $query->param('reuse_gnss_name') );
-my $reuse_truth_name = sanitize_upload_basename( scalar $query->param('reuse_truth_name') );
-my $reuse_gnss = defined $query->param('reuse_gnss') && $reuse_gnss_name;
-my $reuse_truth = defined $query->param('reuse_truth') && $reuse_truth_name;
 my $Sol = $query->param('Sol');
 my $Point = $query->param('Point');
 my $Ant = $query->param('Ant');
@@ -114,8 +125,21 @@ my $TrimbleTools=1;
 
 print $query->header (-charset=>'utf-8' );
 
-if ($reuse_gnss) {
-    $filename = $reuse_gnss_name;
+my $gnss_upload_handle = $query->upload('file');
+my $file_uploaded = defined $gnss_upload_handle ? 1 : 0;
+
+if ($file_uploaded) {
+    if ($filename =~ m/^.*(\\|\/)(.*)/) {
+        $filename = $2;
+    }
+    syslog( LOG_INFO, "File provided" );
+}
+elsif ($gnss_basename) {
+    $filename = $gnss_basename;
+}
+elsif ($skip_gnss_upload) {
+    print "GNSS filename is required when skipping upload.\n";
+    exit;
 }
 
 if ( !$filename && !$file_link )
@@ -150,26 +174,17 @@ else
 
 if ( !$Ant )
 {
-#    print $query->header ( );
-#    print "There was a problem getting the solution type\n";
-#    exit;
     $Ant="-1";
 }
 
 if ( !$Fixed_Range )
 {
-#    print $query->header ( );
-#    print "There was a problem getting the solution type\n";
-#    exit;
     $Fixed_Range="0";
 }
 
 
 if ( !$Decimate )
 {
-#    print $query->header ( );
-#    print "There was a problem getting the solution type\n";
-#    exit;
     $Decimate="0";
 }
 
@@ -184,48 +199,28 @@ if ( !defined($MeanSol) || $MeanSol eq "" )
 }
 
 $ENV{GNSS_MEAN_SOL} = $MeanSol;
+$ENV{GNSS_KEEP_UPLOADS} = 1 if $testing_mode;
 
 my $tz_decimal = tz_hours_from_form( scalar $query->param('tz_hours'), scalar $query->param('tz_minutes') );
 if ( defined $tz_decimal ) {
     $ENV{GNSS_LOCAL_TZ_HOURS} = $tz_decimal;
 }
 
-#print $filename."\n";
-
-my $file_uploaded=0;
 my $file_linked=0;
-my $file_reused=0;
-
-if ($reuse_gnss) {
-    $file_reused = 1;
-    syslog( LOG_INFO, "Reusing GNSS file on server: $filename" );
-}
-elsif ($filename) {
-    if ($filename=~m/^.*(\\|\/)(.*)/) {  # strip the remote path and keep the filename                                                                                                                                                      
-        $filename=$2;
-    }
-    $file_uploaded=1;
-    syslog (LOG_INFO,"File provided");
-
-}
 
 if ($file_link){
     $file_linked=1;
     syslog (LOG_INFO,"File Link");
-#    print "file link<br>";
-#    print $file_link;
     $filename=urldecode($file_link);
-#    print $filename;
 
     if ($filename=~m/^.*(\\|\/)(.*)/) {
-        # strip the remote path and keep the filename                                                                                                                                                                                       
-#       print "matched<br>";                                                                                                                                                                                                                
         $filename=$2;
         if ($filename=~m/^(.*)\?.*/) {
             $filename=$1;
         }
 
     }
+    $file_uploaded = 0;
 }
 
 my ( $name, $extension );
@@ -234,25 +229,31 @@ my ( $name, $extension );
 my $report_url = "/results/Position$project$Point_Dir/$name/";
 $ENV{GNSS_REPORT_URL} = $report_url;
 
-#print "Content-type: text/html\n\n";
 print "<html><head><title>Plotting GNSS Data</title>";
 print "<base href=\"$report_url\">";
 print "</head>";
 print "<body><h1>Processing $filename:</h1>\n";
 
-#print $filename."\n";
-
 $upload_file = JCMBSoft_Config::upload_dir().$filename;
 
 my $truth_upload = "";
-if ($reuse_truth) {
-    $truth_upload = JCMBSoft_Config::upload_dir() . $name . "_truth_" . $reuse_truth_name;
-}
-elsif ($query->param('truth_file')) {
-    my $truth_filename = $query->param('truth_file');
+my $truth_upload_handle = $query->upload('truth_file');
+my $truth_file_uploaded = defined $truth_upload_handle ? 1 : 0;
+my $truth_filename = $truth_basename;
+
+if ($truth_file_uploaded) {
+    $truth_filename = $query->param('truth_file');
     if ($truth_filename =~ m/^.*(\\|\/)(.*)/) {
         $truth_filename = $2;
     }
+}
+elsif ($skip_truth_upload && !$truth_basename) {
+    print "ATS truth filename is required when skipping upload.\n";
+    closelog();
+    exit;
+}
+
+if ($truth_filename) {
     $truth_filename =~ tr/ /_/;
     $truth_filename =~ s/[^$safe_filename_characters]//g;
     if ($truth_filename =~ /^([$safe_filename_characters]+)$/) {
@@ -263,28 +264,24 @@ elsif ($query->param('truth_file')) {
     $truth_upload = JCMBSoft_Config::upload_dir() . $name . "_truth_" . $truth_filename;
 }
 
-if ($file_reused) {
+if ($skip_gnss_upload || ( $testing_mode && $file_uploaded && -f $upload_file ) ) {
     unless ( -f $upload_file ) {
-        print "Reused GNSS file not found on server: " . CGI::escapeHTML($upload_file) . "\n";
+        print "Cached GNSS file not found on server: " . CGI::escapeHTML($upload_file) . "\n";
         closelog();
         exit;
     }
-    print "Using existing GNSS file on server (" . CGI::escapeHTML($filename) . ")<br>";
+    drain_upload_handle($gnss_upload_handle) if $file_uploaded;
+    print "Using cached GNSS file on server (" . CGI::escapeHTML($filename) . ")<br>";
 }
-
-if ($file_uploaded) {
+elsif ($file_uploaded) {
     print "Getting uploaded file<br>";
-    my $upload_filehandle = $query->upload("file");
-
-#print $upload_file;                                                                                                                                                                                                                        
     if (!open ( UPLOADFILE, ">$upload_file" )) {
         print "\n could not open output file".$upload_file;
         die "$!";
-        }
-# or die "$!";                                                                                                                                                                                                                              
+    }
     binmode UPLOADFILE;
 
-    while ( <$upload_filehandle> )
+    while ( <$gnss_upload_handle> )
     {
         print UPLOADFILE;
     }
@@ -292,28 +289,30 @@ if ($file_uploaded) {
     close UPLOADFILE;
 }
 
-if ($reuse_truth) {
-    unless ( -f $truth_upload ) {
-        print "Reused ATS truth file not found on server: " . CGI::escapeHTML($truth_upload) . "\n";
-        closelog();
-        exit;
+if ($truth_upload) {
+    if ( $skip_truth_upload || ( $testing_mode && $truth_file_uploaded && -f $truth_upload ) ) {
+        unless ( -f $truth_upload ) {
+            print "Cached ATS truth file not found on server: " . CGI::escapeHTML($truth_upload) . "\n";
+            closelog();
+            exit;
+        }
+        drain_upload_handle($truth_upload_handle) if $truth_file_uploaded;
+        $ENV{GNSS_TRUTH_ATS} = $truth_upload;
+        print "Using cached ATS truth file on server (" . CGI::escapeHTML($truth_filename) . ")<br>";
     }
-    $ENV{GNSS_TRUTH_ATS} = $truth_upload;
-    print "Using existing ATS truth file on server (" . CGI::escapeHTML($reuse_truth_name) . ")<br>";
-}
-elsif ($truth_upload) {
-    print "Getting uploaded truth file<br>";
-    my $truth_upload_filehandle = $query->upload("truth_file");
-    if (!open(UPLOADTRUTH, ">$truth_upload")) {
-        print "\n could not open truth output file" . $truth_upload;
-        die "$!";
+    elsif ($truth_file_uploaded) {
+        print "Getting uploaded truth file<br>";
+        if (!open(UPLOADTRUTH, ">$truth_upload")) {
+            print "\n could not open truth output file" . $truth_upload;
+            die "$!";
+        }
+        binmode UPLOADTRUTH;
+        while (<$truth_upload_handle>) {
+            print UPLOADTRUTH;
+        }
+        close UPLOADTRUTH;
+        $ENV{GNSS_TRUTH_ATS} = $truth_upload;
     }
-    binmode UPLOADTRUTH;
-    while (<$truth_upload_filehandle>) {
-        print UPLOADTRUTH;
-    }
-    close UPLOADTRUTH;
-    $ENV{GNSS_TRUTH_ATS} = $truth_upload;
 }
 
 if ($file_linked) {
