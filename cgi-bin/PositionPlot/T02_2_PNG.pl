@@ -23,6 +23,24 @@ sub urldecode {
     return $s;
 }
 
+sub tz_hours_from_form {
+    my ( $hours_raw, $minutes_raw ) = @_;
+    return undef if !defined $hours_raw || $hours_raw eq "";
+    my $hours = int($hours_raw);
+    my $minutes = defined $minutes_raw && $minutes_raw ne "" ? int($minutes_raw) : 0;
+    $minutes = 0  if $minutes < 0;
+    $minutes = 59 if $minutes > 59;
+    $hours = -14 if $hours < -14;
+    $hours = 14  if $hours > 14;
+    if ( $hours == 0 ) {
+        return $minutes / 60.0;
+    }
+    if ( $hours < 0 ) {
+        return $hours - $minutes / 60.0;
+    }
+    return $hours + $minutes / 60.0;
+}
+
 sub gnss_results_dir {
     my $cfg_dir = "$Bin/../../admin/GNSS";
     my $cfg = "$cfg_dir/GNSS_Paths.cfg";
@@ -145,6 +163,11 @@ if ( !defined($MeanSol) || $MeanSol eq "" )
 }
 
 $ENV{GNSS_MEAN_SOL} = $MeanSol;
+
+my $tz_decimal = tz_hours_from_form( scalar $query->param('tz_hours'), scalar $query->param('tz_minutes') );
+if ( defined $tz_decimal ) {
+    $ENV{GNSS_LOCAL_TZ_HOURS} = $tz_decimal;
+}
 
 #print $filename."\n";
 

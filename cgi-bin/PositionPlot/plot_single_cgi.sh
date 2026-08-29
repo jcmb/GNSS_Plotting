@@ -79,7 +79,7 @@ then
    GNSS_RESULTS_DIR=/mnt/Data/results
 fi
 
-if command -v TZ.py >/dev/null 2>&1
+if command -v TZ.py >/dev/null 2>&1 && [ -z "${GNSS_LOCAL_TZ_HOURS:-}" ]
 then
    export GNSS_LOCAL_TZ_HOURS=$(TZ.py 2>/dev/null || echo 0)
 fi

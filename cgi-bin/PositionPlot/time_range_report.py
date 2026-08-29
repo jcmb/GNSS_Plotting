@@ -3,9 +3,11 @@
 import argparse
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import GPS_TIME
+
+from parse_ats import gnss_local_timezone
 
 
 def parse_unix(fields):
@@ -35,31 +37,30 @@ def format_gps(unix_sec):
 
 
 def local_timezone():
-    raw = os.environ.get("GNSS_LOCAL_TZ_HOURS", "").strip()
-    if raw:
-        try:
-            hours = float(raw)
-            return timezone(timedelta(hours=hours))
-        except ValueError:
-            pass
-    tzinfo = datetime.now().astimezone().tzinfo
-    return tzinfo if tzinfo is not None else timezone.utc
+    return gnss_local_timezone()
 
 
 def format_tz_offset_line():
-    tz = local_timezone()
-    if isinstance(tz, timezone):
-        offset = tz.utcoffset(datetime(2000, 1, 1))
+    raw = os.environ.get("GNSS_LOCAL_TZ_HOURS", "").strip()
+    if raw:
+        try:
+            total_minutes = int(round(float(raw) * 60))
+        except ValueError:
+            total_minutes = 0
     else:
-        offset = datetime.now(tz).utcoffset()
-    if offset is None:
-        return "Display TZ offset: +0:00"
-    total_seconds = int(offset.total_seconds())
-    sign = -1 if total_seconds < 0 else 1
-    abs_seconds = abs(total_seconds)
-    hours = abs_seconds // 3600
-    minutes = (abs_seconds % 3600) // 60
-    prefix = "-" if sign < 0 else "+"
+        tz = local_timezone()
+        if isinstance(tz, timezone):
+            offset = tz.utcoffset(datetime(2000, 1, 1))
+        else:
+            offset = datetime.now(tz).utcoffset()
+        if offset is None:
+            return "Display TZ offset: +0:00"
+        total_minutes = int(offset.total_seconds() // 60)
+    sign = -1 if total_minutes < 0 else 1
+    abs_minutes = abs(total_minutes)
+    hours = abs_minutes // 60
+    minutes = abs_minutes % 60
+    prefix = "-" if total_minutes < 0 else "+"
     return "Display TZ offset: {}{}:{:02d}".format(prefix, hours, minutes)
 
 
@@ -101,7 +102,7 @@ def read_gnss_range():
 
 
 def print_ats_range(ats_path):
-    from parse_ats import format_ats_utc_display, parse_ats_file
+    from parse_ats import format_ats_local_display, format_ats_utc_display, parse_ats_file
 
     truth = parse_ats_file(ats_path)
     if not truth:
@@ -110,8 +111,8 @@ def print_ats_range(ats_path):
     last = truth[-1]
     print("ATS Start UTC: {}".format(format_ats_utc_display(first.date_str, first.time_str)))
     print("ATS End UTC: {}".format(format_ats_utc_display(last.date_str, last.time_str)))
-    print("ATS Start Local: {}".format(format_local(first.t)))
-    print("ATS End Local: {}".format(format_local(last.t)))
+    print("ATS Start Local: {}".format(format_ats_local_display(first.date_str, first.time_str)))
+    print("ATS End Local: {}".format(format_ats_local_display(last.date_str, last.time_str)))
 
 
 def main():

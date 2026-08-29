@@ -80,6 +80,10 @@
     opacity: 0.55;
     pointer-events: none;
   }
+  .tz-offset-label {
+    margin-left: 8px;
+    font-weight: bold;
+  }
 </style>
 </head>
 <body class="page">
@@ -112,6 +116,18 @@ Truth file (ATS, optional):
 </td>
 <td>
 <input type="file" name="truth_file" id="truth-file" size="80" accept=".txt,.ats,.log"/>
+</td>
+</tr>
+<tr>
+<td>
+Local timezone:
+</td>
+<td>
+<label for="tz-hours">Hours from UTC</label>
+<input type="number" name="tz_hours" id="tz-hours" min="-14" max="14" step="1" value="0">
+<label for="tz-minutes">Minutes</label>
+<input type="number" name="tz_minutes" id="tz-minutes" min="0" max="59" step="1" value="0">
+<span id="tz-offset-label" class="tz-offset-label" aria-live="polite"></span>
 </td>
 </tr>
 </table>
@@ -264,6 +280,78 @@ Point Name (Optional):
 
 <script type="text/javascript">
 (function () {
+  function clampMinutes(value) {
+    var n = Math.trunc(Number(value));
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(59, Math.abs(n)));
+  }
+
+  function clampHours(value) {
+    var n = Math.trunc(Number(value));
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(-14, Math.min(14, n));
+  }
+
+  function toOffsetMinutes(hours, minutes) {
+    var h = clampHours(hours);
+    var m = clampMinutes(minutes);
+    if (h === 0) {
+      return m;
+    }
+    return h * 60 + (h < 0 ? -m : m);
+  }
+
+  function formatOffsetLabel(totalMinutes) {
+    if (totalMinutes === 0) {
+      return "UTC+00:00";
+    }
+    var sign = totalMinutes < 0 ? -1 : 1;
+    var abs = Math.abs(Math.trunc(totalMinutes));
+    var hours = sign * Math.floor(abs / 60);
+    var minutes = abs % 60;
+    var labelSign = totalMinutes < 0 ? "-" : "+";
+    return "UTC" + labelSign + String(Math.abs(hours)).padStart(2, "0") + ":"
+      + String(minutes).padStart(2, "0");
+  }
+
+  function browserOffsetParts() {
+    var offsetMin = -new Date().getTimezoneOffset();
+    var sign = offsetMin < 0 ? -1 : 1;
+    var abs = Math.abs(offsetMin);
+    return {
+      hours: sign * Math.floor(abs / 60),
+      minutes: abs % 60
+    };
+  }
+
+  function syncUploadTzLabel() {
+    var hoursInput = document.getElementById("tz-hours");
+    var minutesInput = document.getElementById("tz-minutes");
+    var label = document.getElementById("tz-offset-label");
+    if (!hoursInput || !minutesInput || !label) return;
+    label.textContent = formatOffsetLabel(toOffsetMinutes(hoursInput.value, minutesInput.value));
+  }
+
+  function initUploadTimezone() {
+    var parts = browserOffsetParts();
+    var hoursInput = document.getElementById("tz-hours");
+    var minutesInput = document.getElementById("tz-minutes");
+    if (!hoursInput || !minutesInput) return;
+    hoursInput.value = String(parts.hours);
+    minutesInput.value = String(parts.minutes);
+    hoursInput.addEventListener("input", syncUploadTzLabel);
+    minutesInput.addEventListener("input", syncUploadTzLabel);
+    hoursInput.addEventListener("change", syncUploadTzLabel);
+    minutesInput.addEventListener("change", syncUploadTzLabel);
+    syncUploadTzLabel();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initUploadTimezone);
+  } else {
+    initUploadTimezone();
+  }
+
   var form = document.getElementById("gnss-plot-form");
   var statusPanel = document.getElementById("submit-status");
   var statusPhase = document.getElementById("status-phase");

@@ -47,9 +47,18 @@
     return "UTC" + sign + String(absH).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
   }
 
-  function initFromTimeRange(_text) {
+  function parseOffsetLine(text) {
+    const match = String(text || "").match(/^Display TZ offset:\s*([+-]?\d+):(\d{2})\s*$/m);
+    if (!match) {
+      return null;
+    }
+    return toOffsetMinutes(Number(match[1]), Number(match[2]));
+  }
+
+  function initFromTimeRange(text) {
     if (!userAdjustedOffset) {
-      offsetMinutes = browserOffsetMinutes();
+      const parsed = parseOffsetLine(text);
+      offsetMinutes = parsed !== null ? parsed : browserOffsetMinutes();
     }
     syncPanel();
   }

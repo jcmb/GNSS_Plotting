@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-import re
+from datetime import datetime, timedelta, timezone
+import os
 
 
 @dataclass(frozen=True)
@@ -18,25 +18,47 @@ class AtsTruthPoint:
     time_str: str
 
 
+def gnss_local_timezone():
+    raw = os.environ.get("GNSS_LOCAL_TZ_HOURS", "").strip()
+    if raw:
+        try:
+            return timezone(timedelta(hours=float(raw)))
+        except ValueError:
+            pass
+    tzinfo = datetime.now().astimezone().tzinfo
+    return tzinfo if tzinfo is not None else timezone.utc
+
+
+def format_ats_local_display(date_str: str, time_str: str) -> str:
+    """Return ATS Date/Time as recorded in the log (local time)."""
+    return f"{date_str.strip()} {time_str.strip()}"
+
+
 def format_ats_utc_display(date_str: str, time_str: str) -> str:
-    """Return ATS Date/Time fields formatted for display (source values are UTC)."""
-    return f"{date_str.strip()} {time_str.strip()} UTC"
+    """Return ATS local Date/Time converted to UTC."""
+    unix = _parse_ats_timestamp(date_str, time_str)
+    return datetime.fromtimestamp(unix, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _parse_ats_timestamp(date_str: str, time_str: str) -> float:
     date_str = date_str.strip()
     time_str = time_str.strip()
+    local_tz = gnss_local_timezone()
     for fmt in ("%m/%d/%Y %H:%M:%S.%f", "%m/%d/%Y %H:%M:%S"):
         try:
             dt = datetime.strptime(f"{date_str} {time_str}", fmt)
-            return dt.replace(tzinfo=timezone.utc).timestamp()
+            if isinstance(local_tz, timezone):
+                dt = dt.replace(tzinfo=local_tz)
+            else:
+                dt = dt.replace(tzinfo=local_tz)
+            return dt.timestamp()
         except ValueError:
             continue
     raise ValueError(f"Unrecognized ATS date/time: {date_str!r} {time_str!r}")
 
 
 def parse_ats_file(path: str) -> list[AtsTruthPoint]:
-    """Return ATSDataEvent truth rows sorted by UTC time."""
+    """Return ATSDataEvent truth rows sorted by UTC unix time."""
     header_cols: dict[str, int] | None = None
     points: list[AtsTruthPoint] = []
 
