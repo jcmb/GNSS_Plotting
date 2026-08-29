@@ -23,6 +23,23 @@ TrimbleTools GNSS plotting suite: position, tracking, and voltage analysis from 
 
 ## Deployment
 
-Scripts under each `cgi-bin/*Plot/` directory are deployed to the web server CGI path (e.g. `cgi-bin/PositionPlot/`). See README files in `PositionPlot/` and `TrackingPlot/` for component-specific install notes.
+From the repository root on the web server:
+
+```bash
+sudo ./deploy.sh          # install CGI + HTML
+sudo ./deploy.sh -n       # dry run
+```
+
+This syncs:
+
+| Source | Destination |
+|---|---|
+| `cgi-bin/` | `/usr/lib/cgi-bin/` (`PositionPlot/`, `TrackingPlot/`, `VoltagePlot/`) |
+| `HTML/T02_2_PNG.html` | `/var/www/html/T02_2_PNG.html` |
+| `HTML/T02_2_TRACKING.html` | `/var/www/html/Tracking/T02_2_TRACKING.html` |
+
+Override paths with `CGI_DEST`, `HTML_DEST`, or `TRACKING_HTML_DEST` if needed. After deploy, **reprocess** sessions so result directories pick up symlinked `index.shtml` and updated JS.
+
+See README files in `PositionPlot/` and `TrackingPlot/` for component-specific notes.
 
 Previously hosted on Bitbucket as `geoffrey-kirk---gnss-plotting`.
