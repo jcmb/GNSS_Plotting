@@ -7,13 +7,13 @@ use CGI qw(escapeHTML);
 use Digest::SHA qw(sha256_hex);
 use Exporter 'import';
 use Fcntl qw(:flock);
-use File::Basename qw(dirname);
+use File::Basename qw(dirname fileparse);
 use MIME::Base64 qw(decode_base64);
 use Socket qw(getaddrinfo inet_ntop inet_pton sockaddr_in sockaddr_in6 AF_INET AF_INET6 SOCK_STREAM);
 use URI;
 use LWP::UserAgent;
 
-our $VERSION = 1.03;
+our $VERSION = 1.04;
 our @EXPORT_OK = qw(
   TrimbleTools upload_dir
   auth_enabled auth_file
