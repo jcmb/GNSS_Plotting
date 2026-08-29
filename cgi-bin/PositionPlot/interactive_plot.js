@@ -127,6 +127,7 @@ const TRACE_NAME_TO_COLOR = {
   "North Cumulative": "north",
   "East Cumulative": "east",
   "Height Cumulative": "up",
+  "2D Cumulative": "d2",
   "1D Error/Sigma": "up",
   "2D Error/Sigma": "d2",
   "3D Error/Sigma": "d3",
@@ -137,7 +138,8 @@ const TRACE_NAME_TO_COLOR = {
   "2D Sigma (H)": "d2",
   "3D Sigma": "d3",
   "2D Sigma Ratio": "d2",
-  "3D Sigma Ratio": "d3"
+  "3D Sigma Ratio": "d3",
+  "1D Sigma Ratio": "up"
 };
 
 function resolveTraceColor(trace) {
@@ -850,7 +852,11 @@ const AGE_CORRECTION_PLOT_IDS = [
   "plot-age-corr-3d"
 ];
 
-function plotErrorSigmaChart(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase) {
+function plotErrorSigmaRatioChart(
+  elementId, title, x, errY, sigY, ratioY,
+  errName, sigName, ratioName, colorKey, layoutBase, options = {}
+) {
+  const { sigmaLegendOnly = true } = options;
   const color = ERROR_COLORS[colorKey];
   drawPlot(elementId, [
     coloredLine(x, errY, errName, colorKey),
@@ -860,35 +866,33 @@ function plotErrorSigmaChart(elementId, title, x, errY, sigY, errName, sigName, 
       y: sigY,
       name: sigName,
       mode: "lines",
+      visible: sigmaLegendOnly ? "legendonly" : true,
       line: { color, width: 2, dash: "dot" },
       marker: { color }
-    }
-  ], {
-    ...layoutBase,
-    title,
-    yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
-    legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
-  });
-}
-
-function plotErrorSigmaRatioChart(elementId, title, x, ratioY, sigY, ratioName, sigName, colorKey, layoutBase) {
-  const color = ERROR_COLORS[colorKey];
-  drawPlot(elementId, [
-    coloredLine(x, ratioY, ratioName, colorKey),
+    },
     {
       type: "scatter",
       x,
-      y: sigY,
-      name: sigName,
+      y: ratioY,
+      name: ratioName,
       mode: "lines",
-      visible: "legendonly",
-      line: { color, width: 2, dash: "dot" },
+      yaxis: "y2",
+      line: { color, width: 2 },
       marker: { color }
     }
   ], {
     ...layoutBase,
+    margin: { ...layoutBase.margin, r: 50 },
     title,
-    yaxis: { title: "Sigma ratio", rangemode: "tozero", zeroline: true },
+    yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
+    yaxis2: {
+      title: "Sigma ratio",
+      overlaying: "y",
+      side: "right",
+      rangemode: "tozero",
+      zeroline: true,
+      showgrid: false
+    },
     legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
 }
@@ -1267,14 +1271,15 @@ function plotLatencyDistributionIfOpen(elementId, dist) {
   plotLatencyDistribution(elementId, dist);
 }
 
-function plotErrorSigmaChartIfOpen(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase) {
+function plotErrorSigmaRatioChartIfOpen(
+  elementId, title, x, errY, sigY, ratioY,
+  errName, sigName, ratioName, colorKey, layoutBase, options
+) {
   if (!shouldDrawPlot(elementId)) return;
-  plotErrorSigmaChart(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase);
-}
-
-function plotErrorSigmaRatioChartIfOpen(elementId, title, x, ratioY, sigY, ratioName, sigName, colorKey, layoutBase) {
-  if (!shouldDrawPlot(elementId)) return;
-  plotErrorSigmaRatioChart(elementId, title, x, ratioY, sigY, ratioName, sigName, colorKey, layoutBase);
+  plotErrorSigmaRatioChart(
+    elementId, title, x, errY, sigY, ratioY,
+    errName, sigName, ratioName, colorKey, layoutBase, options
+  );
 }
 
 function removeLegacy2d3dPlot() {
@@ -1883,10 +1888,12 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const cN = cumulativePercent(north);
   const cE = cumulativePercent(east);
+  const c2d = cumulativePercent(err2d);
   const cU = cumulativePercent(up);
   drawPlotIfOpen("plot-cumulative", [
     coloredLine(cN.x, cN.y, "North Cumulative", "north"),
     coloredLine(cE.x, cE.y, "East Cumulative", "east"),
+    coloredLine(c2d.x, c2d.y, "2D Cumulative", "d2"),
     coloredLine(cU.x, cU.y, "Height Cumulative", "up")
   ], {
     margin: { l: 60, r: 30, t: 40, b: 40 },
@@ -1942,25 +1949,27 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   if (!isMoving) {
   const ratios = sigmaRatios(points);
-  plotErrorSigmaChartIfOpen(
+  const err3d = d3(points);
+  plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-1d",
     "1D Error and Sigma",
-    x, up, vSigma,
-    "1D Error |U|", "1D Sigma (V)",
-    "up", commonLayout
+    x, up, vSigma, ratios.r1d,
+    "1D Error |U|", "1D Sigma (V)", "1D Sigma Ratio",
+    "up", commonLayout,
+    { sigmaLegendOnly: false }
   );
   plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-2d",
     "2D Error and Sigma",
-    x, ratios.r2d, hSigma,
-    "2D Sigma Ratio", "2D Sigma (H)",
+    x, err2d, hSigma, ratios.r2d,
+    "2D Error (H)", "2D Sigma (H)", "2D Sigma Ratio",
     "d2", commonLayout
   );
   plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-3d",
     "3D Error and Sigma",
-    x, ratios.r3d, s3d,
-    "3D Sigma Ratio", "3D Sigma",
+    x, err3d, s3d, ratios.r3d,
+    "3D Error", "3D Sigma", "3D Sigma Ratio",
     "d3", commonLayout
   );
   }
