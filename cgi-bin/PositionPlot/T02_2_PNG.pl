@@ -261,64 +261,25 @@ if ($file_linked) {
 print "Data is being processed: This will normally takes a few seconds but can take longer for very large files.<br>";
 print "The report will be at <a href=\"$report_url\">$report_url</a><br/>\n";
 print "<p/>Processing will continue if you navigate away from this page<br/>";
+print "<pre>\n";
 
 my $results_dir = gnss_results_dir() . "/Position$project$Point_Dir/$name";
 system( 'mkdir', '-p', $results_dir );
 $ENV{GNSS_RESULT_DIR} = $results_dir;
-my $processing_marker = 'processing.txt';
-my $processing_output = 'processing_output.txt';
-my $queued_at = scalar localtime;
-if ( open my $processing, '>', "$results_dir/$processing_marker" ) {
-    print {$processing} "Queued $queued_at — waiting for worker to start\n";
-    close $processing;
-}
-if ( open my $out, '>', "$results_dir/$processing_output" ) {
-    print {$out} "=== $queued_at upload complete, queueing worker ===\n";
-    print {$out} "GNSS file: $filename\n";
-    if ($truth_upload) {
-        print {$out} "ATS file: " . File::Basename::basename($truth_upload) . "\n";
-    }
-    print {$out} "Result directory: $results_dir\n";
-    print {$out} "Live log: ${report_url}processing_output.txt\n";
-    close $out;
-}
 
 my $start_script = "$Bin/start_single.sh";
 unless ( -x $start_script ) {
-    print "<p>Processing script is not available on the server.</p></body></html>";
+    print "</pre><p>Processing script is not available on the server.</p></body></html>";
     closelog();
     exit;
 }
 
-syslog( LOG_INFO, "Queueing background processing: " . $upload_file );
-print "<pre>\n";
-print "Upload complete $queued_at\n";
-print "Queueing background worker...\n";
-print "GNSS file: $filename\n";
-if ($truth_upload) {
-    print "ATS file: " . File::Basename::basename($truth_upload) . "\n";
+syslog( LOG_INFO, "Starting processing: " . $upload_file );
+if ( JCMBSoft_Config::TrimbleTools() ) {
+    exec( '/bin/bash', $start_script, $upload_file, $extension, $Sol, $Point, $Ant,
+        $Decimate, $Fixed_Range, $project, $SaveFile, $MeanSol,
+        $report_url, $SessionType, $truth_upload );
 }
-print "Live processing log: ${report_url}processing_output.txt\n";
-print "</pre>\n";
-
-my $rc = system(
-    $start_script, $upload_file, $extension, $Sol, $Point, $Ant,
+exec( $start_script, $upload_file, $extension, $Sol, $Point, $Ant,
     $Decimate, $Fixed_Range, $project, $SaveFile, $MeanSol,
-    $report_url, $SessionType, $truth_upload
-);
-if ( $rc != 0 ) {
-    unlink "$results_dir/$processing_marker";
-    syslog( LOG_WARNING, "Failed to queue processing for $upload_file (exit $rc)" );
-    print "<p><strong>Could not start background processing</strong> (exit $rc).</p>";
-    print "<p>Check syslog or <a href=\"${report_url}processing_output.txt\">processing_output.txt</a>.</p>";
-    print "</body></html>";
-    closelog();
-    exit;
-}
-syslog( LOG_INFO, "Processing queued: " . $upload_file . " dir=$results_dir" );
-
-print "<p><strong>Processing has been queued.</strong> This page will open the report when it is ready.</p>";
-print "</body></html>";
-
-closelog();
-exit;
+    $report_url, $SessionType, $truth_upload );
