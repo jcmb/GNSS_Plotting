@@ -25,3 +25,4 @@ else
 fi
 
 disown -a 2>/dev/null || true
+exit 0

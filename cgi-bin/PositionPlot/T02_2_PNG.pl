@@ -276,8 +276,12 @@ unless ( -x $start_script ) {
     exit;
 }
 
-syslog( LOG_INFO, "Starting processing: " . $upload_file );
+syslog( LOG_INFO, "Queueing background processing: " . $upload_file );
 my $log_hint = "/run/shm/positionplot_" . $filename . ".log";
+if ( open my $log_note, '>', "$results_dir/processing_log.txt" ) {
+    print {$log_note} "$log_hint\n";
+    close $log_note;
+}
 my $rc = system(
     $start_script, $upload_file, $extension, $Sol, $Point, $Ant,
     $Decimate, $Fixed_Range, $project, $SaveFile, $MeanSol,
@@ -287,7 +291,7 @@ if ( $rc != 0 ) {
     unlink "$results_dir/.processing";
     syslog( LOG_WARNING, "Failed to queue processing for $upload_file (exit $rc)" );
     print "<p><strong>Could not start background processing</strong> (exit $rc).</p>";
-    print "<p>Check syslog and <code>" . CGI::escapeHTML($log_hint) . "</code>.</p>";
+    print "<p>Check syslog, <code>" . CGI::escapeHTML($log_hint) . "</code>, or processing_log.txt in the result directory.</p>";
     print "</body></html>";
     closelog();
     exit;
