@@ -412,10 +412,14 @@ function checkProcessingStatus() {
     return;
   }
   var check = new XMLHttpRequest();
-  check.open("GET", "processing.status?_=" + Date.now(), true);
+  check.open("GET", "processing.txt?_=" + Date.now(), true);
   check.onload = function () {
     if (check.status === 200) {
       banner.style.display = "block";
+      var status = (check.responseText || "").replace(/^\s+|\s+$/g, "");
+      banner.textContent = status
+        ? ("Processing is still running: " + status)
+        : "Processing is still running. Summary tables and interactive plots will fill in when complete.";
       window.setTimeout(checkProcessingStatus, 3000);
       return;
     }

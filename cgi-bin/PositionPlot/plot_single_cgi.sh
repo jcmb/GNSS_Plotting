@@ -93,10 +93,22 @@ time_range_report_cmd() {
    "$normalDir/time_range_report.py" "${args[@]}"
 }
 
-PROCESSING_MARKER=processing.status
+PROCESSING_MARKER=processing.txt
+PROCESSING_OUTPUT=processing_output.txt
 
-RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
+if [ -n "${GNSS_RESULT_DIR:-}" ]
+then
+   RESULT_DIR="$GNSS_RESULT_DIR"
+else
+   RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
+fi
 logger "$RESULT_DIR"
+
+set_processing_status() {
+   printf '%s\n' "$1" > "$RESULT_DIR/$PROCESSING_MARKER" 2>/dev/null || true
+   echo "$1"
+}
+
 mkdir -p "$RESULT_DIR" || {
    logger "Could not create result dir: $RESULT_DIR"
    rm -f "$RESULT_DIR/$PROCESSING_MARKER"
@@ -116,16 +128,26 @@ cd "$RESULT_DIR" || {
    exit 1
 }
 rm -f processing_error.txt
-find . -mindepth 1 -maxdepth 1 ! -name "$PROCESSING_MARKER" -exec rm -rf {} + 2>/dev/null
-echo "Processing started $(date)" > "$PROCESSING_MARKER"
+find . -mindepth 1 -maxdepth 1 \
+   ! -name "$PROCESSING_MARKER" \
+   ! -name "$PROCESSING_OUTPUT" \
+   ! -name "processing_error.txt" \
+   -exec rm -rf {} + 2>/dev/null
+set_processing_status "Processing started $(date)"
 TMP_DIR=/run/shm/
 
 logger `pwd`
 
-echo Creating X29 file for $File
+set_processing_status "Creating X29 with viewdat for $File — large files can take several minutes"
 logger "Creating X29 file for $File"
 
-viewdat -d29 --translate_rec35_sub2_to_rec29 -x -o$TMP_DIR$$.x29 $1
+if command -v stdbuf >/dev/null 2>&1
+then
+   stdbuf -oL viewdat -d29 --translate_rec35_sub2_to_rec29 -x -o$TMP_DIR$$.x29 $1
+else
+   viewdat -d29 --translate_rec35_sub2_to_rec29 -x -o$TMP_DIR$$.x29 $1
+fi
+set_processing_status "Finished viewdat for $File"
 
 #viewdat -i -ofile.sum $1
 
@@ -138,7 +160,7 @@ rm $1
 
 if [ "$Decimate" = -1 ]
 then
-   echo "Computing decimation interval"
+   set_processing_status "Computing decimation interval"
    eval $(compute_decimate.py $TMP_DIR$$.x29)
 fi
 
@@ -151,7 +173,7 @@ else
    echo "Decimation interval: " $Decimate
    echo "Orginal interval: " $interval
    echo "Every: $Decimate (s), orginal ($interval)">Decimation
-   echo Creating Decimated file for $File
+   set_processing_status "Creating decimated file for $File"
    decimate.py $Decimate <$TMP_DIR$$.x29 > $TMP_DIR$File.X29
 #   cp $1 $FileFull
 
@@ -172,7 +194,7 @@ echo "$File" >file.html
 
 #echo "Solution Type $Sol";
 
-echo "Checking database for $Point"
+set_processing_status "Checking database for $Point"
 
 #$normalDir/GNSS_TRUTH.py $Point
 
@@ -319,7 +341,7 @@ _run_motion_detect() {
 }
 
 detect_session_type() {
-echo "Computing provisional ENU for session detection"
+set_processing_status "Detecting session type"
 original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height >$File.enu.provisional
 
 case "$SESSION_REQUEST" in
@@ -407,7 +429,7 @@ echo "Drive test warning: $DRIVE_WARNING"
 
 if [ "$TRUTH_MODE" = "yes" ]
 then
-   echo "ATS truth file provided — attempting truth-referenced errors"
+   set_processing_status "Aligning ATS truth file"
    logger "Attempting ATS truth alignment for $FileFull"
 
    TRUTH_SOL_ARGS=""
@@ -742,6 +764,7 @@ echo '</pre>'
 #echo -n '<base href="http://trimbletools.com/results/Position/'
 #echo -n $File
 #echo '/" />'
+set_processing_status "Writing report files"
 ln -sf $normalDir/index.shtml .
 ln -sf $normalDir/interactive_plot.js
 ln -sf $normalDir/report_tables.js

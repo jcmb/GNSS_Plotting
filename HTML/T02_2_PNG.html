@@ -2,6 +2,8 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
 <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
 <title>Plot postions for a GNSS file</title>
 <style type="text/css">
@@ -420,65 +422,120 @@ Point Name (Optional):
     processingLog.scrollTop = processingLog.scrollHeight;
   }
 
+  function stripTags(text) {
+    return String(text || "").replace(/<[^>]+>/g, "");
+  }
+
+  function fetchText(url, callback) {
+    var req = new XMLHttpRequest();
+    req.open("GET", url + "?_=" + Date.now(), true);
+    req.onload = function () {
+      callback(req.status === 200, req.responseText || "");
+    };
+    req.onerror = function () {
+      callback(false, "");
+    };
+    req.send();
+  }
+
   function waitForProcessingComplete(resultsUrl, callback) {
     var base = resultsUrl.replace(/\/?$/, "/");
-    var statusUrl = base + "processing.status";
+    var statusUrl = base + "processing.txt";
+    var outputUrl = base + "processing_output.txt";
     var indexUrl = base + "index.shtml";
     var errorUrl = base + "processing_error.txt";
-    var pollIntervalMs = 3000;
+    var pollIntervalMs = 2000;
+    var startedAt = Date.now();
+    var lastOutput = "";
+    var sawWorker = false;
 
-    function pollStatus() {
-      var check = new XMLHttpRequest();
-      check.open("GET", statusUrl + "?_=" + Date.now(), true);
-      check.onload = function () {
-        if (check.status === 200) {
-          setPhase("Processing on server...");
-          window.setTimeout(pollStatus, pollIntervalMs);
-          return;
-        }
-        verifyReportReady();
-      };
-      check.onerror = function () {
-        verifyReportReady();
-      };
-      check.send();
+    function elapsedLabel() {
+      return Math.round((Date.now() - startedAt) / 1000) + "s";
     }
 
-    function verifyReportReady() {
-      var err = new XMLHttpRequest();
-      err.open("GET", errorUrl + "?_=" + Date.now(), true);
-      err.onload = function () {
-        if (err.status === 200 && err.responseText.trim()) {
+    function poll() {
+      var statusOk = false;
+      var statusText = "";
+      var outOk = false;
+      var outText = "";
+      var pending = 2;
+
+      function continuePoll() {
+        pending -= 1;
+        if (pending > 0) {
+          return;
+        }
+
+        if (outOk && outText) {
+          lastOutput = stripTags(outText);
+          showProcessingLog(lastOutput);
+          if (/Worker started|Worker launching|Plot_single_cgi|Creating X29|viewdat|Processing started/i.test(outText)) {
+            sawWorker = true;
+          }
+        }
+
+        if (statusOk && statusText.trim()) {
+          setPhase(statusText.trim() + " (" + elapsedLabel() + ")");
+          sawWorker = true;
+        } else if (!sawWorker) {
+          setPhase("Starting processing on the server... (" + elapsedLabel() + ")");
+          if (Date.now() - startedAt >= 8000 && !outOk) {
+            setDetail(
+              "Queued, but no worker log yet after " + elapsedLabel() +
+              ". If this stays empty, the background job may not have started."
+            );
+          }
+        }
+
+        if (statusOk) {
+          window.setTimeout(poll, pollIntervalMs);
+          return;
+        }
+        checkFinished();
+      }
+
+      fetchText(statusUrl, function (ok, text) {
+        statusOk = ok;
+        statusText = text;
+        continuePoll();
+      });
+      fetchText(outputUrl, function (ok, text) {
+        outOk = ok;
+        outText = text;
+        continuePoll();
+      });
+    }
+
+    function checkFinished() {
+      fetchText(errorUrl, function (errOk, errText) {
+        if (errOk && errText.trim()) {
           setPhase("Processing failed.");
-          setDetail(err.responseText.trim());
+          setDetail(errText.trim());
+          showProcessingLog((lastOutput ? lastOutput + "\n\n" : "") + errText.trim());
           form.className = "";
           submitBtn.disabled = false;
           return;
         }
-        checkIndex();
-      };
-      err.onerror = checkIndex;
-      err.send();
+        var idx = new XMLHttpRequest();
+        idx.open("HEAD", indexUrl + "?_=" + Date.now(), true);
+        idx.onload = function () {
+          if (idx.status >= 200 && idx.status < 400) {
+            setPhase("Processing complete. Opening report...");
+            setGnssUploadPercent(100, false);
+            callback();
+            return;
+          }
+          setPhase("Finishing report... (" + elapsedLabel() + ")");
+          window.setTimeout(poll, pollIntervalMs);
+        };
+        idx.onerror = function () {
+          window.setTimeout(poll, pollIntervalMs);
+        };
+        idx.send();
+      });
     }
 
-    function checkIndex() {
-      var idx = new XMLHttpRequest();
-      idx.open("HEAD", indexUrl + "?_=" + Date.now(), true);
-      idx.onload = function () {
-        if (idx.status >= 200 && idx.status < 400) {
-          callback();
-          return;
-        }
-        setPhase("Processing on server...");
-        window.setTimeout(pollStatus, pollIntervalMs);
-      };
-      idx.onerror = function () {
-        window.setTimeout(pollStatus, pollIntervalMs);
-      };
-      idx.send();
-    }
-
-    pollStatus();
+    poll();
   }
 
   function extractStatusMessages(html) {
@@ -583,12 +640,12 @@ Point Name (Optional):
       if (event.lengthComputable) {
         var totalSize = gnssFile.size + (atsFile ? atsFile.size : 0);
         if (totalSize > 0 && event.loaded >= totalSize) {
-          setPhase("Upload complete. Processing on server...");
-          setGnssUploadPercent(100, false);
+          setPhase("Upload complete. Starting processing...");
+          setGnssUploadPercent(100, true);
           if (atsFile) {
-            setAtsUploadPercent(100, false);
+            setAtsUploadPercent(100, true);
           }
-          showProcessingLog("Waiting for processing output...");
+          showProcessingLog("Upload finished. Queueing background processing...");
         }
       }
     });
@@ -596,12 +653,12 @@ Point Name (Optional):
     xhr.addEventListener("readystatechange", function () {
       if (xhr.readyState === XMLHttpRequest.LOADING || xhr.readyState === XMLHttpRequest.DONE) {
         if (xhr.readyState === XMLHttpRequest.LOADING) {
-          setPhase("Processing on server...");
-          setGnssUploadPercent(100, false);
+          setPhase("Starting processing on the server...");
+          setGnssUploadPercent(100, true);
           if (atsFile) {
-            setAtsUploadPercent(100, false);
+            setAtsUploadPercent(100, true);
           }
-          showProcessingLog(processingLog.textContent || "Waiting for processing output...");
+          showProcessingLog(processingLog.textContent || "Upload finished. Queueing background processing...");
         }
         updateFromResponse(xhr.responseText, xhr.readyState === XMLHttpRequest.DONE);
       }
@@ -633,10 +690,18 @@ Point Name (Optional):
       updateFromResponse(xhr.responseText, true);
       var reportUrl = extractReportUrl(xhr.responseText, false);
       if (reportUrl) {
-        setPhase("Processing on server...");
+        setPhase("Processing started on the server.");
+        setGnssUploadPercent(100, true);
+        if (atsFile) {
+          setAtsUploadPercent(100, true);
+        }
+        var queuedLog = extractPreLog(xhr.responseText);
+        showProcessingLog(queuedLog || "Job queued. Waiting for worker output...");
         setDetailHtml(
           'Building report at <a href="' + escapeAttr(reportUrl) + '">' +
-          escapeAttr(reportUrl) + "</a>. Large files may take several minutes."
+          escapeAttr(reportUrl) + "</a>. " +
+          'Live log: <a href="' + escapeAttr(reportUrl.replace(/\/?$/, "/") + "processing_output.txt") +
+          '">processing_output.txt</a>.'
         );
         waitForProcessingComplete(reportUrl, function () {
           window.location.assign(reportUrl);

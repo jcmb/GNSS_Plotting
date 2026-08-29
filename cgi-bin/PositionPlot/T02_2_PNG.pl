@@ -264,10 +264,23 @@ print "<p/>Processing will continue if you navigate away from this page<br/>";
 
 my $results_dir = gnss_results_dir() . "/Position$project$Point_Dir/$name";
 system( 'mkdir', '-p', $results_dir );
-my $processing_marker = 'processing.status';
+$ENV{GNSS_RESULT_DIR} = $results_dir;
+my $processing_marker = 'processing.txt';
+my $processing_output = 'processing_output.txt';
+my $queued_at = scalar localtime;
 if ( open my $processing, '>', "$results_dir/$processing_marker" ) {
-    print {$processing} "started\n";
+    print {$processing} "Queued $queued_at — waiting for worker to start\n";
     close $processing;
+}
+if ( open my $out, '>', "$results_dir/$processing_output" ) {
+    print {$out} "=== $queued_at upload complete, queueing worker ===\n";
+    print {$out} "GNSS file: $filename\n";
+    if ($truth_upload) {
+        print {$out} "ATS file: " . File::Basename::basename($truth_upload) . "\n";
+    }
+    print {$out} "Result directory: $results_dir\n";
+    print {$out} "Live log: ${report_url}processing_output.txt\n";
+    close $out;
 }
 
 my $start_script = "$Bin/start_single.sh";
@@ -278,11 +291,16 @@ unless ( -x $start_script ) {
 }
 
 syslog( LOG_INFO, "Queueing background processing: " . $upload_file );
-my $log_hint = "/run/shm/positionplot_" . $filename . ".log";
-if ( open my $log_note, '>', "$results_dir/processing_log.txt" ) {
-    print {$log_note} "$log_hint\n";
-    close $log_note;
+print "<pre>\n";
+print "Upload complete $queued_at\n";
+print "Queueing background worker...\n";
+print "GNSS file: $filename\n";
+if ($truth_upload) {
+    print "ATS file: " . File::Basename::basename($truth_upload) . "\n";
 }
+print "Live processing log: ${report_url}processing_output.txt\n";
+print "</pre>\n";
+
 my $rc = system(
     $start_script, $upload_file, $extension, $Sol, $Point, $Ant,
     $Decimate, $Fixed_Range, $project, $SaveFile, $MeanSol,
@@ -292,14 +310,14 @@ if ( $rc != 0 ) {
     unlink "$results_dir/$processing_marker";
     syslog( LOG_WARNING, "Failed to queue processing for $upload_file (exit $rc)" );
     print "<p><strong>Could not start background processing</strong> (exit $rc).</p>";
-    print "<p>Check syslog, <code>" . CGI::escapeHTML($log_hint) . "</code>, or processing_log.txt in the result directory.</p>";
+    print "<p>Check syslog or <a href=\"${report_url}processing_output.txt\">processing_output.txt</a>.</p>";
     print "</body></html>";
     closelog();
     exit;
 }
-syslog( LOG_INFO, "Processing queued: " . $upload_file . " log=$log_hint" );
+syslog( LOG_INFO, "Processing queued: " . $upload_file . " dir=$results_dir" );
 
-print "<p><strong>Upload complete.</strong> Processing continues in the background; this page will open the report when it is ready.</p>";
+print "<p><strong>Processing has been queued.</strong> This page will open the report when it is ready.</p>";
 print "</body></html>";
 
 closelog();
