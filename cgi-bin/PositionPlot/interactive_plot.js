@@ -135,7 +135,9 @@ const TRACE_NAME_TO_COLOR = {
   "3D Error": "d3",
   "1D Sigma (V)": "up",
   "2D Sigma (H)": "d2",
-  "3D Sigma": "d3"
+  "3D Sigma": "d3",
+  "2D Sigma Ratio": "d2",
+  "3D Sigma Ratio": "d3"
 };
 
 function resolveTraceColor(trace) {
@@ -674,31 +676,46 @@ function sigmaBandTraces(x, sigma, options = {}) {
     show2Sigma = false,
     show3Sigma = false,
     labelSuffix = "",
-    colorKey = "up"
+    colorKey = "up",
+    sigmaColorKeys = null,
+    positiveOnly = false
   } = options;
   const suffix = labelSuffix ? ` ${labelSuffix}` : "";
   const lineStyle = { dash: "dot", width: 1.5 };
   const wideStyle = { dash: "dash", width: 1 };
+  const colorFor = (level) => (sigmaColorKeys && sigmaColorKeys[level]) || colorKey;
   const traces = [];
   if (show1Sigma) {
     traces.push(
-      coloredLine(x, sigma, `+1σ${suffix}`, colorKey, { line: lineStyle }),
-      coloredLine(x, negateSeries(sigma), `-1σ${suffix}`, colorKey, { line: lineStyle })
+      coloredLine(x, sigma, `+1σ${suffix}`, colorFor(1), { line: lineStyle })
     );
+    if (!positiveOnly) {
+      traces.push(
+        coloredLine(x, negateSeries(sigma), `-1σ${suffix}`, colorFor(1), { line: lineStyle })
+      );
+    }
   }
   if (show2Sigma) {
     const sigma2 = scaleSeries(sigma, 2);
     traces.push(
-      coloredLine(x, sigma2, `+2σ${suffix}`, colorKey, { line: wideStyle }),
-      coloredLine(x, negateSeries(sigma2), `-2σ${suffix}`, colorKey, { line: wideStyle })
+      coloredLine(x, sigma2, `+2σ${suffix}`, colorFor(2), { line: wideStyle })
     );
+    if (!positiveOnly) {
+      traces.push(
+        coloredLine(x, negateSeries(sigma2), `-2σ${suffix}`, colorFor(2), { line: wideStyle })
+      );
+    }
   }
   if (show3Sigma) {
     const sigma3 = scaleSeries(sigma, 3);
     traces.push(
-      coloredLine(x, sigma3, `+3σ${suffix}`, colorKey, { line: wideStyle }),
-      coloredLine(x, negateSeries(sigma3), `-3σ${suffix}`, colorKey, { line: wideStyle })
+      coloredLine(x, sigma3, `+3σ${suffix}`, colorFor(3), { line: wideStyle })
     );
+    if (!positiveOnly) {
+      traces.push(
+        coloredLine(x, negateSeries(sigma3), `-3σ${suffix}`, colorFor(3), { line: wideStyle })
+      );
+    }
   }
   return traces;
 }
@@ -850,6 +867,28 @@ function plotErrorSigmaChart(elementId, title, x, errY, sigY, errName, sigName, 
     ...layoutBase,
     title,
     yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
+    legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+  });
+}
+
+function plotErrorSigmaRatioChart(elementId, title, x, ratioY, sigY, ratioName, sigName, colorKey, layoutBase) {
+  const color = ERROR_COLORS[colorKey];
+  drawPlot(elementId, [
+    coloredLine(x, ratioY, ratioName, colorKey),
+    {
+      type: "scatter",
+      x,
+      y: sigY,
+      name: sigName,
+      mode: "lines",
+      visible: "legendonly",
+      line: { color, width: 2, dash: "dot" },
+      marker: { color }
+    }
+  ], {
+    ...layoutBase,
+    title,
+    yaxis: { title: "Sigma ratio", rangemode: "tozero", zeroline: true },
     legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
 }
@@ -1231,6 +1270,11 @@ function plotLatencyDistributionIfOpen(elementId, dist) {
 function plotErrorSigmaChartIfOpen(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase) {
   if (!shouldDrawPlot(elementId)) return;
   plotErrorSigmaChart(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase);
+}
+
+function plotErrorSigmaRatioChartIfOpen(elementId, title, x, ratioY, sigY, ratioName, sigName, colorKey, layoutBase) {
+  if (!shouldDrawPlot(elementId)) return;
+  plotErrorSigmaRatioChart(elementId, title, x, ratioY, sigY, ratioName, sigName, colorKey, layoutBase);
 }
 
 function removeLegacy2d3dPlot() {
@@ -1721,7 +1765,8 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const heightSigmaTraces = verticalSigmaBandTraces(x, vSigma, {
     show1Sigma: showHeightSigma1,
     show2Sigma: showHeightSigma2,
-    show3Sigma: showHeightSigma3
+    show3Sigma: showHeightSigma3,
+    sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
   });
   const heightSigmaLayout = {
     ...commonLayout,
@@ -1796,11 +1841,13 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     ...assignTraceYAxis([
       ...horizontalSigmaBandTraces(x, hSigma, {
         show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
-        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
+        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked,
+        positiveOnly: true
       }),
       ...verticalSigmaBandTracesForU(x, vSigma, {
         show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
-        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
+        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked,
+        positiveOnly: true
       }),
       coloredLine(x, err2d, "H Error", "d2"),
       coloredLine(x, up, "U Error", "up")
@@ -1810,7 +1857,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     margin: { ...commonLayout.margin, r: 50 },
     title: "H/U Error and Sigma",
     yaxis: latencyPrimaryYAxis(),
-    yaxis2: overlayLeftYAxis({ title: "Meters", zeroline: true }),
+    yaxis2: overlayLeftYAxis({ title: "Meters", rangemode: "tozero", zeroline: true }),
     legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
 
@@ -1894,7 +1941,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   if (!isMoving) {
-  const err3d = d3(points);
+  const ratios = sigmaRatios(points);
   plotErrorSigmaChartIfOpen(
     "plot-age-corr-1d",
     "1D Error and Sigma",
@@ -1902,18 +1949,18 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     "1D Error |U|", "1D Sigma (V)",
     "up", commonLayout
   );
-  plotErrorSigmaChartIfOpen(
+  plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-2d",
     "2D Error and Sigma",
-    x, err2d, hSigma,
-    "2D Error (H)", "2D Sigma (H)",
+    x, ratios.r2d, hSigma,
+    "2D Sigma Ratio", "2D Sigma (H)",
     "d2", commonLayout
   );
-  plotErrorSigmaChartIfOpen(
+  plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-3d",
     "3D Error and Sigma",
-    x, err3d, s3d,
-    "3D Error", "3D Sigma",
+    x, ratios.r3d, s3d,
+    "3D Sigma Ratio", "3D Sigma",
     "d3", commonLayout
   );
   }
