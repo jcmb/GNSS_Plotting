@@ -79,6 +79,20 @@ then
    GNSS_RESULTS_DIR=/mnt/Data/results
 fi
 
+if command -v TZ.py >/dev/null 2>&1
+then
+   export GNSS_LOCAL_TZ_HOURS=$(TZ.py 2>/dev/null || echo 0)
+fi
+
+time_range_report_cmd() {
+   local args=()
+   if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+   then
+      args+=(--ats "$TRUTH_FILE")
+   fi
+   "$normalDir/time_range_report.py" "${args[@]}"
+}
+
 RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
 logger "$RESULT_DIR"
 mkdir -p "$RESULT_DIR"
@@ -425,7 +439,7 @@ then
 
    echo ""
    echo "Computing session time range"
-   $normalDir/time_range_report.py <$File.enu >time_range.txt
+   time_range_report_cmd <$File.enu >time_range.txt
 
    echo ""
    echo "Computing NEE Mean"
@@ -450,7 +464,7 @@ then
 
    echo ""
    echo "Computing session time range"
-   $normalDir/time_range_report.py <$File.sol >time_range.txt
+   time_range_report_cmd <$File.sol >time_range.txt
 
    echo "Session: moving" | tee nee.mean
    cat trajectory_summary.txt | tee -a nee.mean
@@ -465,7 +479,7 @@ else
 
    echo ""
    echo "Computing session time range"
-   $normalDir/time_range_report.py <$File.enu >time_range.txt
+   time_range_report_cmd <$File.enu >time_range.txt
 
    echo ""
    echo "Computing NEE Mean"

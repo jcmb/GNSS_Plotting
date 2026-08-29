@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+import argparse
+import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import GPS_TIME
 
@@ -32,15 +34,36 @@ def format_gps(unix_sec):
     return "Week {}, {:.3f} s".format(week, sow)
 
 
+def local_timezone():
+    raw = os.environ.get("GNSS_LOCAL_TZ_HOURS", "").strip()
+    if raw:
+        try:
+            hours = float(raw)
+            return timezone(timedelta(hours=hours))
+        except ValueError:
+            pass
+    tzinfo = datetime.now().astimezone().tzinfo
+    return tzinfo if tzinfo is not None else timezone.utc
+
+
 def format_local(unix_sec):
-    return datetime.fromtimestamp(unix_sec).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.fromtimestamp(unix_sec, tz=local_timezone()).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_utc(unix_sec):
     return datetime.fromtimestamp(unix_sec, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
-def main():
+def print_range(prefix, min_unix, max_unix):
+    print("{}Start GPS: {}".format(prefix, format_gps(min_unix)))
+    print("{}End GPS: {}".format(prefix, format_gps(max_unix)))
+    print("{}Start UTC: {}".format(prefix, format_utc(min_unix)))
+    print("{}End UTC: {}".format(prefix, format_utc(max_unix)))
+    print("{}Start Local: {}".format(prefix, format_local(min_unix)))
+    print("{}End Local: {}".format(prefix, format_local(max_unix)))
+
+
+def read_gnss_range():
     min_unix = None
     max_unix = None
 
@@ -57,15 +80,36 @@ def main():
         if max_unix is None or unix > max_unix:
             max_unix = unix
 
+    return min_unix, max_unix
+
+
+def print_ats_range(ats_path):
+    from parse_ats import format_ats_utc_display, parse_ats_file
+
+    truth = parse_ats_file(ats_path)
+    if not truth:
+        return
+    first = truth[0]
+    last = truth[-1]
+    print("ATS Start UTC: {}".format(format_ats_utc_display(first.date_str, first.time_str)))
+    print("ATS End UTC: {}".format(format_ats_utc_display(last.date_str, last.time_str)))
+    print("ATS Start Local: {}".format(format_local(first.t)))
+    print("ATS End Local: {}".format(format_local(last.t)))
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Report GPS/UTC/local time range for GNSS data.")
+    parser.add_argument("--ats", help="Optional ATS truth file to report its time span")
+    args = parser.parse_args()
+
+    min_unix, max_unix = read_gnss_range()
     if min_unix is None or max_unix is None:
         return
 
-    print("Start GPS: {}".format(format_gps(min_unix)))
-    print("End GPS: {}".format(format_gps(max_unix)))
-    print("Start UTC: {}".format(format_utc(min_unix)))
-    print("End UTC: {}".format(format_utc(max_unix)))
-    print("Start Local: {}".format(format_local(min_unix)))
-    print("End Local: {}".format(format_local(max_unix)))
+    print_range("", min_unix, max_unix)
+
+    if args.ats:
+        print_ats_range(args.ats)
 
 
 if __name__ == "__main__":

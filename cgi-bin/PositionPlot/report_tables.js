@@ -55,6 +55,32 @@ function renderMeanInfo(text) {
   return sectionHtml("Mean / Reference", tableHtml(["Setting", "Value"], rows, "report-table"));
 }
 
+function parseUtcTimestamp(text) {
+  if (!text || text === "—") return null;
+  const raw = String(text).trim();
+  const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/);
+  if (isoMatch) {
+    const parsed = new Date(`${isoMatch[1]}T${isoMatch[2]}Z`);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  }
+  const atsMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+  if (atsMatch) {
+    const month = atsMatch[1].padStart(2, "0");
+    const day = atsMatch[2].padStart(2, "0");
+    const parsed = new Date(`${atsMatch[3]}-${month}-${day}T${atsMatch[4]}Z`);
+    return Number.isFinite(parsed.getTime()) ? parsed : null;
+  }
+  return null;
+}
+
+function formatLocalFromUtcText(utcText, fallback) {
+  const parsed = parseUtcTimestamp(utcText);
+  if (!parsed) return fallback || utcText || "—";
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} `
+    + `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
+}
+
 function renderTimeRange(text) {
   const kv = {};
   parseKeyValueLines(text).forEach(([key, value]) => {
@@ -62,10 +88,40 @@ function renderTimeRange(text) {
   });
   if (!kv["Start GPS"] && !kv["End GPS"]) return "";
 
+  const hasAts = !!(kv["ATS Start UTC"] || kv["ATS End UTC"]);
+  const gnssStartLabel = hasAts ? "Start (GNSS)" : "Start";
+  const gnssEndLabel = hasAts ? "End (GNSS)" : "End";
+
   const rows = [
-    ["Start", kv["Start GPS"] || "—", kv["Start UTC"] || "—", kv["Start Local"] || "—"],
-    ["End", kv["End GPS"] || "—", kv["End UTC"] || "—", kv["End Local"] || "—"]
+    [
+      gnssStartLabel,
+      kv["Start GPS"] || "—",
+      kv["Start UTC"] || "—",
+      formatLocalFromUtcText(kv["Start UTC"], kv["Start Local"])
+    ],
+    [
+      gnssEndLabel,
+      kv["End GPS"] || "—",
+      kv["End UTC"] || "—",
+      formatLocalFromUtcText(kv["End UTC"], kv["End Local"])
+    ]
   ];
+
+  if (hasAts) {
+    rows.push([
+      "Start (ATS)",
+      "—",
+      kv["ATS Start UTC"] || "—",
+      formatLocalFromUtcText(kv["ATS Start UTC"], kv["ATS Start Local"])
+    ]);
+    rows.push([
+      "End (ATS)",
+      "—",
+      kv["ATS End UTC"] || "—",
+      formatLocalFromUtcText(kv["ATS End UTC"], kv["ATS End Local"])
+    ]);
+  }
+
   return sectionHtml(
     "Session Time Range",
     tableHtml(["", "GPS", "UTC", "Local Time"], rows, "report-table")

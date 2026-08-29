@@ -14,6 +14,13 @@ class AtsTruthPoint:
     n: float
     e: float
     ele: float
+    date_str: str
+    time_str: str
+
+
+def format_ats_utc_display(date_str: str, time_str: str) -> str:
+    """Return ATS Date/Time fields formatted for display (source values are UTC)."""
+    return f"{date_str.strip()} {time_str.strip()} UTC"
 
 
 def _parse_ats_timestamp(date_str: str, time_str: str) -> float:
@@ -64,7 +71,16 @@ def parse_ats_file(path: str) -> list[AtsTruthPoint]:
             except (ValueError, TypeError):
                 continue
 
-            points.append(AtsTruthPoint(t=t_val, n=n_val, e=e_val, ele=ele_val))
+            points.append(
+                AtsTruthPoint(
+                    t=t_val,
+                    n=n_val,
+                    e=e_val,
+                    ele=ele_val,
+                    date_str=date_str,
+                    time_str=time_str,
+                )
+            )
 
     points.sort(key=lambda p: p.t)
     dedup: list[AtsTruthPoint] = []
