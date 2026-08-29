@@ -93,29 +93,31 @@ time_range_report_cmd() {
    "$normalDir/time_range_report.py" "${args[@]}"
 }
 
+PROCESSING_MARKER=processing.status
+
 RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
 logger "$RESULT_DIR"
 mkdir -p "$RESULT_DIR" || {
    logger "Could not create result dir: $RESULT_DIR"
-   rm -f "$RESULT_DIR/.processing"
+   rm -f "$RESULT_DIR/$PROCESSING_MARKER"
    exit 1
 }
 
 if [ ! -f "$1" ]; then
    logger "Input file not found: $1"
    echo "Input file not found: $1" > "$RESULT_DIR/processing_error.txt"
-   rm -f "$RESULT_DIR/.processing"
+   rm -f "$RESULT_DIR/$PROCESSING_MARKER"
    exit 1
 fi
 
 cd "$RESULT_DIR" || {
    logger "Could not cd to result dir: $RESULT_DIR"
-   rm -f "$RESULT_DIR/.processing"
+   rm -f "$RESULT_DIR/$PROCESSING_MARKER"
    exit 1
 }
 rm -f processing_error.txt
-find . -mindepth 1 -maxdepth 1 ! -name '.processing' -exec rm -rf {} + 2>/dev/null
-echo "Processing started $(date)" > .processing
+find . -mindepth 1 -maxdepth 1 ! -name "$PROCESSING_MARKER" -exec rm -rf {} + 2>/dev/null
+echo "Processing started $(date)" > "$PROCESSING_MARKER"
 TMP_DIR=/run/shm/
 
 logger `pwd`
@@ -751,7 +753,7 @@ rm outage3sig.csv
 #rm range2cm.csv
 rm -f range2sig.csv range3sig.csv
 wait
-rm -f .processing
+rm -f "$PROCESSING_MARKER"
 echo Processing completed
 echo "<p><strong>Processing complete.</strong></p>"
 echo "<p><a href=\"${ReportUrl}\">Open report</a> (redirecting&hellip;)</p>"

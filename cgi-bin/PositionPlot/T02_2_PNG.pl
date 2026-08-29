@@ -264,7 +264,8 @@ print "<p/>Processing will continue if you navigate away from this page<br/>";
 
 my $results_dir = gnss_results_dir() . "/Position$project$Point_Dir/$name";
 system( 'mkdir', '-p', $results_dir );
-if ( open my $processing, '>', "$results_dir/.processing" ) {
+my $processing_marker = 'processing.status';
+if ( open my $processing, '>', "$results_dir/$processing_marker" ) {
     print {$processing} "started\n";
     close $processing;
 }
@@ -288,7 +289,7 @@ my $rc = system(
     $report_url, $SessionType, $truth_upload
 );
 if ( $rc != 0 ) {
-    unlink "$results_dir/.processing";
+    unlink "$results_dir/$processing_marker";
     syslog( LOG_WARNING, "Failed to queue processing for $upload_file (exit $rc)" );
     print "<p><strong>Could not start background processing</strong> (exit $rc).</p>";
     print "<p>Check syslog, <code>" . CGI::escapeHTML($log_hint) . "</code>, or processing_log.txt in the result directory.</p>";
@@ -298,9 +299,7 @@ if ( $rc != 0 ) {
 }
 syslog( LOG_INFO, "Processing queued: " . $upload_file . " log=$log_hint" );
 
-print "<p><strong>Upload complete.</strong> Opening the report page while processing continues.</p>";
-print "<meta http-equiv=\"refresh\" content=\"0;url=$report_url\">";
-print "<script>window.location.replace(\"$report_url\");</script>";
+print "<p><strong>Upload complete.</strong> Processing continues in the background; this page will open the report when it is ready.</p>";
 print "</body></html>";
 
 closelog();

@@ -374,7 +374,6 @@ Point Name (Optional):
   function isProcessingComplete(html) {
     return /Processing complete/i.test(html) ||
       /Plotting completed/i.test(html) ||
-      /content="0;url=/i.test(html) ||
       /<a href="[^"]+">Open report<\/a>/i.test(html);
   }
 
@@ -422,27 +421,64 @@ Point Name (Optional):
   }
 
   function waitForProcessingComplete(resultsUrl, callback) {
-    var processingUrl = resultsUrl.replace(/\/?$/, "/") + ".processing";
+    var base = resultsUrl.replace(/\/?$/, "/");
+    var statusUrl = base + "processing.status";
+    var indexUrl = base + "index.shtml";
+    var errorUrl = base + "processing_error.txt";
     var pollIntervalMs = 3000;
 
-    function poll() {
+    function pollStatus() {
       var check = new XMLHttpRequest();
-      check.open("GET", processingUrl + "?_=" + Date.now(), true);
+      check.open("GET", statusUrl + "?_=" + Date.now(), true);
       check.onload = function () {
         if (check.status === 200) {
           setPhase("Processing on server...");
-          window.setTimeout(poll, pollIntervalMs);
+          window.setTimeout(pollStatus, pollIntervalMs);
           return;
         }
-        callback();
+        verifyReportReady();
       };
       check.onerror = function () {
-        callback();
+        verifyReportReady();
       };
       check.send();
     }
 
-    poll();
+    function verifyReportReady() {
+      var err = new XMLHttpRequest();
+      err.open("GET", errorUrl + "?_=" + Date.now(), true);
+      err.onload = function () {
+        if (err.status === 200 && err.responseText.trim()) {
+          setPhase("Processing failed.");
+          setDetail(err.responseText.trim());
+          form.className = "";
+          submitBtn.disabled = false;
+          return;
+        }
+        checkIndex();
+      };
+      err.onerror = checkIndex;
+      err.send();
+    }
+
+    function checkIndex() {
+      var idx = new XMLHttpRequest();
+      idx.open("HEAD", indexUrl + "?_=" + Date.now(), true);
+      idx.onload = function () {
+        if (idx.status >= 200 && idx.status < 400) {
+          callback();
+          return;
+        }
+        setPhase("Processing on server...");
+        window.setTimeout(pollStatus, pollIntervalMs);
+      };
+      idx.onerror = function () {
+        window.setTimeout(pollStatus, pollIntervalMs);
+      };
+      idx.send();
+    }
+
+    pollStatus();
   }
 
   function extractStatusMessages(html) {

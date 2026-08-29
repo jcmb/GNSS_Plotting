@@ -412,7 +412,7 @@ function checkProcessingStatus() {
     return;
   }
   var check = new XMLHttpRequest();
-  check.open("GET", ".processing?_=" + Date.now(), true);
+  check.open("GET", "processing.status?_=" + Date.now(), true);
   check.onload = function () {
     if (check.status === 200) {
       banner.style.display = "block";
