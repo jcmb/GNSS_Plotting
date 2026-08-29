@@ -567,6 +567,9 @@ function gpsAxisLayout(points, xValues) {
 }
 
 function formatLocalTime(unixSec) {
+  if (window.gnssDisplayTz) {
+    return window.gnssDisplayTz.formatLocalClock(unixSec);
+  }
   const d = new Date(unixSec * 1000);
   const pad = (n) => String(n).padStart(2, "0");
   return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
@@ -601,9 +604,14 @@ function dateTimeAxisLayout(points, mode) {
     };
   }
   return {
-    x: points.map((p) => new Date(p.t * 1000)),
+    x: points.map((p) => (
+      window.gnssDisplayTz
+        ? window.gnssDisplayTz.plotDate(p.t)
+        : new Date(p.t * 1000)
+    )),
     layout: {
-      title: "Local Time (" + formatLocalTime(firstT) + ")",
+      title: "Local Time (" + formatLocalTime(firstT) + ", "
+        + (window.gnssDisplayTz ? window.gnssDisplayTz.getOffsetLabel() : "local") + ")",
       type: "date",
       tickformat: "%H:%M:%S",
       hoverformat: "%Y-%m-%d %H:%M:%S"
@@ -2036,6 +2044,14 @@ function attachPlotControlListeners() {
   plotListenersAttached = true;
 
   document.getElementById("axis-mode").addEventListener("change", rerenderPositionPlots);
+  if (window.gnssDisplayTz) {
+    window.gnssDisplayTz.onChange(() => {
+      const axisMode = document.getElementById("axis-mode");
+      if (axisMode && axisMode.value === "local") {
+        rerenderPositionPlots();
+      }
+    });
+  }
   document.getElementById("show-dop-1d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-dop-2d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-dop-3d").addEventListener("change", rerenderPositionPlots);

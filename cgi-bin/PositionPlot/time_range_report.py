@@ -46,6 +46,23 @@ def local_timezone():
     return tzinfo if tzinfo is not None else timezone.utc
 
 
+def format_tz_offset_line():
+    tz = local_timezone()
+    if isinstance(tz, timezone):
+        offset = tz.utcoffset(datetime(2000, 1, 1))
+    else:
+        offset = datetime.now(tz).utcoffset()
+    if offset is None:
+        return "Display TZ offset: +0:00"
+    total_seconds = int(offset.total_seconds())
+    sign = -1 if total_seconds < 0 else 1
+    abs_seconds = abs(total_seconds)
+    hours = abs_seconds // 3600
+    minutes = (abs_seconds % 3600) // 60
+    prefix = "-" if sign < 0 else "+"
+    return "Display TZ offset: {}{}:{:02d}".format(prefix, hours, minutes)
+
+
 def format_local(unix_sec):
     return datetime.fromtimestamp(unix_sec, tz=local_timezone()).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -106,6 +123,7 @@ def main():
     if min_unix is None or max_unix is None:
         return
 
+    print(format_tz_offset_line())
     print_range("", min_unix, max_unix)
 
     if args.ats:

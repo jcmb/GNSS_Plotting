@@ -26,8 +26,9 @@ function tableHtml(headers, rows, className) {
   return html;
 }
 
-function sectionHtml(title, bodyHtml) {
-  return '<section class="report-section"><h3>' + escapeHtml(title) + "</h3>" + bodyHtml + "</section>";
+function sectionHtml(title, bodyHtml, sectionId) {
+  const idAttr = sectionId ? ' id="' + escapeHtml(sectionId) + '"' : "";
+  return "<section" + idAttr + ' class="report-section"><h3>' + escapeHtml(title) + "</h3>" + bodyHtml + "</section>";
 }
 
 function parseKeyValueLines(text) {
@@ -55,38 +56,18 @@ function renderMeanInfo(text) {
   return sectionHtml("Mean / Reference", tableHtml(["Setting", "Value"], rows, "report-table"));
 }
 
-function parseUtcTimestamp(text) {
-  if (!text || text === "—") return null;
-  const raw = String(text).trim();
-  const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/);
-  if (isoMatch) {
-    const parsed = new Date(`${isoMatch[1]}T${isoMatch[2]}Z`);
-    return Number.isFinite(parsed.getTime()) ? parsed : null;
-  }
-  const atsMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
-  if (atsMatch) {
-    const month = atsMatch[1].padStart(2, "0");
-    const day = atsMatch[2].padStart(2, "0");
-    const parsed = new Date(`${atsMatch[3]}-${month}-${day}T${atsMatch[4]}Z`);
-    return Number.isFinite(parsed.getTime()) ? parsed : null;
-  }
-  return null;
-}
-
-function formatLocalFromUtcText(utcText, fallback) {
-  const parsed = parseUtcTimestamp(utcText);
-  if (!parsed) return fallback || utcText || "—";
-  const pad = (value) => String(value).padStart(2, "0");
-  return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())} `
-    + `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}:${pad(parsed.getSeconds())}`;
-}
-
 function renderTimeRange(text) {
   const kv = {};
   parseKeyValueLines(text).forEach(([key, value]) => {
     kv[key] = value;
   });
   if (!kv["Start GPS"] && !kv["End GPS"]) return "";
+
+  const tz = window.gnssDisplayTz;
+  const formatLocal = (utcText, fallback) => (
+    tz ? tz.formatLocalFromUtcText(utcText, fallback) : (fallback || utcText || "—")
+  );
+  const localHeader = tz ? tz.getLocalColumnLabel() : "Local Time";
 
   const hasAts = !!(kv["ATS Start UTC"] || kv["ATS End UTC"]);
   const gnssStartLabel = hasAts ? "Start (GNSS)" : "Start";
@@ -97,13 +78,13 @@ function renderTimeRange(text) {
       gnssStartLabel,
       kv["Start GPS"] || "—",
       kv["Start UTC"] || "—",
-      formatLocalFromUtcText(kv["Start UTC"], kv["Start Local"])
+      formatLocal(kv["Start UTC"], kv["Start Local"])
     ],
     [
       gnssEndLabel,
       kv["End GPS"] || "—",
       kv["End UTC"] || "—",
-      formatLocalFromUtcText(kv["End UTC"], kv["End Local"])
+      formatLocal(kv["End UTC"], kv["End Local"])
     ]
   ];
 
@@ -112,19 +93,20 @@ function renderTimeRange(text) {
       "Start (ATS)",
       "—",
       kv["ATS Start UTC"] || "—",
-      formatLocalFromUtcText(kv["ATS Start UTC"], kv["ATS Start Local"])
+      formatLocal(kv["ATS Start UTC"], kv["ATS Start Local"])
     ]);
     rows.push([
       "End (ATS)",
       "—",
       kv["ATS End UTC"] || "—",
-      formatLocalFromUtcText(kv["ATS End UTC"], kv["ATS End Local"])
+      formatLocal(kv["ATS End UTC"], kv["ATS End Local"])
     ]);
   }
 
   return sectionHtml(
     "Session Time Range",
-    tableHtml(["", "GPS", "UTC", "Local Time"], rows, "report-table")
+    tableHtml(["", "GPS", "UTC", localHeader], rows, "report-table"),
+    "session-time-range-section"
   );
 }
 
@@ -916,6 +898,15 @@ function rawFromDom(id) {
   return el ? el.textContent : "";
 }
 
+let cachedTimeRangeText = "";
+
+function refreshTimeRangeSection() {
+  if (!cachedTimeRangeText) return;
+  const section = document.getElementById("session-time-range-section");
+  if (!section) return;
+  section.outerHTML = renderTimeRange(cachedTimeRangeText);
+}
+
 async function loadText(id, url) {
   const embedded = rawFromDom(id).trim();
   if (embedded) return embedded;
@@ -941,6 +932,12 @@ async function buildReportTables() {
     loadText("raw-session-type", "session_type.txt"),
     loadText("raw-plot-filter", "plot_filter.txt")
   ]);
+
+  cachedTimeRangeText = timeRange;
+  if (window.gnssDisplayTz) {
+    window.gnssDisplayTz.initFromTimeRange(timeRange);
+    window.gnssDisplayTz.attachPanelListeners();
+  }
 
   const sessionKv = parseSessionType(sessionType);
   const sessionUsed = sessionKv["Session used"] || parsePlotFilterSession(plotFilter);
@@ -1003,6 +1000,12 @@ async function buildReportTables() {
 }
 
 function loadReportTables() {
+  if (window.gnssDisplayTz && !window.gnssDisplayTz._reportHooked) {
+    window.gnssDisplayTz._reportHooked = true;
+    window.gnssDisplayTz.onChange(() => {
+      refreshTimeRangeSection();
+    });
+  }
   buildReportTables().catch((err) => {
     const root = document.getElementById("report-summary-root");
     if (root) {
