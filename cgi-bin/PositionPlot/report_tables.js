@@ -249,6 +249,12 @@ function sessionRequestLabel(value) {
 function parseAtsTruthStatus(sessionKv, plotFilterText) {
   const line = sessionKv["ATS truth file"] || sessionKv["Truth file"];
   if (line) {
+    if (/not used/i.test(line)) {
+      return "Provided — not used (no GNSS time overlap; processed as normal)";
+    }
+    if (/applied/i.test(line)) {
+      return "Yes — applied (error plots vs interpolated ATS truth)";
+    }
     if (/^yes\b/i.test(line)) {
       const detail = line.replace(/^yes\b/i, "").trim().replace(/^\(/, "").replace(/\)$/, "");
       return detail

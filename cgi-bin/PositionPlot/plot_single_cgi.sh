@@ -40,9 +40,12 @@ ReportUrl=${11:-${GNSS_REPORT_URL:-/results/Position${Project}/${File}/}}
 SESSION_REQUEST=${12:--1}
 TRUTH_FILE=${13:-${GNSS_TRUTH_ATS:-}}
 TRUTH_MODE=no
+TRUTH_APPLIED=no
+TRUTH_ATTEMPTED=no
 if [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
 then
    TRUTH_MODE=yes
+   TRUTH_ATTEMPTED=yes
 fi
 logger "Mean solution type request: $MEAN_SOL_REQUEST"
 logger "Truth file: ${TRUTH_FILE:-none} (mode=$TRUTH_MODE)"
@@ -285,12 +288,7 @@ _run_motion_detect() {
   enu_filter_stream "$File.enu.provisional" | $normalDir/detect_motion.py
 }
 
-if [ "$TRUTH_MODE" = "yes" ]
-then
-   SESSION_USED="moving"
-   SESSION_DETECTED="moving"
-   echo "ATS truth file provided — moving session with truth-referenced errors"
-else
+detect_session_type() {
 echo "Computing provisional ENU for session detection"
 original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height >$File.enu.provisional
 
@@ -336,8 +334,9 @@ case "$SESSION_REQUEST" in
     fi
     ;;
 esac
-fi
+}
 
+write_session_type_txt() {
 case "$SESSION_REQUEST" in
   -1|""|auto)
     SESSION_REQUEST_LABEL="Automatic"
@@ -356,9 +355,12 @@ esac
 {
 echo "Session requested: $SESSION_REQUEST_LABEL"
 echo "Session used: $SESSION_USED"
-if [ "$TRUTH_MODE" = "yes" ]
+if [ "$TRUTH_APPLIED" = "yes" ]
 then
-   echo "ATS truth file: yes ($(basename "$TRUTH_FILE"))"
+   echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — applied"
+elif [ "$TRUTH_ATTEMPTED" = "yes" ]
+then
+   echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — not used (no GNSS overlap)"
 else
    echo "ATS truth file: no"
 fi
@@ -367,11 +369,12 @@ echo "Outlier fraction: ${OUTLIER_FRACTION}% (>10 sigma, 2D)"
 echo "Outlier epochs: $OUTLIER_COUNT / $VALID_COUNT"
 echo "Drive test warning: $DRIVE_WARNING"
 } > session_type.txt
+}
 
 if [ "$TRUTH_MODE" = "yes" ]
 then
-   echo "ATS truth session — ENU errors vs interpolated truth"
-   logger "ATS truth session for $FileFull"
+   echo "ATS truth file provided — attempting truth-referenced errors"
+   logger "Attempting ATS truth alignment for $FileFull"
 
    TRUTH_SOL_ARGS=""
    if [ "$MEAN_SOL" != "all" ] && [ -n "$MEAN_SOL" ]
@@ -379,13 +382,30 @@ then
       TRUTH_SOL_ARGS="--sol-type $MEAN_SOL"
    fi
 
-   if ! $normalDir/truth_gnss_enu.py --ats "$TRUTH_FILE" --sol "$File.sol" \
+   if $normalDir/truth_gnss_enu.py --ats "$TRUTH_FILE" --sol "$File.sol" \
         --out "$File.enu" --report truth_report.txt $TRUTH_SOL_ARGS
    then
-      echo "ERROR: ATS truth alignment failed"
-      logger "ATS truth alignment failed for $FileFull"
-      exit 1
+      TRUTH_APPLIED=yes
+      SESSION_USED="moving"
+      SESSION_DETECTED="moving"
+   else
+      _truth_exit=$?
+      echo "WARNING: ATS truth alignment failed (exit $_truth_exit) — processing as normal"
+      logger "ATS truth fallback to normal processing for $FileFull (exit $_truth_exit)"
+      TRUTH_MODE=no
+      TRUTH_APPLIED=no
+      detect_session_type
    fi
+else
+   detect_session_type
+fi
+
+write_session_type_txt
+
+if [ "$TRUTH_APPLIED" = "yes" ]
+then
+   echo "ATS truth session — ENU errors vs interpolated truth"
+   logger "ATS truth session for $FileFull"
 
    $normalDir/kml_trajectory.py $File $File.sol
    echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
@@ -480,7 +500,7 @@ echo "Records in mean: $Records"
 echo "Session used: $SESSION_USED"
 } > mean.info
 
-if [ "$SESSION_USED" != "moving" ] || [ "$TRUTH_MODE" = "yes" ]
+if [ "$SESSION_USED" != "moving" ] || [ "$TRUTH_APPLIED" = "yes" ]
 then
 enu_cdf_stream() {
   if [ "$MEAN_SOL" = "all" ]; then
@@ -597,7 +617,7 @@ _write_plot_filter() {
    echo "session:$SESSION_USED" >> plot_filter.txt
    echo "session_request:$SESSION_REQUEST" >> plot_filter.txt
    echo "drive_warning:$DRIVE_WARNING" >> plot_filter.txt
-   if [ "$TRUTH_MODE" = "yes" ]
+   if [ "$TRUTH_APPLIED" = "yes" ]
    then
       echo "truth:yes" >> plot_filter.txt
       if [ -f truth_report.txt ]
@@ -609,7 +629,7 @@ _write_plot_filter() {
    fi
 }
 
-if [ "$TRUTH_MODE" = "yes" ]
+if [ "$TRUTH_APPLIED" = "yes" ]
 then
    cp $File.enu file
    cp file position_solution.csv

@@ -82,6 +82,18 @@ def trim_to_overlap(gnss_rows: list[dict], truth: list[AtsTruthPoint]) -> list[d
     return [row for row in gnss_rows if t_min <= row["t"] <= t_max]
 
 
+def has_sufficient_overlap(gnss_rows: list[dict], truth: list[AtsTruthPoint], min_matched: int = 2) -> bool:
+    if not gnss_rows or len(truth) < min_matched:
+        return False
+    gnss_min = gnss_rows[0]["t"]
+    gnss_max = gnss_rows[-1]["t"]
+    ats_min = truth[0].t
+    ats_max = truth[-1].t
+    if gnss_max < ats_min or gnss_min > ats_max:
+        return False
+    return len(trim_to_overlap(gnss_rows, truth)) >= min_matched
+
+
 def interpolate_truth(truth: list[AtsTruthPoint], t_query: float) -> tuple[float, float, float] | None:
     if not truth or t_query < truth[0].t or t_query > truth[-1].t:
         return None
@@ -288,12 +300,24 @@ def main(argv: list[str] | None = None) -> int:
     truth = parse_ats_file(args.ats)
     if len(truth) < 2:
         print("ATS truth file has fewer than 2 usable ATSDataEvent points", file=sys.stderr)
-        return 1
+        return 2
 
     gnss_rows = read_gnss_rows(args.sol, args.sol_type)
     if not gnss_rows:
         print("No GNSS rows found in .sol file", file=sys.stderr)
         return 1
+
+    if not has_sufficient_overlap(gnss_rows, truth):
+        print("NO_OVERLAP: ATS time range does not overlap GNSS data sufficiently", file=sys.stderr)
+        print(
+            f"  GNSS UTC: {gnss_rows[0]['t']:.3f} .. {gnss_rows[-1]['t']:.3f}",
+            file=sys.stderr,
+        )
+        print(
+            f"  ATS UTC:  {truth[0].t:.3f} .. {truth[-1].t:.3f}",
+            file=sys.stderr,
+        )
+        return 2
 
     matched, meta = build_enu_errors(gnss_rows, truth)
     write_enu_file(matched, args.out)
