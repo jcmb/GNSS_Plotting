@@ -252,11 +252,8 @@ echo "Records $Records"
 
 $normalDir/kml_point.py $File $Lat $Long $Height
 
-echo "</pre>"
 echo "<a href=\"$File.kml\">$File.kml</a>"
 echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
-echo "<pre>"
-
 
 if [ -n "$PLOT_FILTER_SOL" ]
 then

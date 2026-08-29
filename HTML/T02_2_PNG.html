@@ -396,13 +396,30 @@ Point Name (Optional):
   }
 
   function extractPreLog(html) {
-    var start = html.indexOf("<pre>");
-    if (start === -1) return "";
+  var parts = [];
+  var searchFrom = 0;
+  while (true) {
+    var start = html.indexOf("<pre>", searchFrom);
+    if (start === -1) {
+      break;
+    }
     start += 5;
     var end = html.indexOf("</pre>", start);
-    var chunk = end === -1 ? html.slice(start) : html.slice(start, end);
-    return chunk.replace(/<[^>]+>/g, "");
+    if (end === -1) {
+      parts.push(html.slice(start));
+      break;
+    }
+    parts.push(html.slice(start, end));
+    searchFrom = end + 6;
   }
+  return parts.join("\n").replace(/<[^>]+>/g, "");
+}
+
+function showProcessingLog(text) {
+  processingLog.className = "visible";
+  processingLog.textContent = text || "";
+  processingLog.scrollTop = processingLog.scrollHeight;
+}
 
   function extractStatusMessages(html) {
     var bodyMatch = html.match(/<body[^>]*>([\s\S]*)/i);
@@ -433,9 +450,7 @@ Point Name (Optional):
     }
 
     if (logText) {
-      processingLog.className = "visible";
-      processingLog.textContent = logText;
-      processingLog.scrollTop = processingLog.scrollHeight;
+      showProcessingLog(logText);
     }
 
     if (finished && complete && reportUrl) {
@@ -446,7 +461,7 @@ Point Name (Optional):
         setAtsUploadPercent(100, false);
         window.setTimeout(function () {
           window.location.href = reportUrl;
-        }, 800);
+        }, 5000);
       }
     }
   }
@@ -513,6 +528,7 @@ Point Name (Optional):
           if (atsFile) {
             setAtsUploadPercent(100, false);
           }
+          showProcessingLog("Waiting for processing output...");
         }
       }
     });
@@ -525,6 +541,7 @@ Point Name (Optional):
           if (atsFile) {
             setAtsUploadPercent(100, false);
           }
+          showProcessingLog(processingLog.textContent || "Waiting for processing output...");
         }
         updateFromResponse(xhr.responseText, xhr.readyState === XMLHttpRequest.DONE);
       }
