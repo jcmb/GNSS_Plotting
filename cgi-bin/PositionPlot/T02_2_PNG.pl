@@ -277,12 +277,22 @@ unless ( -x $start_script ) {
 }
 
 syslog( LOG_INFO, "Starting processing: " . $upload_file );
-system(
+my $log_hint = "/run/shm/positionplot_" . $filename . ".log";
+my $rc = system(
     $start_script, $upload_file, $extension, $Sol, $Point, $Ant,
     $Decimate, $Fixed_Range, $project, $SaveFile, $MeanSol,
     $report_url, $SessionType, $truth_upload
 );
-syslog( LOG_INFO, "Processing queued: " . $upload_file );
+if ( $rc != 0 ) {
+    unlink "$results_dir/.processing";
+    syslog( LOG_WARNING, "Failed to queue processing for $upload_file (exit $rc)" );
+    print "<p><strong>Could not start background processing</strong> (exit $rc).</p>";
+    print "<p>Check syslog and <code>" . CGI::escapeHTML($log_hint) . "</code>.</p>";
+    print "</body></html>";
+    closelog();
+    exit;
+}
+syslog( LOG_INFO, "Processing queued: " . $upload_file . " log=$log_hint" );
 
 print "<p><strong>Upload complete.</strong> Opening the report page while processing continues.</p>";
 print "<meta http-equiv=\"refresh\" content=\"0;url=$report_url\">";

@@ -95,8 +95,26 @@ time_range_report_cmd() {
 
 RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
 logger "$RESULT_DIR"
-mkdir -p "$RESULT_DIR"
-cd "$RESULT_DIR" && rm * 2> /dev/null
+mkdir -p "$RESULT_DIR" || {
+   logger "Could not create result dir: $RESULT_DIR"
+   rm -f "$RESULT_DIR/.processing"
+   exit 1
+}
+
+if [ ! -f "$1" ]; then
+   logger "Input file not found: $1"
+   echo "Input file not found: $1" > "$RESULT_DIR/processing_error.txt"
+   rm -f "$RESULT_DIR/.processing"
+   exit 1
+fi
+
+cd "$RESULT_DIR" || {
+   logger "Could not cd to result dir: $RESULT_DIR"
+   rm -f "$RESULT_DIR/.processing"
+   exit 1
+}
+rm -f processing_error.txt
+find . -mindepth 1 -maxdepth 1 ! -name '.processing' -exec rm -rf {} + 2>/dev/null
 echo "Processing started $(date)" > .processing
 TMP_DIR=/run/shm/
 
