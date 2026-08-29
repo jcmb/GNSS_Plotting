@@ -20,6 +20,17 @@
     font-weight: bold;
     margin: 0 0 8px 0;
   }
+  .upload-progress-block {
+    margin: 0 0 12px 0;
+  }
+  .upload-progress-block:last-of-type {
+    margin-bottom: 0;
+  }
+  .upload-progress-label {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+    color: #333;
+  }
   .progress-track {
     width: 100%;
     height: 18px;
@@ -227,8 +238,19 @@ Point Name (Optional):
 
 <div id="submit-status" aria-live="polite">
   <p id="status-phase">Uploading file...</p>
-  <div class="progress-track" aria-hidden="true">
-    <div class="progress-fill" id="progress-fill"></div>
+  <div class="upload-progress-block" id="gnss-upload-progress">
+    <p class="upload-progress-label">GNSS file</p>
+    <div class="progress-track" aria-hidden="true">
+      <div class="progress-fill" id="gnss-progress-fill"></div>
+    </div>
+    <p class="upload-progress-label" id="gnss-upload-detail"></p>
+  </div>
+  <div class="upload-progress-block" id="ats-upload-progress" hidden>
+    <p class="upload-progress-label">ATS truth file</p>
+    <div class="progress-track" aria-hidden="true">
+      <div class="progress-fill" id="ats-progress-fill"></div>
+    </div>
+    <p class="upload-progress-label" id="ats-upload-detail"></p>
   </div>
   <p id="status-detail"></p>
   <pre id="processing-log"></pre>
@@ -244,7 +266,11 @@ Point Name (Optional):
   var statusPanel = document.getElementById("submit-status");
   var statusPhase = document.getElementById("status-phase");
   var statusDetail = document.getElementById("status-detail");
-  var progressFill = document.getElementById("progress-fill");
+  var gnssProgressFill = document.getElementById("gnss-progress-fill");
+  var atsProgressFill = document.getElementById("ats-progress-fill");
+  var atsProgressBlock = document.getElementById("ats-upload-progress");
+  var gnssUploadDetail = document.getElementById("gnss-upload-detail");
+  var atsUploadDetail = document.getElementById("ats-upload-detail");
   var processingLog = document.getElementById("processing-log");
   var submitBtn = document.getElementById("gnss-submit");
   var activeXhr = null;
@@ -269,14 +295,80 @@ Point Name (Optional):
     statusDetail.textContent = text || "";
   }
 
-  function setUploadPercent(percent) {
-    progressFill.className = "progress-fill";
-    progressFill.style.width = Math.min(100, Math.max(0, percent)) + "%";
+  function setProgressFill(fillEl, percent, indeterminate) {
+    if (indeterminate) {
+      fillEl.className = "progress-fill indeterminate";
+      fillEl.style.width = "";
+      return;
+    }
+    fillEl.className = "progress-fill";
+    fillEl.style.width = Math.min(100, Math.max(0, percent)) + "%";
   }
 
-  function setIndeterminateProgress() {
-    progressFill.className = "progress-fill indeterminate";
-    progressFill.style.width = "";
+  function setGnssUploadPercent(percent, indeterminate) {
+    setProgressFill(gnssProgressFill, percent, indeterminate);
+  }
+
+  function setAtsUploadPercent(percent, indeterminate) {
+    setProgressFill(atsProgressFill, percent, indeterminate);
+  }
+
+  function resetUploadProgress() {
+    setGnssUploadPercent(0, false);
+    setAtsUploadPercent(0, false);
+    gnssUploadDetail.textContent = "";
+    atsUploadDetail.textContent = "";
+    atsProgressBlock.hidden = true;
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  }
+
+  function updateUploadProgress(event, gnssFile, atsFile) {
+    var gnssSize = gnssFile.size;
+    var hasAts = !!atsFile;
+    var atsSize = hasAts ? atsFile.size : 0;
+    var totalSize = gnssSize + atsSize;
+
+    if (!event.lengthComputable || totalSize <= 0) {
+      setGnssUploadPercent(0, true);
+      if (hasAts) {
+        setAtsUploadPercent(0, true);
+      }
+      setDetail("Uploading to the server...");
+      return;
+    }
+
+    var loaded = event.loaded;
+    var gnssLoaded = Math.min(loaded, gnssSize);
+    var atsLoaded = hasAts ? Math.max(0, loaded - gnssSize) : 0;
+    var gnssPct = Math.round((gnssLoaded / gnssSize) * 100);
+    var atsPct = hasAts && atsSize > 0 ? Math.round((atsLoaded / atsSize) * 100) : 0;
+    var overallPct = Math.round((loaded / totalSize) * 100);
+
+    setGnssUploadPercent(gnssPct, false);
+    gnssUploadDetail.textContent =
+      gnssFile.name + ": " + gnssPct + "% (" + formatBytes(gnssLoaded) + " / " + formatBytes(gnssSize) + ")";
+
+    if (hasAts) {
+      setAtsUploadPercent(atsPct, false);
+      atsUploadDetail.textContent =
+        atsFile.name + ": " + atsPct + "% (" + formatBytes(atsLoaded) + " / " + formatBytes(atsSize) + ")";
+      if (gnssPct >= 100 && atsPct < 100) {
+        setPhase("Uploading ATS truth file...");
+      } else if (overallPct < 100) {
+        setPhase("Uploading files...");
+      }
+      setDetail("Overall upload " + overallPct + "% complete.");
+    } else {
+      setPhase(gnssPct >= 100 ? "Upload complete. Processing on server..." : "Uploading GNSS file...");
+      setDetail("Uploaded " + gnssPct + "% of " + gnssFile.name + ".");
+    }
   }
 
   function isProcessingComplete(html) {
@@ -350,7 +442,8 @@ Point Name (Optional):
       if (!redirectScheduled) {
         redirectScheduled = true;
         setPhase("Processing complete. Opening report...");
-        setUploadPercent(100);
+        setGnssUploadPercent(100, false);
+        setAtsUploadPercent(100, false);
         window.setTimeout(function () {
           window.location.href = reportUrl;
         }, 800);
@@ -363,8 +456,7 @@ Point Name (Optional):
     processingLog.className = "";
     processingLog.textContent = "";
     setDetail("");
-    setUploadPercent(0);
-    progressFill.className = "progress-fill";
+    resetUploadProgress();
     form.className = "";
     submitBtn.disabled = false;
     redirectScheduled = false;
@@ -372,7 +464,10 @@ Point Name (Optional):
 
   function beginSubmit() {
     var fileInput = document.getElementById("gnss-file");
+    var truthInput = document.getElementById("truth-file");
     var hasFile = fileInput.files && fileInput.files.length > 0;
+    var gnssFile = hasFile ? fileInput.files[0] : null;
+    var atsFile = truthInput.files && truthInput.files.length > 0 ? truthInput.files[0] : null;
 
     if (!hasFile) {
       window.alert("Select a GNSS file to upload.");
@@ -388,10 +483,18 @@ Point Name (Optional):
     form.className = "form-disabled";
     submitBtn.disabled = true;
     statusPanel.className = "active";
+    atsProgressBlock.hidden = !atsFile;
 
-    setPhase("Uploading file...");
-    setDetail("Sending " + fileInput.files[0].name + " to the server.");
-    setUploadPercent(0);
+    setPhase(atsFile ? "Uploading files..." : "Uploading GNSS file...");
+    setDetail(
+      atsFile
+        ? "Sending " + gnssFile.name + " and " + atsFile.name + " to the server."
+        : "Sending " + gnssFile.name + " to the server."
+    );
+    setGnssUploadPercent(0, false);
+    if (atsFile) {
+      setAtsUploadPercent(0, false);
+    }
 
     var xhr = new XMLHttpRequest();
     activeXhr = xhr;
@@ -401,15 +504,16 @@ Point Name (Optional):
     xhr.withCredentials = true;
 
     xhr.upload.addEventListener("progress", function (event) {
+      updateUploadProgress(event, gnssFile, atsFile);
       if (event.lengthComputable) {
-        var pct = Math.round((event.loaded / event.total) * 100);
-        setUploadPercent(pct);
-        setDetail("Uploaded " + pct + "% of " + fileInput.files[0].name + ".");
-        if (pct >= 100) {
+        var totalSize = gnssFile.size + (atsFile ? atsFile.size : 0);
+        if (totalSize > 0 && event.loaded >= totalSize) {
           setPhase("Upload complete. Processing on server...");
+          setGnssUploadPercent(100, false);
+          if (atsFile) {
+            setAtsUploadPercent(100, false);
+          }
         }
-      } else {
-        setIndeterminateProgress();
       }
     });
 
@@ -417,7 +521,10 @@ Point Name (Optional):
       if (xhr.readyState === XMLHttpRequest.LOADING || xhr.readyState === XMLHttpRequest.DONE) {
         if (xhr.readyState === XMLHttpRequest.LOADING) {
           setPhase("Processing on server...");
-          setUploadPercent(100);
+          setGnssUploadPercent(100, false);
+          if (atsFile) {
+            setAtsUploadPercent(100, false);
+          }
         }
         updateFromResponse(xhr.responseText, xhr.readyState === XMLHttpRequest.DONE);
       }
