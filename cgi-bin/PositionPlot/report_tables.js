@@ -56,6 +56,16 @@ function renderMeanInfo(text) {
   return sectionHtml("Mean / Reference", tableHtml(["Setting", "Value"], rows, "report-table"));
 }
 
+function localTimeColumnHeader(text) {
+  const match = String(text || "").match(/^Local TZ offset:\s*([+-])(\d+):(\d{2})\s*$/m)
+    || String(text || "").match(/^Display TZ offset:\s*([+-])(\d+):(\d{2})\s*$/m);
+  if (!match) return "Local Time";
+  const sign = match[1];
+  const hours = match[2].padStart(2, "0");
+  const minutes = match[3];
+  return "Local Time (UTC" + sign + hours + ":" + minutes + ")";
+}
+
 function renderTimeRange(text) {
   const kv = {};
   parseKeyValueLines(text).forEach(([key, value]) => {
@@ -99,7 +109,7 @@ function renderTimeRange(text) {
 
   return sectionHtml(
     "Session Time Range",
-    tableHtml(["", "GPS", "UTC", "Local Time"], rows, "report-table")
+    tableHtml(["", "GPS", "UTC", localTimeColumnHeader(text)], rows, "report-table")
   );
 }
 

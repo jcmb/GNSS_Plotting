@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -37,6 +38,30 @@ def format_gps(unix_sec):
 
 def local_timezone():
     return gnss_local_timezone()
+
+
+def format_tz_offset_line():
+    raw = os.environ.get("GNSS_LOCAL_TZ_HOURS", "").strip()
+    if raw:
+        try:
+            total_minutes = int(round(float(raw) * 60))
+        except ValueError:
+            total_minutes = 0
+    else:
+        tz = local_timezone()
+        if isinstance(tz, timezone):
+            offset = tz.utcoffset(datetime(2000, 1, 1))
+        else:
+            offset = datetime.now(tz).utcoffset()
+        if offset is None:
+            return "Local TZ offset: +0:00"
+        total_minutes = int(offset.total_seconds() // 60)
+    sign = -1 if total_minutes < 0 else 1
+    abs_minutes = abs(total_minutes)
+    hours = abs_minutes // 60
+    minutes = abs_minutes % 60
+    prefix = "-" if total_minutes < 0 else "+"
+    return "Local TZ offset: {}{}:{:02d}".format(prefix, hours, minutes)
 
 
 def format_local(unix_sec):
@@ -99,6 +124,7 @@ def main():
     if min_unix is None or max_unix is None:
         return
 
+    print(format_tz_offset_line())
     print_range("", min_unix, max_unix)
 
     if args.ats:

@@ -41,6 +41,19 @@ sub tz_hours_from_form {
     return $hours + $minutes / 60.0;
 }
 
+sub sanitize_upload_basename {
+    my ($raw) = @_;
+    return undef if !defined $raw || $raw eq "";
+    my $name = $raw;
+    $name =~ s/^.*[\\\/]//;
+    $name =~ tr/ /_/;
+    $name =~ s/[^a-zA-Z0-9_.-]//g;
+    if ( $name !~ /^([a-zA-Z0-9_.-]+)$/ ) {
+        return undef;
+    }
+    return $1;
+}
+
 sub gnss_results_dir {
     my $cfg_dir = "$Bin/../../admin/GNSS";
     my $cfg = "$cfg_dir/GNSS_Paths.cfg";
@@ -70,6 +83,10 @@ my $safe_filename_characters = "a-zA-Z0-9_.-";
 
 my $filename = $query->param('file');
 my $file_link = $query->param('file_link');
+my $reuse_gnss_name = sanitize_upload_basename( scalar $query->param('reuse_gnss_name') );
+my $reuse_truth_name = sanitize_upload_basename( scalar $query->param('reuse_truth_name') );
+my $reuse_gnss = defined $query->param('reuse_gnss') && $reuse_gnss_name;
+my $reuse_truth = defined $query->param('reuse_truth') && $reuse_truth_name;
 my $Sol = $query->param('Sol');
 my $Point = $query->param('Point');
 my $Ant = $query->param('Ant');
@@ -96,6 +113,10 @@ my $Decimate = $query->param('Decimate');
 my $TrimbleTools=1;
 
 print $query->header (-charset=>'utf-8' );
+
+if ($reuse_gnss) {
+    $filename = $reuse_gnss_name;
+}
 
 if ( !$filename && !$file_link )
 {
@@ -173,8 +194,13 @@ if ( defined $tz_decimal ) {
 
 my $file_uploaded=0;
 my $file_linked=0;
+my $file_reused=0;
 
-if ($filename) {
+if ($reuse_gnss) {
+    $file_reused = 1;
+    syslog( LOG_INFO, "Reusing GNSS file on server: $filename" );
+}
+elsif ($filename) {
     if ($filename=~m/^.*(\\|\/)(.*)/) {  # strip the remote path and keep the filename                                                                                                                                                      
         $filename=$2;
     }
@@ -219,7 +245,10 @@ print "<body><h1>Processing $filename:</h1>\n";
 $upload_file = JCMBSoft_Config::upload_dir().$filename;
 
 my $truth_upload = "";
-if ($query->param('truth_file')) {
+if ($reuse_truth) {
+    $truth_upload = JCMBSoft_Config::upload_dir() . $name . "_truth_" . $reuse_truth_name;
+}
+elsif ($query->param('truth_file')) {
     my $truth_filename = $query->param('truth_file');
     if ($truth_filename =~ m/^.*(\\|\/)(.*)/) {
         $truth_filename = $2;
@@ -232,6 +261,15 @@ if ($query->param('truth_file')) {
         die "Truth filename contains invalid characters";
     }
     $truth_upload = JCMBSoft_Config::upload_dir() . $name . "_truth_" . $truth_filename;
+}
+
+if ($file_reused) {
+    unless ( -f $upload_file ) {
+        print "Reused GNSS file not found on server: " . CGI::escapeHTML($upload_file) . "\n";
+        closelog();
+        exit;
+    }
+    print "Using existing GNSS file on server (" . CGI::escapeHTML($filename) . ")<br>";
 }
 
 if ($file_uploaded) {
@@ -254,7 +292,16 @@ if ($file_uploaded) {
     close UPLOADFILE;
 }
 
-if ($truth_upload) {
+if ($reuse_truth) {
+    unless ( -f $truth_upload ) {
+        print "Reused ATS truth file not found on server: " . CGI::escapeHTML($truth_upload) . "\n";
+        closelog();
+        exit;
+    }
+    $ENV{GNSS_TRUTH_ATS} = $truth_upload;
+    print "Using existing ATS truth file on server (" . CGI::escapeHTML($reuse_truth_name) . ")<br>";
+}
+elsif ($truth_upload) {
     print "Getting uploaded truth file<br>";
     my $truth_upload_filehandle = $query->upload("truth_file");
     if (!open(UPLOADTRUTH, ">$truth_upload")) {

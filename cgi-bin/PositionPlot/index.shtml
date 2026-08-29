@@ -247,7 +247,7 @@
     display: none;
   }
 </style>
-<script src="report_tables.js?v=20250829j"></script>
+<script src="report_tables.js?v=20250829k"></script>
 </head>
 <body onload="loadReportTables(); loadInteractivePosition(); checkProcessingStatus();">
 <div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">

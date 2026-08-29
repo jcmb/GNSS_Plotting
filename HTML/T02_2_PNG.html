@@ -84,6 +84,19 @@
     margin-left: 8px;
     font-weight: bold;
   }
+  .testing-reuse-panel {
+    margin: 8px 0 0 0;
+    padding: 8px 10px;
+    border: 1px dashed #999;
+    background: #fafafa;
+  }
+  .testing-reuse-panel label {
+    margin-right: 12px;
+  }
+  .testing-reuse-panel input[type="text"] {
+    width: 18em;
+    margin: 4px 12px 4px 0;
+  }
 </style>
 </head>
 <body class="page">
@@ -128,6 +141,21 @@ Local timezone:
 <label for="tz-minutes">Minutes</label>
 <input type="number" name="tz_minutes" id="tz-minutes" min="0" max="59" step="1" value="0">
 <span id="tz-offset-label" class="tz-offset-label" aria-live="polite"></span>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<div class="testing-reuse-panel">
+  <strong>Testing: reuse files on server</strong> (skip re-upload after the first run)
+  <div>
+    <label><input type="checkbox" name="reuse_gnss" id="reuse-gnss" value="1"> Reuse GNSS file</label>
+    <input type="text" name="reuse_gnss_name" id="reuse-gnss-name" size="40" placeholder="e.g. session.T02">
+  </div>
+  <div>
+    <label><input type="checkbox" name="reuse_truth" id="reuse-truth" value="1"> Reuse ATS truth file</label>
+    <input type="text" name="reuse_truth_name" id="reuse-truth-name" size="40" placeholder="e.g. truth.log (not the prefixed name)">
+  </div>
+</div>
 </td>
 </tr>
 </table>
@@ -350,6 +378,31 @@ Point Name (Optional):
     document.addEventListener("DOMContentLoaded", initUploadTimezone);
   } else {
     initUploadTimezone();
+  }
+
+  function initReuseFields() {
+    var reuseGnss = document.getElementById("reuse-gnss");
+    var reuseGnssName = document.getElementById("reuse-gnss-name");
+    var reuseTruth = document.getElementById("reuse-truth");
+    var reuseTruthName = document.getElementById("reuse-truth-name");
+    if (!reuseGnss || !reuseGnssName || !reuseTruth || !reuseTruthName) return;
+
+    var savedGnss = window.localStorage.getItem("gnssPlotReuseGnssName");
+    var savedTruth = window.localStorage.getItem("gnssPlotReuseTruthName");
+    if (savedGnss) {
+      reuseGnssName.value = savedGnss;
+      reuseGnss.checked = true;
+    }
+    if (savedTruth) {
+      reuseTruthName.value = savedTruth;
+      reuseTruth.checked = true;
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initReuseFields);
+  } else {
+    initReuseFields();
   }
 
   var form = document.getElementById("gnss-plot-form");
@@ -576,13 +629,34 @@ Point Name (Optional):
   function beginSubmit() {
     var fileInput = document.getElementById("gnss-file");
     var truthInput = document.getElementById("truth-file");
+    var reuseGnss = document.getElementById("reuse-gnss");
+    var reuseGnssName = document.getElementById("reuse-gnss-name");
+    var reuseTruth = document.getElementById("reuse-truth");
+    var reuseTruthName = document.getElementById("reuse-truth-name");
     var hasFile = fileInput.files && fileInput.files.length > 0;
     var gnssFile = hasFile ? fileInput.files[0] : null;
     var atsFile = truthInput.files && truthInput.files.length > 0 ? truthInput.files[0] : null;
+    var useReuseGnss = reuseGnss && reuseGnss.checked && reuseGnssName.value.trim();
+    var useReuseTruth = reuseTruth && reuseTruth.checked && reuseTruthName.value.trim();
 
-    if (!hasFile) {
-      window.alert("Select a GNSS file to upload.");
+    if (!hasFile && !useReuseGnss) {
+      window.alert("Select a GNSS file to upload, or enable reuse with the server filename.");
       return;
+    }
+    if (useReuseTruth && atsFile) {
+      window.alert("Choose either an ATS upload or reuse on server, not both.");
+      return;
+    }
+    if (!useReuseTruth && !atsFile && reuseTruth && reuseTruth.checked) {
+      window.alert("Enter the ATS truth filename to reuse on the server.");
+      return;
+    }
+
+    if (useReuseGnss) {
+      window.localStorage.setItem("gnssPlotReuseGnssName", reuseGnssName.value.trim());
+    }
+    if (useReuseTruth) {
+      window.localStorage.setItem("gnssPlotReuseTruthName", reuseTruthName.value.trim());
     }
 
     if (activeXhr) {
@@ -596,13 +670,30 @@ Point Name (Optional):
     statusPanel.className = "active";
     atsProgressBlock.hidden = !atsFile;
 
-    setPhase(atsFile ? "Uploading files..." : "Uploading GNSS file...");
-    setDetail(
-      atsFile
-        ? "Sending " + gnssFile.name + " and " + atsFile.name + " to the server."
-        : "Sending " + gnssFile.name + " to the server."
-    );
-    setGnssUploadPercent(0, false);
+    if (useReuseGnss && !hasFile) {
+      setGnssUploadPercent(100, false);
+      if (useReuseTruth && !atsFile) {
+        setPhase("Processing on server...");
+        setDetail("Reusing GNSS and ATS files already on the server.");
+      } else if (atsFile) {
+        setPhase("Uploading ATS truth file...");
+        setDetail("Reusing GNSS on server; uploading " + atsFile.name + " only.");
+      } else {
+        setPhase("Processing on server...");
+        setDetail("Reusing GNSS file on server (" + reuseGnssName.value.trim() + ").");
+      }
+    } else if (useReuseTruth && !atsFile) {
+      setPhase("Uploading GNSS file...");
+      setDetail("Uploading " + gnssFile.name + "; reusing ATS truth on server.");
+    } else {
+      setPhase(atsFile ? "Uploading files..." : "Uploading GNSS file...");
+      setDetail(
+        atsFile
+          ? "Sending " + gnssFile.name + " and " + atsFile.name + " to the server."
+          : "Sending " + gnssFile.name + " to the server."
+      );
+      setGnssUploadPercent(0, false);
+    }
     if (atsFile) {
       setAtsUploadPercent(0, false);
     }
@@ -615,10 +706,15 @@ Point Name (Optional):
     xhr.withCredentials = true;
 
     xhr.upload.addEventListener("progress", function (event) {
-      updateUploadProgress(event, gnssFile, atsFile);
+      var progressGnssFile = gnssFile;
+      if (!progressGnssFile && useReuseGnss) {
+        progressGnssFile = { size: 0, name: reuseGnssName.value.trim() };
+      }
+      updateUploadProgress(event, progressGnssFile, atsFile);
       if (event.lengthComputable) {
-        var totalSize = gnssFile.size + (atsFile ? atsFile.size : 0);
-        if (totalSize > 0 && event.loaded >= totalSize) {
+        var gnssSize = progressGnssFile ? progressGnssFile.size : 0;
+        var totalSize = gnssSize + (atsFile ? atsFile.size : 0);
+        if (totalSize === 0 || event.loaded >= totalSize) {
           setPhase("Upload complete. Processing on server...");
           setGnssUploadPercent(100, false);
           if (atsFile) {
