@@ -1,6 +1,12 @@
 (function () {
   const listeners = [];
-  let offsetMinutes = 0;
+
+  function browserOffsetMinutes() {
+    return -new Date().getTimezoneOffset();
+  }
+
+  let offsetMinutes = browserOffsetMinutes();
+  let userAdjustedOffset = false;
 
   function clampMinutes(value) {
     const n = Math.trunc(Number(value));
@@ -41,17 +47,16 @@
     return "UTC" + sign + String(absH).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
   }
 
-  function parseOffsetLine(text) {
-    const match = String(text || "").match(/^Display TZ offset:\s*([+-]?\d+):(\d{2})\s*$/m);
-    if (!match) {
-      return null;
+  function initFromTimeRange(_text) {
+    if (!userAdjustedOffset) {
+      offsetMinutes = browserOffsetMinutes();
     }
-    return toOffsetMinutes(Number(match[1]), Number(match[2]));
+    syncPanel();
   }
 
   function parseUtcTimestamp(text) {
     if (!text || text === "—") return null;
-    const raw = String(text).trim();
+    const raw = String(text).trim().replace(/\s+UTC\s*$/i, "");
     const isoMatch = raw.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/);
     if (isoMatch) {
       const parsed = new Date(isoMatch[1] + "T" + isoMatch[2] + "Z");
@@ -77,6 +82,12 @@
   function formatLocalFromUtcText(utcText, fallback) {
     const parsed = parseUtcTimestamp(utcText);
     if (!parsed) return fallback || utcText || "—";
+    return formatLocalFromUnix(parsed.getTime() / 1000);
+  }
+
+  function formatLocalFromUtcTextStrict(utcText) {
+    const parsed = parseUtcTimestamp(utcText);
+    if (!parsed) return "—";
     return formatLocalFromUnix(parsed.getTime() / 1000);
   }
 
@@ -128,37 +139,8 @@
   }
 
   function setOffset(hours, minutes) {
+    userAdjustedOffset = true;
     setOffsetMinutes(toOffsetMinutes(hours, minutes));
-  }
-
-  function parseNaiveTimestamp(text) {
-    const match = String(text || "").trim().match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/);
-    if (!match) return null;
-    const parsed = new Date(match[1] + "T" + match[2] + "Z");
-    return Number.isFinite(parsed.getTime()) ? parsed : null;
-  }
-
-  function initFromTimeRange(text) {
-    const parsed = parseOffsetLine(text);
-    if (parsed !== null) {
-      offsetMinutes = parsed;
-      syncPanel();
-      return;
-    }
-
-    const startUtcMatch = String(text || "").match(/^Start UTC:\s*(.+)$/m);
-    const startLocalMatch = String(text || "").match(/^Start Local:\s*(.+)$/m);
-    if (startUtcMatch && startLocalMatch) {
-      const utcDate = parseUtcTimestamp(startUtcMatch[1].trim());
-      const localDate = parseNaiveTimestamp(startLocalMatch[1].trim());
-      if (utcDate && localDate) {
-        const inferred = Math.round((localDate.getTime() - utcDate.getTime()) / 60000);
-        if (Number.isFinite(inferred)) {
-          offsetMinutes = inferred;
-        }
-      }
-    }
-    syncPanel();
   }
 
   function onChange(fn) {
@@ -177,13 +159,16 @@
     minutesInput.dataset.bound = "1";
 
     const applyInputs = () => {
-      setOffset(hoursInput.value, minutesInput.value);
+      const next = toOffsetMinutes(hoursInput.value, minutesInput.value);
+      if (next === offsetMinutes) return;
+      userAdjustedOffset = true;
+      setOffsetMinutes(next);
     };
 
+    hoursInput.addEventListener("input", applyInputs);
     hoursInput.addEventListener("change", applyInputs);
+    minutesInput.addEventListener("input", applyInputs);
     minutesInput.addEventListener("change", applyInputs);
-    hoursInput.addEventListener("input", syncPanel);
-    minutesInput.addEventListener("input", syncPanel);
   }
 
   window.gnssDisplayTz = {
@@ -191,6 +176,7 @@
     getOffsetLabel: () => formatOffsetLabel(offsetMinutes),
     getLocalColumnLabel: () => "Local Time (" + formatOffsetLabel(offsetMinutes) + ")",
     formatLocalFromUtcText,
+    formatLocalFromUtcTextStrict,
     formatLocalClock,
     plotDate,
     initFromTimeRange,
@@ -201,8 +187,12 @@
   };
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", attachPanelListeners);
+    document.addEventListener("DOMContentLoaded", () => {
+      syncPanel();
+      attachPanelListeners();
+    });
   } else {
+    syncPanel();
     attachPanelListeners();
   }
 })();

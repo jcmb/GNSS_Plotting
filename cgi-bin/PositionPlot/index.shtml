@@ -6,8 +6,8 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="tz_display.js?v=20250829d"></script>
-<script src="interactive_plot.js?v=20250829e"></script>
+<script src="tz_display.js?v=20250829f"></script>
+<script src="interactive_plot.js?v=20250829f"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -263,8 +263,8 @@
     margin: 0 12px 0 6px;
   }
 </style>
-<script src="tz_display.js?v=20250829d"></script>
-<script src="report_tables.js?v=20250829d"></script>
+<script src="tz_display.js?v=20250829f"></script>
+<script src="report_tables.js?v=20250829f"></script>
 </head>
 <body onload="loadReportTables(); loadInteractivePosition(); checkProcessingStatus();">
 <div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">
@@ -289,7 +289,6 @@ Location: <!--#include virtual="kml.html" -->
   <span id="display-tz-current">UTC+00:00</span>
   <label for="display-tz-hours">Hours<input type="number" id="display-tz-hours" min="-14" max="14" step="1" value="0"></label>
   <label for="display-tz-minutes">Minutes<input type="number" id="display-tz-minutes" min="0" max="59" step="1" value="0"></label>
-  <span class="report-meta">Adjust hours and minutes from UTC for local-time display in the report and plots.</span>
 </div>
 <div id="report-summary-root">
   <p class="report-empty">Loading summary tables...</p>

@@ -64,8 +64,8 @@ function renderTimeRange(text) {
   if (!kv["Start GPS"] && !kv["End GPS"]) return "";
 
   const tz = window.gnssDisplayTz;
-  const formatLocal = (utcText, fallback) => (
-    tz ? tz.formatLocalFromUtcText(utcText, fallback) : (fallback || utcText || "—")
+  const formatLocal = (utcText) => (
+    tz ? tz.formatLocalFromUtcTextStrict(utcText) : (utcText || "—")
   );
   const localHeader = tz ? tz.getLocalColumnLabel() : "Local Time";
 
@@ -78,13 +78,13 @@ function renderTimeRange(text) {
       gnssStartLabel,
       kv["Start GPS"] || "—",
       kv["Start UTC"] || "—",
-      formatLocal(kv["Start UTC"], kv["Start Local"])
+      formatLocal(kv["Start UTC"])
     ],
     [
       gnssEndLabel,
       kv["End GPS"] || "—",
       kv["End UTC"] || "—",
-      formatLocal(kv["End UTC"], kv["End Local"])
+      formatLocal(kv["End UTC"])
     ]
   ];
 
@@ -93,13 +93,13 @@ function renderTimeRange(text) {
       "Start (ATS)",
       "—",
       kv["ATS Start UTC"] || "—",
-      formatLocal(kv["ATS Start UTC"], kv["ATS Start Local"])
+      formatLocal(kv["ATS Start UTC"])
     ]);
     rows.push([
       "End (ATS)",
       "—",
       kv["ATS End UTC"] || "—",
-      formatLocal(kv["ATS End UTC"], kv["ATS End Local"])
+      formatLocal(kv["ATS End UTC"])
     ]);
   }
 
