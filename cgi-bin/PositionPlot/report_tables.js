@@ -246,6 +246,22 @@ function sessionRequestLabel(value) {
   return value || "Automatic";
 }
 
+function parseAtsTruthStatus(sessionKv, plotFilterText) {
+  const line = sessionKv["ATS truth file"] || sessionKv["Truth file"];
+  if (line) {
+    if (/^yes\b/i.test(line)) {
+      const detail = line.replace(/^yes\b/i, "").trim().replace(/^\(/, "").replace(/\)$/, "");
+      return detail
+        ? "Yes — " + detail + " (error plots vs interpolated ATS truth)"
+        : "Yes — error plots vs interpolated ATS truth";
+    }
+    if (/^no\b/i.test(line)) return "No";
+  }
+  return parsePlotFilterFlags(plotFilterText).truth
+    ? "Yes — error plots vs interpolated ATS truth"
+    : "No";
+}
+
 function renderSessionType(text, plotFilterText) {
   const kv = parseSessionType(text);
   const sessionUsed = kv["Session used"] || parsePlotFilterSession(plotFilterText);
@@ -257,9 +273,7 @@ function renderSessionType(text, plotFilterText) {
     rows.push(["Session requested", sessionRequestLabel(kv["Session requested"])]);
   }
   rows.push(["Session used", isMoving ? "Moving" : "Static"]);
-  if (kv["Truth file"] === "yes") {
-    rows.push(["Truth reference", "ATS truth file"]);
-  }
+  rows.push(["ATS truth file", parseAtsTruthStatus(kv, plotFilterText)]);
   if (kv["Detection ran"] === "yes") {
     rows.push(["Motion detection", "Ran (2D, >10σ threshold)"]);
     if (kv["Outlier fraction"]) {
@@ -308,8 +322,35 @@ function parseTrajectoryCoords(text) {
   };
 }
 
+function isAtsTruthSession(text) {
+  return /Source:\s*ATS truth file/m.test(text);
+}
+
+function renderAtsTruthSummary(text) {
+  if (!text.trim() || !isAtsTruthSession(text)) return "";
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const intro = lines.filter((line) => /^Moving session with ATS truth/i.test(line));
+  const rows = parseKeyValueLines(
+    lines.filter((line) =>
+      !/^TRAJECTORY_SESSION$/i.test(line) &&
+      !/^TRUTH_SESSION$/i.test(line) &&
+      !/^Moving session with ATS truth/i.test(line)
+    ).join("\n")
+  ).filter(([key]) => key !== "truth_height_offset");
+
+  let body = "";
+  if (intro.length) {
+    body += '<div class="report-meta">' + intro.map(escapeHtml).join("<br>") + "</div>";
+  }
+  if (rows.length) {
+    body += tableHtml(["Metric", "Value"], rows, "report-table");
+  }
+  return sectionHtml("ATS Truth", body);
+}
+
 function renderTrajectorySummary(text) {
-  if (!text.trim() || !isTrajectorySession(text)) return "";
+  if (!text.trim() || !isTrajectorySession(text) || isAtsTruthSession(text)) return "";
 
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const intro = lines.filter((line) =>
@@ -357,8 +398,8 @@ function renderLocationMap(coords, isMoving) {
   html += '<iframe class="report-location-map" title="Position map" loading="lazy"';
   html += ' src="' + escapeHtml(osmUrl) + '"></iframe>';
   html += '<div class="report-location-map-shield" role="button" tabindex="0"';
-  html += ' aria-label="Click to interact with map. Page scroll works until the map is activated.">';
-  html += "<span>Click map to zoom and pan · scroll page normally otherwise</span>";
+  html += ' aria-label="Click to interact with map.">';
+  html += "<span>Click map to zoom and pan</span>";
   html += "</div></div>";
   html += "</section>";
   return html;
@@ -675,12 +716,6 @@ function renderSumTxt(text) {
   if (data.counts.length) {
     html += sectionHtml("Record Counts", tableHtml(["Metric", "Count"], data.counts, "report-table"));
   }
-  if (data.latency.length) {
-    html += sectionHtml(
-      "Solution Age (Latency)",
-      tableHtml(["Latency", "Records", "Percent"], data.latency, "report-table")
-    );
-  }
   if (data.positionTypes.length) {
     html += sectionHtml(
       "Position Types",
@@ -692,6 +727,12 @@ function renderSumTxt(text) {
     html += sectionHtml(
       title,
       tableHtml(["Category", "Records", "Percent"], data.unusedSv, "report-table")
+    );
+  }
+  if (data.latency.length) {
+    html += sectionHtml(
+      "Solution Age (Latency)",
+      tableHtml(["Latency", "Records", "Percent"], data.latency, "report-table")
     );
   }
   return html;
@@ -844,7 +885,9 @@ async function buildReportTables() {
   if (isMoving) {
     html += renderTrajectorySummary(llhMean);
   } else if (plotFilterFlags.truth) {
-    html += renderTrajectorySummary(llhMean);
+    html += renderAtsTruthSummary(llhMean);
+    html += renderMeanInfo(meanInfo);
+    html += renderNeeMean(neeMean);
   } else {
     html += renderMeanInfo(meanInfo);
     html += renderLlhMean(llhMean);

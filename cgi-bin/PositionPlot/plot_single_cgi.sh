@@ -358,7 +358,9 @@ echo "Session requested: $SESSION_REQUEST_LABEL"
 echo "Session used: $SESSION_USED"
 if [ "$TRUTH_MODE" = "yes" ]
 then
-echo "Truth file: yes"
+   echo "ATS truth file: yes ($(basename "$TRUTH_FILE"))"
+else
+   echo "ATS truth file: no"
 fi
 echo "Detection ran: $DETECTION_RAN"
 echo "Outlier fraction: ${OUTLIER_FRACTION}% (>10 sigma, 2D)"

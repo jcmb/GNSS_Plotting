@@ -98,6 +98,24 @@ const TRACE_NAME_TO_COLOR = {
   "H Error": "d2",
   "H Sigma": "d2",
   "V Sigma": "up",
+  "+1σ": "up",
+  "-1σ": "up",
+  "+2σ": "up",
+  "-2σ": "up",
+  "+3σ": "up",
+  "-3σ": "up",
+  "+1σ H": "d2",
+  "-1σ H": "d2",
+  "+2σ H": "d2",
+  "-2σ H": "d2",
+  "+3σ H": "d2",
+  "-3σ H": "d2",
+  "+1σ U": "up",
+  "-1σ U": "up",
+  "+2σ U": "up",
+  "-2σ U": "up",
+  "+3σ U": "up",
+  "-3σ U": "up",
   "North velocity": "north",
   "East velocity": "east",
   "Up velocity": "up",
@@ -630,6 +648,57 @@ function verticalSigma(points) {
   return points.map((p) => (Number.isFinite(p.vprec) ? p.vprec : null));
 }
 
+function negateSeries(values) {
+  return values.map((v) => (Number.isFinite(v) ? -v : null));
+}
+
+function scaleSeries(values, factor) {
+  return values.map((v) => (Number.isFinite(v) ? factor * v : null));
+}
+
+function sigmaBandTraces(x, sigma, options = {}) {
+  const {
+    show2Sigma = false,
+    show3Sigma = false,
+    labelSuffix = "",
+    colorKey = "up"
+  } = options;
+  const suffix = labelSuffix ? ` ${labelSuffix}` : "";
+  const lineStyle = { dash: "dot", width: 1.5 };
+  const wideStyle = { dash: "dash", width: 1 };
+  const traces = [
+    coloredLine(x, sigma, `+1σ${suffix}`, colorKey, { line: lineStyle }),
+    coloredLine(x, negateSeries(sigma), `-1σ${suffix}`, colorKey, { line: lineStyle })
+  ];
+  if (show2Sigma) {
+    const sigma2 = scaleSeries(sigma, 2);
+    traces.push(
+      coloredLine(x, sigma2, `+2σ${suffix}`, colorKey, { line: wideStyle }),
+      coloredLine(x, negateSeries(sigma2), `-2σ${suffix}`, colorKey, { line: wideStyle })
+    );
+  }
+  if (show3Sigma) {
+    const sigma3 = scaleSeries(sigma, 3);
+    traces.push(
+      coloredLine(x, sigma3, `+3σ${suffix}`, colorKey, { line: wideStyle }),
+      coloredLine(x, negateSeries(sigma3), `-3σ${suffix}`, colorKey, { line: wideStyle })
+    );
+  }
+  return traces;
+}
+
+function verticalSigmaBandTraces(x, sigma, options = {}) {
+  return sigmaBandTraces(x, sigma, options);
+}
+
+function horizontalSigmaBandTraces(x, sigma, options = {}) {
+  return sigmaBandTraces(x, sigma, { ...options, labelSuffix: "H", colorKey: "d2" });
+}
+
+function verticalSigmaBandTracesForU(x, sigma, options = {}) {
+  return sigmaBandTraces(x, sigma, { ...options, labelSuffix: "U", colorKey: "up" });
+}
+
 function velocitySeries(points) {
   const vn = [];
   const ve = [];
@@ -942,7 +1011,6 @@ const ALL_PLOT_IDS = [
 
 const DEFAULT_PLOT_CARD_ORDER = [
   "plot-solution-latency",
-  "plot-latency-dist",
   "plot-sv",
   "plot-height-error",
   "plot-height-sigma",
@@ -1027,7 +1095,7 @@ function plotCardTitle(cardId) {
 }
 
 function applyPlotCardClosedState() {
-  document.querySelectorAll("#interactive-plot-cards .plot-card[data-card-id]").forEach((card) => {
+  document.querySelectorAll(".plot-card[data-card-id]").forEach((card) => {
     card.classList.toggle("plot-card-closed", isPlotCardClosed(card.dataset.cardId));
   });
   updatePlotRestoreBar();
@@ -1167,7 +1235,7 @@ function initPlotCardChrome() {
   const container = document.getElementById("interactive-plot-cards");
   if (!container) return;
 
-  container.querySelectorAll(".plot-card[data-card-id]").forEach(enhancePlotCard);
+  document.querySelectorAll(".plot-card[data-card-id]").forEach(enhancePlotCard);
 
   if (!plotCardChromeInitialized) {
     plotCardChromeInitialized = true;
@@ -1656,9 +1724,9 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   const heightTraces = [
-    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up"),
     latencyTrace(x, latency),
-    { ...vdopTrace(x, points, "y3"), visible: "legendonly" }
+    { ...vdopTrace(x, points, "y3"), visible: "legendonly" },
+    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")
   ];
   const heightLayout = {
     ...commonLayout,
@@ -1683,50 +1751,72 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     });
   });
 
-  drawPlotIfOpen("plot-height-sigma", [
-    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up"),
-    coloredLine(x, vSigma, "V Sigma", "up", { yaxis: "y2", line: { dash: "dot" } })
-  ], {
+  const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
+  const showHeightSigma3 = document.getElementById("show-height-sigma-3")?.checked;
+  const heightSigmaTraces = verticalSigmaBandTraces(x, vSigma, {
+    show2Sigma: showHeightSigma2,
+    show3Sigma: showHeightSigma3
+  });
+  const heightSigmaLayout = {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: 50 },
     title: isMoving ? "Height and Sigma" : "Height Error and Sigma",
-    yaxis: { title: isMoving ? "Height (m)" : "Height Error (m)", zeroline: !isMoving },
-    yaxis2: {
+    yaxis: {
+      title: isMoving ? "Height (m)" : "Height Error (m)",
+      zeroline: true
+    },
+    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+  };
+  if (isMoving) {
+    heightSigmaLayout.yaxis2 = {
       title: "V Sigma (m)",
       overlaying: "y",
       side: "right",
-      rangemode: "tozero",
+      zeroline: true,
       showgrid: false
-    }
-  });
+    };
+  }
+  drawPlotIfOpen("plot-height-sigma", [
+    ...heightSigmaTraces.map((trace) => (isMoving ? { ...trace, yaxis: "y2" } : trace)),
+    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")
+  ], heightSigmaLayout);
 
   if (isMoving) {
     const vel = velocitySeries(points);
+    const showSolVelNeu = document.getElementById("show-sol-velocity-neu")?.checked;
+    const showSolSpeed = document.getElementById("show-sol-velocity-speed")?.checked;
+
     drawPlotIfOpen("plot-velocity-neu", [
       coloredLine(x, vel.vn, "vLat", "north"),
       coloredLine(x, vel.ve, "vLon", "east"),
-      coloredLine(x, vel.vu, "vHgt", "up")
+      coloredLine(x, vel.vu, "vHgt", "up"),
+      ...withSolutionTypeTrace(showSolVelNeu, x, points)
     ], {
       ...commonLayout,
+      margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(false, showSolVelNeu) },
       title: "Velocity (NEU)",
-      yaxis: { title: "Velocity (m/s)" }
+      yaxis: { title: "Velocity (m/s)" },
+      ...sigmaPlotOverlayAxes(false, showSolVelNeu, points)
     });
     drawPlotIfOpen("plot-velocity-speed", [
       coloredLine(x, vel.speedH, "Horizontal speed", "d2"),
-      coloredLine(x, vel.speed3d, "3D speed", "d3", { line: { dash: "dot" } })
+      coloredLine(x, vel.speed3d, "3D speed", "d3", { line: { dash: "dot" } }),
+      ...withSolutionTypeTrace(showSolSpeed, x, points)
     ], {
       ...commonLayout,
+      margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(false, showSolSpeed) },
       title: "Speed",
-      yaxis: { title: "Speed (m/s)", rangemode: "tozero" }
+      yaxis: { title: "Speed (m/s)", rangemode: "tozero" },
+      ...sigmaPlotOverlayAxes(false, showSolSpeed, points)
     });
   }
 
   if (!isMoving) {
   drawPlotIfOpen("plot-enu", [
+    latencyTrace(x, latency),
     coloredLine(x, north, "North Error", "north"),
     coloredLine(x, east, "East Error", "east"),
-    coloredLine(x, up, "Height Error", "up"),
-    latencyTrace(x, latency)
+    coloredLine(x, up, "Height Error", "up")
   ], {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: 50 },
@@ -1736,16 +1826,22 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   drawPlotIfOpen("plot-enu-sigma", [
+    latencyTrace(x, latency),
+    ...horizontalSigmaBandTraces(x, hSigma, {
+      show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
+      show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
+    }),
+    ...verticalSigmaBandTracesForU(x, vSigma, {
+      show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
+      show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
+    }),
     coloredLine(x, err2d, "H Error", "d2"),
-    coloredLine(x, up, "U Error", "up"),
-    coloredLine(x, horizontalSigma(points), "H Sigma", "d2", { line: { dash: "dot" } }),
-    coloredLine(x, verticalSigma(points), "V Sigma", "up", { line: { dash: "dot" } }),
-    latencyTrace(x, latency)
+    coloredLine(x, up, "U Error", "up")
   ], {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: 50 },
     title: "H/U Error and Sigma",
-    yaxis: { title: "Meters", rangemode: "tozero" },
+    yaxis: { title: "Meters", zeroline: true },
     yaxis2: latencyYAxis({ overlaying: "y", side: "right" }),
     legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
@@ -1905,6 +2001,12 @@ function attachPlotControlListeners() {
   document.getElementById("show-sol-1d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-2d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-3d").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-sol-velocity-neu").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-sol-velocity-speed").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-height-sigma-2").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-height-sigma-3").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-enu-sigma-2").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-enu-sigma-3").addEventListener("change", rerenderPositionPlots);
 }
 
 function setPlotStatus(message, state) {
