@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 import GPS_TIME
 
@@ -36,6 +36,10 @@ def format_local(unix_sec):
     return datetime.fromtimestamp(unix_sec).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def format_utc(unix_sec):
+    return datetime.fromtimestamp(unix_sec, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
 def main():
     min_unix = None
     max_unix = None
@@ -58,6 +62,8 @@ def main():
 
     print("Start GPS: {}".format(format_gps(min_unix)))
     print("End GPS: {}".format(format_gps(max_unix)))
+    print("Start UTC: {}".format(format_utc(min_unix)))
+    print("End UTC: {}".format(format_utc(max_unix)))
     print("Start Local: {}".format(format_local(min_unix)))
     print("End Local: {}".format(format_local(max_unix)))
 

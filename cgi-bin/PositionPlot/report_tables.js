@@ -63,12 +63,12 @@ function renderTimeRange(text) {
   if (!kv["Start GPS"] && !kv["End GPS"]) return "";
 
   const rows = [
-    ["Start", kv["Start GPS"] || "—", kv["Start Local"] || "—"],
-    ["End", kv["End GPS"] || "—", kv["End Local"] || "—"]
+    ["Start", kv["Start GPS"] || "—", kv["Start UTC"] || "—", kv["Start Local"] || "—"],
+    ["End", kv["End GPS"] || "—", kv["End UTC"] || "—", kv["End Local"] || "—"]
   ];
   return sectionHtml(
     "Session Time Range",
-    tableHtml(["", "GPS", "Local Time"], rows, "report-table")
+    tableHtml(["", "GPS", "UTC", "Local Time"], rows, "report-table")
   );
 }
 
@@ -246,14 +246,24 @@ function sessionRequestLabel(value) {
   return value || "Automatic";
 }
 
+function parseAtsFilename(line) {
+  const match = String(line || "").match(/\(([^)]+)\)/);
+  return match ? match[1].trim() : "";
+}
+
 function parseAtsTruthStatus(sessionKv, plotFilterText) {
   const line = sessionKv["ATS truth file"] || sessionKv["Truth file"];
+  const filename = sessionKv["ATS filename"] || parseAtsFilename(line);
   if (line) {
     if (/not used/i.test(line)) {
-      return "Provided — not used (no GNSS time overlap; processed as normal)";
+      return filename
+        ? `Provided (${filename}) — not used (no GNSS time overlap; processed as normal)`
+        : "Provided — not used (no GNSS time overlap; processed as normal)";
     }
     if (/applied/i.test(line)) {
-      return "Yes — applied (error plots vs interpolated ATS truth)";
+      return filename
+        ? `Yes — ${filename} applied (error plots vs interpolated ATS truth)`
+        : "Yes — applied (error plots vs interpolated ATS truth)";
     }
     if (/^yes\b/i.test(line)) {
       const detail = line.replace(/^yes\b/i, "").trim().replace(/^\(/, "").replace(/\)$/, "");
@@ -279,7 +289,11 @@ function renderSessionType(text, plotFilterText) {
     rows.push(["Session requested", sessionRequestLabel(kv["Session requested"])]);
   }
   rows.push(["Session used", isMoving ? "Moving" : "Static"]);
-  rows.push(["ATS truth file", parseAtsTruthStatus(kv, plotFilterText)]);
+  const atsFilename = kv["ATS filename"] || parseAtsFilename(kv["ATS truth file"]);
+  if (atsFilename) {
+    rows.push(["ATS file", atsFilename]);
+  }
+  rows.push(["ATS truth", parseAtsTruthStatus(kv, plotFilterText)]);
   if (kv["Detection ran"] === "yes") {
     rows.push(["Motion detection", "Ran (2D, >10σ threshold)"]);
     if (kv["Outlier fraction"]) {
@@ -332,7 +346,7 @@ function isAtsTruthSession(text) {
   return /Source:\s*ATS truth file/m.test(text);
 }
 
-function renderAtsTruthSummary(text) {
+function renderAtsTruthSummary(text, sessionKv) {
   if (!text.trim() || !isAtsTruthSession(text)) return "";
 
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -344,6 +358,11 @@ function renderAtsTruthSummary(text) {
       !/^Moving session with ATS truth/i.test(line)
     ).join("\n")
   ).filter(([key]) => key !== "truth_height_offset");
+
+  const atsFilename = sessionKv?.["ATS filename"] || parseAtsFilename(sessionKv?.["ATS truth file"]);
+  if (atsFilename && !rows.some(([key]) => key === "ATS file")) {
+    rows.unshift(["ATS file", atsFilename]);
+  }
 
   let body = "";
   if (intro.length) {
@@ -891,7 +910,7 @@ async function buildReportTables() {
   if (isMoving) {
     html += renderTrajectorySummary(llhMean);
   } else if (plotFilterFlags.truth) {
-    html += renderAtsTruthSummary(llhMean);
+    html += renderAtsTruthSummary(llhMean, sessionKv);
     html += renderMeanInfo(meanInfo);
     html += renderNeeMean(neeMean);
   } else {

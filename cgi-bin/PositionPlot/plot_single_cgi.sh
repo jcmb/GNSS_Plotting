@@ -364,6 +364,10 @@ then
 else
    echo "ATS truth file: no"
 fi
+if [ "$TRUTH_ATTEMPTED" = "yes" ]
+then
+   echo "ATS filename: $(basename "$TRUTH_FILE")"
+fi
 echo "Detection ran: $DETECTION_RAN"
 echo "Outlier fraction: ${OUTLIER_FRACTION}% (>10 sigma, 2D)"
 echo "Outlier epochs: $OUTLIER_COUNT / $VALID_COUNT"
@@ -409,6 +413,11 @@ then
 
    $normalDir/kml_trajectory.py $File $File.sol
    echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
+
+   {
+   echo "ATS file: $(basename "$TRUTH_FILE")"
+   cat truth_report.txt
+   } > truth_report.tmp && mv truth_report.tmp truth_report.txt
 
    {
    echo "TRAJECTORY_SESSION"
