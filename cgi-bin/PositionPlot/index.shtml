@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250828k"></script>
+<script src="interactive_plot.js?v=20250828o"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -313,6 +313,7 @@ Location: <!--#include virtual="kml.html" -->
 
 <div class="plot-card" data-card-id="plot-height-sigma">
   <h3>Height Error and Sigma</h3>
+  <label><input type="checkbox" id="show-height-sigma-1" checked> Show 1σ</label>
   <label><input type="checkbox" id="show-height-sigma-2"> Show 2σ</label>
   <label><input type="checkbox" id="show-height-sigma-3"> Show 3σ</label>
   <div id="plot-height-sigma" style="width: 100%; height: 420px;"></div>
@@ -374,7 +375,7 @@ Location: <!--#include virtual="kml.html" -->
 </div>
 
 <div class="plot-card plot-static-only" data-card-id="plot-age-corr">
-  <h3>Error and Precision vs Age of Corrections</h3>
+  <h3>Error and Sigma</h3>
   <h4>1D (Vertical)</h4>
   <div id="plot-age-corr-1d" style="width: 100%; height: 380px;"></div>
   <h4>2D (Horizontal)</h4>

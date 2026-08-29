@@ -193,14 +193,14 @@ function coloredLine(x, y, name, colorKey, opts = {}) {
   });
 }
 
-function latencyTrace(x, latency) {
+function latencyTrace(x, latency, yaxis) {
   return applyTraceColor({
     type: "scatter",
     x,
     y: latency,
     name: "Latency (s)",
     mode: "lines",
-    yaxis: "y2",
+    yaxis: yaxis || "y",
     line: { color: LATENCY_COLOR, width: 2 },
     marker: { color: LATENCY_COLOR }
   });
@@ -213,6 +213,18 @@ function latencyYAxis(overrides) {
     zeroline: true,
     ...(overrides || {})
   };
+}
+
+function latencyPrimaryYAxis(overrides) {
+  return latencyYAxis({ side: "right", ...(overrides || {}) });
+}
+
+function overlayLeftYAxis(config) {
+  return { overlaying: "y", side: "left", ...config };
+}
+
+function assignTraceYAxis(traces, yaxis) {
+  return traces.map((trace) => ({ ...trace, yaxis }));
 }
 
 function traceIsShownOnPlot(trace) {
@@ -658,6 +670,7 @@ function scaleSeries(values, factor) {
 
 function sigmaBandTraces(x, sigma, options = {}) {
   const {
+    show1Sigma = true,
     show2Sigma = false,
     show3Sigma = false,
     labelSuffix = "",
@@ -666,10 +679,13 @@ function sigmaBandTraces(x, sigma, options = {}) {
   const suffix = labelSuffix ? ` ${labelSuffix}` : "";
   const lineStyle = { dash: "dot", width: 1.5 };
   const wideStyle = { dash: "dash", width: 1 };
-  const traces = [
-    coloredLine(x, sigma, `+1σ${suffix}`, colorKey, { line: lineStyle }),
-    coloredLine(x, negateSeries(sigma), `-1σ${suffix}`, colorKey, { line: lineStyle })
-  ];
+  const traces = [];
+  if (show1Sigma) {
+    traces.push(
+      coloredLine(x, sigma, `+1σ${suffix}`, colorKey, { line: lineStyle }),
+      coloredLine(x, negateSeries(sigma), `-1σ${suffix}`, colorKey, { line: lineStyle })
+    );
+  }
   if (show2Sigma) {
     const sigma2 = scaleSeries(sigma, 2);
     traces.push(
@@ -817,88 +833,24 @@ const AGE_CORRECTION_PLOT_IDS = [
   "plot-age-corr-3d"
 ];
 
-function ageCorrectionSeries(points) {
-  const rows = points
-    .filter((p) => Number.isFinite(p.latency) && p.latency >= 0)
-    .map((p) => {
-      const e1 = Math.abs(p.u);
-      const e2 = Math.sqrt(p.n * p.n + p.e * p.e);
-      const e3 = Math.sqrt(p.n * p.n + p.e * p.e + p.u * p.u);
-      const hSigma = Number.isFinite(p.hprec)
-        ? Math.sqrt(2 * Math.abs(p.hprec) * Math.abs(p.hprec))
-        : null;
-      const vSigma = Number.isFinite(p.vprec) ? Math.abs(p.vprec) : null;
-      const d3Sigma = (hSigma != null && vSigma != null)
-        ? Math.sqrt(hSigma * hSigma + vSigma * vSigma)
-        : null;
-      return {
-        age: p.latency,
-        e1,
-        e2,
-        e3,
-        p1: vSigma,
-        p2: hSigma,
-        p3: d3Sigma
-      };
-    });
-
-  return { rows, count: rows.length };
-}
-
-function binAgeCorrectionRows(rows, decimals) {
-  const factor = Math.pow(10, decimals);
-  const bins = new Map();
-  const valueKeys = ["e1", "e2", "e3", "p1", "p2", "p3"];
-
-  rows.forEach((row) => {
-    const age = Math.round(row.age * factor) / factor;
-    if (!bins.has(age)) {
-      const entry = { age };
-      valueKeys.forEach((key) => {
-        entry[key + "Sum"] = 0;
-        entry[key + "Count"] = 0;
-      });
-      bins.set(age, entry);
-    }
-    const bin = bins.get(age);
-    valueKeys.forEach((key) => {
-      const value = row[key];
-      if (!Number.isFinite(value)) return;
-      bin[key + "Sum"] += value;
-      bin[key + "Count"] += 1;
-    });
-  });
-
-  return Array.from(bins.values()).map((bin) => {
-    const out = { age: bin.age };
-    valueKeys.forEach((key) => {
-      const count = bin[key + "Count"];
-      out[key] = count > 0 ? bin[key + "Sum"] / count : null;
-    });
-    return out;
-  }).sort((a, b) => a.age - b.age);
-}
-
-function plotAgeCorrectionChart(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey) {
-  const x = bins.map((b) => b.age);
+function plotErrorSigmaChart(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase) {
   const color = ERROR_COLORS[colorKey];
   drawPlot(elementId, [
-    { type: "scatter", x, y: bins.map((b) => b[errKey]), name: errName, mode: "lines", line: { color, width: 2 }, marker: { color } },
+    coloredLine(x, errY, errName, colorKey),
     {
       type: "scatter",
       x,
-      y: bins.map((b) => b[sigKey]),
+      y: sigY,
       name: sigName,
       mode: "lines",
       line: { color, width: 2, dash: "dot" },
       marker: { color }
     }
   ], {
-    margin: { l: 65, r: 30, t: 40, b: 45 },
+    ...layoutBase,
     title,
-    xaxis: { title: "Age of Corrections (s)", rangemode: "tozero", zeroline: true },
     yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
-    legend: { orientation: "h", itemclick: "toggle", itemdoubleclick: "toggleothers" }
+    legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
 }
 
@@ -970,7 +922,10 @@ const POSITION_TIME_PLOT_IDS = [
   "plot-enu-sigma",
   "plot-sigma-1d",
   "plot-sigma-2d",
-  "plot-sigma-3d"
+  "plot-sigma-3d",
+  "plot-age-corr-1d",
+  "plot-age-corr-2d",
+  "plot-age-corr-3d"
 ];
 
 const MOVING_POSITION_TIME_PLOT_IDS = [
@@ -1273,9 +1228,9 @@ function plotLatencyDistributionIfOpen(elementId, dist) {
   plotLatencyDistribution(elementId, dist);
 }
 
-function plotAgeCorrectionChartIfOpen(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey) {
+function plotErrorSigmaChartIfOpen(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase) {
   if (!shouldDrawPlot(elementId)) return;
-  plotAgeCorrectionChart(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey);
+  plotErrorSigmaChart(elementId, title, x, errY, sigY, errName, sigName, colorKey, layoutBase);
 }
 
 function removeLegacy2d3dPlot() {
@@ -1672,27 +1627,30 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   drawPlotIfOpen("plot-solution-latency", [
     {
       x: solX,
-      y: solPoints.map((p) => p.solution),
-      name: "Solution Type",
-      mode: "lines",
-      line: { color: SOLUTION_TYPE_LINE_COLOR, width: 2.5 },
-      marker: { color: SOLUTION_TYPE_LINE_COLOR }
-    },
-    {
-      x: solX,
       y: solPoints.map((p) => p.latency),
       name: "Latency (s)",
       mode: "lines",
-      yaxis: "y2",
       line: { color: LATENCY_COMBINED_COLOR, width: 2, dash: "dot" },
       marker: { color: LATENCY_COMBINED_COLOR }
+    },
+    {
+      x: solX,
+      y: solPoints.map((p) => p.solution),
+      name: "Solution Type",
+      mode: "lines",
+      yaxis: "y2",
+      line: { color: SOLUTION_TYPE_LINE_COLOR, width: 2.5 },
+      marker: { color: SOLUTION_TYPE_LINE_COLOR }
     }
   ], {
     ...timePlotLayout(solAxis.layout, mode),
     margin: { l: 100, r: 60, t: usesDateTimeAxis(mode) ? 58 : 50, b: 45 },
     title: "Solution and Latency Combined",
-    yaxis: solutionYAxis(solPoints),
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right", automargin: true })
+    yaxis: latencyPrimaryYAxis({ automargin: true }),
+    yaxis2: overlayLeftYAxis({
+      ...solutionYAxis(solPoints),
+      automargin: true
+    })
   });
 
   plotLatencyDistributionIfOpen("plot-latency-dist", latencyDistribution(solPoints));
@@ -1726,14 +1684,20 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const heightTraces = [
     latencyTrace(x, latency),
     { ...vdopTrace(x, points, "y3"), visible: "legendonly" },
-    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")
+    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up", {
+      yaxis: "y2",
+      line: { width: 2.5 }
+    })
   ];
   const heightLayout = {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: 50 },
     title: isMoving ? "Height" : "Height Error",
-    yaxis: { title: isMoving ? "Height (m)" : "Height Error (m)", zeroline: !isMoving },
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right" }),
+    yaxis: latencyPrimaryYAxis(),
+    yaxis2: overlayLeftYAxis({
+      title: isMoving ? "Height (m)" : "Height Error (m)",
+      zeroline: !isMoving
+    }),
     yaxis3: {
       title: "VDOP",
       overlaying: "y",
@@ -1746,14 +1710,16 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   };
   drawPlotIfOpen("plot-height-error", heightTraces, heightLayout).then(() => {
     attachOverlayAxisLegendSync("plot-height-error", {
-      yaxis2: { title: "Latency (s)", traces: ["Latency (s)"] },
+      yaxis: { title: "Latency (s)", traces: ["Latency (s)"] },
       yaxis3: { title: "VDOP", traces: ["VDOP"] }
     });
   });
 
+  const showHeightSigma1 = document.getElementById("show-height-sigma-1")?.checked;
   const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
   const showHeightSigma3 = document.getElementById("show-height-sigma-3")?.checked;
   const heightSigmaTraces = verticalSigmaBandTraces(x, vSigma, {
+    show1Sigma: showHeightSigma1,
     show2Sigma: showHeightSigma2,
     show3Sigma: showHeightSigma3
   });
@@ -1814,35 +1780,37 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   if (!isMoving) {
   drawPlotIfOpen("plot-enu", [
     latencyTrace(x, latency),
-    coloredLine(x, north, "North Error", "north"),
-    coloredLine(x, east, "East Error", "east"),
-    coloredLine(x, up, "Height Error", "up")
+    coloredLine(x, north, "North Error", "north", { yaxis: "y2" }),
+    coloredLine(x, east, "East Error", "east", { yaxis: "y2" }),
+    coloredLine(x, up, "Height Error", "up", { yaxis: "y2" })
   ], {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: 50 },
     title: "NEU Error",
-    yaxis: { title: "Error (m)" },
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right" })
+    yaxis: latencyPrimaryYAxis(),
+    yaxis2: overlayLeftYAxis({ title: "Error (m)" })
   });
 
   drawPlotIfOpen("plot-enu-sigma", [
     latencyTrace(x, latency),
-    ...horizontalSigmaBandTraces(x, hSigma, {
-      show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
-      show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
-    }),
-    ...verticalSigmaBandTracesForU(x, vSigma, {
-      show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
-      show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
-    }),
-    coloredLine(x, err2d, "H Error", "d2"),
-    coloredLine(x, up, "U Error", "up")
+    ...assignTraceYAxis([
+      ...horizontalSigmaBandTraces(x, hSigma, {
+        show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
+        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
+      }),
+      ...verticalSigmaBandTracesForU(x, vSigma, {
+        show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
+        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked
+      }),
+      coloredLine(x, err2d, "H Error", "d2"),
+      coloredLine(x, up, "U Error", "up")
+    ], "y2")
   ], {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: 50 },
     title: "H/U Error and Sigma",
-    yaxis: { title: "Meters", zeroline: true },
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right" }),
+    yaxis: latencyPrimaryYAxis(),
+    yaxis2: overlayLeftYAxis({ title: "Meters", zeroline: true }),
     legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
 
@@ -1926,31 +1894,27 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   if (!isMoving) {
-  const age = ageCorrectionSeries(points);
-  const ageBins = binAgeCorrectionRows(age.rows, 1);
-  plotAgeCorrectionChartIfOpen(
+  const err3d = d3(points);
+  plotErrorSigmaChartIfOpen(
     "plot-age-corr-1d",
-    "1D Error and Sigma vs Age of Corrections",
-    ageBins,
-    "e1", "p1",
+    "1D Error and Sigma",
+    x, up, vSigma,
     "1D Error |U|", "1D Sigma (V)",
-    "up"
+    "up", commonLayout
   );
-  plotAgeCorrectionChartIfOpen(
+  plotErrorSigmaChartIfOpen(
     "plot-age-corr-2d",
-    "2D Error and Sigma vs Age of Corrections",
-    ageBins,
-    "e2", "p2",
+    "2D Error and Sigma",
+    x, err2d, hSigma,
     "2D Error (H)", "2D Sigma (H)",
-    "d2"
+    "d2", commonLayout
   );
-  plotAgeCorrectionChartIfOpen(
+  plotErrorSigmaChartIfOpen(
     "plot-age-corr-3d",
-    "3D Error and Sigma vs Age of Corrections",
-    ageBins,
-    "e3", "p3",
+    "3D Error and Sigma",
+    x, err3d, s3d,
     "3D Error", "3D Sigma",
-    "d3"
+    "d3", commonLayout
   );
   }
 
@@ -2003,6 +1967,7 @@ function attachPlotControlListeners() {
   document.getElementById("show-sol-3d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-velocity-neu").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-velocity-speed").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-height-sigma-1").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-height-sigma-2").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-height-sigma-3").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-enu-sigma-2").addEventListener("change", rerenderPositionPlots);
