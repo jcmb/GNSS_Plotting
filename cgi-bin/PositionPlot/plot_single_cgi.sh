@@ -712,7 +712,7 @@ echo '</pre>'
 #echo -n '<base href="http://trimbletools.com/results/Position/'
 #echo -n $File
 #echo '/" />'
-cp $normalDir/index.shtml .
+ln -sf $normalDir/index.shtml .
 ln -sf $normalDir/interactive_plot.js
 ln -sf $normalDir/report_tables.js
 rm outage1cm.csv
