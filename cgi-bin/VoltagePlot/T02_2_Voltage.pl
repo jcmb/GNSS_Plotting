@@ -7,7 +7,7 @@ use File::Basename;
 
 use FindBin qw($Bin);
 use lib "$Bin/../PositionPlot";
-use JCMBSoft_Config;
+use JCMBSoft_Config qw(enforce_access sanitize_path_segment normalize_project_path parse_session_filename);
 
 sub urldecode {
     my $s = shift;
@@ -24,8 +24,6 @@ my $safe_filename_characters = "a-zA-Z0-9_.-";
 
 my $filename = $query->param('file');
 my $file_link = $query->param('file_link');
-my $project = $query->param('project');
-my $Point = $query->param('Point');
 
 print $query->header (-charset=>'utf-8' );
 
@@ -70,41 +68,13 @@ if ($file_link){
 #print "Filename: ". $filename;
 #print "<br>";
 
-my ( $name, $path, $extension ) = fileparse ( $filename, '\..*' );
-$filename = $name . $extension;
+my ( $name, $extension );
+( $name, $extension, $filename ) = parse_session_filename($filename);
 
-
-$filename =~ tr/ /_/;
-$filename =~ s/[^$safe_filename_characters]//g;
-
-if ( $filename =~ /^([$safe_filename_characters]+)$/ )
-{
-    $filename = $1;
-}
-else
-{
-    die "Filename contains invalid characters";
-
-}
-
-
-if (defined ($project)) {
-    if  (! $project) {
-        $project="General";
-        }
-}
-else {
-    $project="General";
-}
-
-if (defined ($Point)) {
-    if  (! $Point) {
-        $Point=".";
-        }
-}
-else {
-    $Point=".";
-}
+my $project = normalize_project_path( scalar $query->param('project') );
+$project =~ s{^/}{};
+my $Point = sanitize_path_segment( scalar $query->param('Point') );
+$Point = '.' if !defined($Point) || $Point eq '';
 
 #print "Content-type: text/html\n\n";
 print "<html><head>";

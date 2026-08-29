@@ -13,15 +13,68 @@ use Socket qw(getaddrinfo inet_ntop inet_pton sockaddr_in sockaddr_in6 AF_INET A
 use URI;
 use LWP::UserAgent;
 
-our $VERSION = 1.02;
+our $VERSION = 1.03;
 our @EXPORT_OK = qw(
   TrimbleTools upload_dir
   auth_enabled auth_file
   rate_limit_enabled rate_limit_max_requests rate_limit_window_sec rate_limit_dir
   trust_proxy
   download_to_file enforce_access
+  sanitize_path_segment normalize_project_path parse_session_filename
 );
 our @EXPORT = ();
+
+sub sanitize_path_segment {
+    my ($s) = @_;
+    return '' unless defined $s && $s ne '';
+    $s =~ s/[^a-zA-Z0-9_.-]//g;
+    return $s;
+}
+
+sub normalize_project_path {
+    my ($raw) = @_;
+    $raw //= '';
+    $raw =~ s/^\/+//;
+    my @parts = grep { $_ ne '' } split m{/}, $raw;
+    my @clean;
+    for my $part (@parts) {
+        my $seg = sanitize_path_segment($part);
+        push @clean, $seg if $seg ne '';
+    }
+    return '/General' unless @clean;
+    return join '', map { "/$_" } @clean;
+}
+
+sub parse_session_filename {
+    my ($raw_filename) = @_;
+    my $safe = "a-zA-Z0-9_.-";
+
+    my $filename = defined $raw_filename ? $raw_filename : '';
+    if ( $filename =~ m/^.*(\\|\/)(.*)/ ) {
+        $filename = $2;
+    }
+    if ( $filename =~ m/^(.*)\?.*/ ) {
+        $filename = $1;
+    }
+
+    my ( $name, $path, $extension ) = fileparse( $filename, '\..*' );
+    $name =~ tr/ /_/;
+    $filename = $name . $extension;
+    $filename =~ tr/ /_/;
+    $filename =~ s/[^$safe]//g;
+
+    unless ( $filename =~ /^([$safe]+)$/ ) {
+        die "Filename contains invalid characters";
+    }
+    $filename = $1;
+
+    ( $name, $path, $extension ) = fileparse( $filename, '\..*' );
+    if ( $name eq '' ) {
+        die "Uploaded file must include a name before the file extension";
+    }
+
+    return ( $name, $extension, $filename );
+}
 
 sub TrimbleTools() {
     return 0;

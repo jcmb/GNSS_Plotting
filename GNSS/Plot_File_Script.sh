@@ -17,6 +17,7 @@ TYPE=$1
 shift
 
 PROJ=$1
+PROJ=${PROJ:-General}
 shift
 
 STATION=$1

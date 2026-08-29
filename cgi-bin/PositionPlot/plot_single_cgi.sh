@@ -21,18 +21,17 @@ case "$SOL_REQUEST" in
     Sol="$SOL_REQUEST"
     ;;
 esac
-FileFull=`basename $1`;
-File=`basename $1 $2`;
-Dir=`dirname $0`;
-normalDir=`cd "${Dir}";pwd`
-#echo $PATH
-PATH=${normalDir}:/usr/local/bin:~/bin:$PATH
+FileFull="$(basename "$1")"
+Dir="$(dirname "$0")"
+normalDir="$(cd "${Dir}" && pwd)"
+. "$normalDir/JCMBSoft_Config.sh"
+File="$(gnss_resolve_session_name "$FileFull" "$2")"
+PATH="${normalDir}:/usr/local/bin:~/bin:$PATH"
 Point=$4
 Ant=$5
-#TrimbleTools=$6
 Decimate=$6
 Fixed_Range=$7
-Project=$8
+Project="$(gnss_normalize_project_path "$8")"
 SaveFile=$9
 MeanSol=${10:-${GNSS_MEAN_SOL:--1}}
 MEAN_SOL_REQUEST="$MeanSol"
@@ -55,9 +54,9 @@ logger "Session type request: $SESSION_REQUEST"
 echo "Point $Point"
 echo "Project $Project"
 
-if [ ! $Point = -1 ]
+if [ ! "$Point" = -1 ]
 then
-   Project=$Project/$Point
+   Project="$(gnss_normalize_project_path "${Project#/}/$Point")"
 fi
 echo "Project $Project"
 logger "Project $Project"
@@ -66,7 +65,6 @@ logger "Project $Project"
 #echo "$FileFull<br>$File<br>"
 #ls -l $1
 
-. $normalDir/JCMBSoft_Config.sh
 GNSS_CFG_DIR=`cd "$normalDir/../../admin/GNSS" 2>/dev/null && pwd`
 if [ -z "$GNSS_CFG_DIR" ] || [ ! -f "$GNSS_CFG_DIR/GNSS_Paths.cfg" ]
 then

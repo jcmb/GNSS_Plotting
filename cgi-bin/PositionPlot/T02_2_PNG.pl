@@ -7,7 +7,7 @@ use File::Basename;
 
 use FindBin qw($Bin);
 use lib $Bin;
-use JCMBSoft_Config;
+use JCMBSoft_Config qw(enforce_access sanitize_path_segment normalize_project_path parse_session_filename);
 
 use Sys::Syslog;
 
@@ -51,52 +51,41 @@ if ( !defined($SessionType) || $SessionType eq "" )
 #$Point = "0";
 $Ant = "0";
 
-my $project = $query->param('project');
+my $project = normalize_project_path( scalar $query->param('project') );
 my $Decimate = $query->param('Decimate');
 
 my $TrimbleTools=1;
 
 print $query->header (-charset=>'utf-8' );
 
-if (defined ($project)) {
-    if  ($project) {
-        $project="/".$project;
-        }
-    else  {
-        $project="/General";
-        }
-}
-else {
-    $project="/General";
-}
-
-
 if ( !$filename && !$file_link )
 {
-#    print $query->header ( );
     print "There was a problem uploading your GNSS file, or not file/file url not selected\n";
     exit;
 }
 
-
 if ( !defined($Sol) || $Sol eq "" )
 {
-#    print $query->header ( );
-#    print "There was a problem getting the solution type\n";
-#    exit;
     $Sol="-1";
 }
 
-if ( defined ($Point) && $Point != "")
+if ( defined ($Point) && $Point ne "" )
 {
-    $Point_Dir="/".$Point;
-#    print "Point provided: $Point*"
+    $Point = sanitize_path_segment($Point);
+    if ( $Point ne "" )
+    {
+        $Point_Dir="/".$Point;
+    }
+    else
+    {
+        $Point="-1";
+        $Point_Dir="";
+    }
 }
 else 
 {
     $Point="-1";
     $Point_Dir="";
-#    print "Point not provided"
 }
 
 if ( !$Ant )
@@ -169,22 +158,8 @@ if ($file_link){
     }
 }
 
-my ( $name, $path, $extension ) = fileparse ( $filename, '\..*' );
-
-$name =~ tr/ /_/;
-$filename = $name . $extension;
-
-$filename =~ tr/ /_/;
-$filename =~ s/[^$safe_filename_characters]//g;
-
-if ( $filename =~ /^([$safe_filename_characters]+)$/ )
-{
-    $filename = $1;
-}
-else
-{
-    die "Filename contains invalid characters";
-}
+my ( $name, $extension );
+( $name, $extension, $filename ) = parse_session_filename($filename);
 
 my $report_url = "/results/Position$project$Point_Dir/$name/";
 $ENV{GNSS_REPORT_URL} = $report_url;
