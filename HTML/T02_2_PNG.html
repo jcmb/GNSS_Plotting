@@ -473,6 +473,17 @@ Point Name (Optional):
     event.preventDefault();
     beginSubmit();
   });
+
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted && !form.classList.contains("form-disabled")) {
+      return;
+    }
+    if (activeXhr) {
+      activeXhr.abort();
+      activeXhr = null;
+    }
+    resetUi();
+  });
 })();
 </script>
 
