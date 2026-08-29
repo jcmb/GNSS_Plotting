@@ -63,12 +63,6 @@ function renderTimeRange(text) {
   });
   if (!kv["Start GPS"] && !kv["End GPS"]) return "";
 
-  const tz = window.gnssDisplayTz;
-  const formatLocal = (utcText, fallback) => (
-    tz ? tz.formatLocalFromUtcText(utcText, fallback) : (fallback || utcText || "—")
-  );
-  const localHeader = tz ? tz.getLocalColumnLabel() : "Local Time";
-
   const hasAts = !!(kv["ATS Start UTC"] || kv["ATS End UTC"]);
   const gnssStartLabel = hasAts ? "Start (GNSS)" : "Start";
   const gnssEndLabel = hasAts ? "End (GNSS)" : "End";
@@ -78,13 +72,13 @@ function renderTimeRange(text) {
       gnssStartLabel,
       kv["Start GPS"] || "—",
       kv["Start UTC"] || "—",
-      formatLocal(kv["Start UTC"], kv["Start Local"])
+      kv["Start Local"] || "—"
     ],
     [
       gnssEndLabel,
       kv["End GPS"] || "—",
       kv["End UTC"] || "—",
-      formatLocal(kv["End UTC"], kv["End Local"])
+      kv["End Local"] || "—"
     ]
   ];
 
@@ -105,8 +99,7 @@ function renderTimeRange(text) {
 
   return sectionHtml(
     "Session Time Range",
-    tableHtml(["", "GPS", "UTC", localHeader], rows, "report-table"),
-    "session-time-range-section"
+    tableHtml(["", "GPS", "UTC", "Local Time"], rows, "report-table")
   );
 }
 
@@ -898,15 +891,6 @@ function rawFromDom(id) {
   return el ? el.textContent : "";
 }
 
-let cachedTimeRangeText = "";
-
-function refreshTimeRangeSection() {
-  if (!cachedTimeRangeText) return;
-  const section = document.getElementById("session-time-range-section");
-  if (!section) return;
-  section.outerHTML = renderTimeRange(cachedTimeRangeText);
-}
-
 async function loadText(id, url) {
   const embedded = rawFromDom(id).trim();
   if (embedded) return embedded;
@@ -932,12 +916,6 @@ async function buildReportTables() {
     loadText("raw-session-type", "session_type.txt"),
     loadText("raw-plot-filter", "plot_filter.txt")
   ]);
-
-  cachedTimeRangeText = timeRange;
-  if (window.gnssDisplayTz) {
-    window.gnssDisplayTz.initFromTimeRange(timeRange);
-    window.gnssDisplayTz.attachPanelListeners();
-  }
 
   const sessionKv = parseSessionType(sessionType);
   const sessionUsed = sessionKv["Session used"] || parsePlotFilterSession(plotFilter);
@@ -1000,12 +978,6 @@ async function buildReportTables() {
 }
 
 function loadReportTables() {
-  if (window.gnssDisplayTz && !window.gnssDisplayTz._reportHooked) {
-    window.gnssDisplayTz._reportHooked = true;
-    window.gnssDisplayTz.onChange(() => {
-      refreshTimeRangeSection();
-    });
-  }
   buildReportTables().catch((err) => {
     const root = document.getElementById("report-summary-root");
     if (root) {

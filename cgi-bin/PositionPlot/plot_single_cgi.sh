@@ -768,7 +768,6 @@ set_processing_status "Writing report files"
 ln -sf $normalDir/index.shtml .
 ln -sf $normalDir/interactive_plot.js
 ln -sf $normalDir/report_tables.js
-ln -sf $normalDir/tz_display.js
 rm outage1cm.csv
 rm outage2cm.csv
 rm outage2sig.csv

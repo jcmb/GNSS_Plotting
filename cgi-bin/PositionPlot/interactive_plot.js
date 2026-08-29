@@ -567,9 +567,6 @@ function gpsAxisLayout(points, xValues) {
 }
 
 function formatLocalTime(unixSec) {
-  if (window.gnssDisplayTz) {
-    return window.gnssDisplayTz.formatLocalClock(unixSec);
-  }
   const d = new Date(unixSec * 1000);
   const pad = (n) => String(n).padStart(2, "0");
   return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
@@ -604,14 +601,9 @@ function dateTimeAxisLayout(points, mode) {
     };
   }
   return {
-    x: points.map((p) => (
-      window.gnssDisplayTz
-        ? window.gnssDisplayTz.plotDate(p.t)
-        : new Date(p.t * 1000)
-    )),
+    x: points.map((p) => new Date(p.t * 1000)),
     layout: {
-      title: "Local Time (" + formatLocalTime(firstT) + ", "
-        + (window.gnssDisplayTz ? window.gnssDisplayTz.getOffsetLabel() : "local") + ")",
+      title: "Local Time (" + formatLocalTime(firstT) + ")",
       type: "date",
       tickformat: "%H:%M:%S",
       hoverformat: "%Y-%m-%d %H:%M:%S"
@@ -1653,18 +1645,6 @@ function pdopMarkerStyle(points, usedSv, maxUsedSv) {
   };
 }
 
-function meanTypeLabel(info) {
-  if (info.mean === "all") return "all solution types";
-  if (info.mean === "unknown") return "unknown";
-  const used = info.meanName
-    ? info.meanName + " (type " + info.mean + ")"
-    : "type " + info.mean;
-  if (info.meanRequest === "-1" || info.meanRequest === "") {
-    return "automatic → " + used;
-  }
-  return used;
-}
-
 function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   if (!points.length) {
     document.getElementById("plot-status").textContent = "No position points found in position_data.csv.";
@@ -2006,37 +1986,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth));
   applyPlotCardClosedState();
 
-  const filterMode = filterInfo.filter;
-  const typesShown = solutionTypesInData(points, solPoints);
-  const filterNote = filterMode === "all"
-    ? "Plot filter: all solution types."
-    : filterMode.startsWith("type:")
-      ? "Plot filter: solution type " + filterMode.split(":")[1] + "."
-      : "Plot filter: unfiltered by solution type.";
-  const viewFilterNote = typesShown.length > 1
-    ? " View filter: " + typesShown.map(solutionTypeName).join(", ") + "."
-    : "";
-  let statusNote = filterNote + viewFilterNote;
-  if (isMovingSession && !hasTruth) {
-    statusNote += " Moving session — velocity, height, and precision plots.";
-  } else if (hasTruth) {
-    statusNote += " Moving session with ATS truth — error plots vs interpolated truth.";
-    if (filterInfo.truthHeightOffset != null) {
-      statusNote += " Height offset (GNSS - ATS): "
-        + filterInfo.truthHeightOffset.toFixed(4) + " m.";
-    }
-  } else {
-    statusNote += " Mean computed from: " + meanTypeLabel(filterInfo) + ".";
-    statusNote += solutionPoints.length
-      ? " Error points: " + points.length + "; solution points: " + solutionPoints.length + "."
-      : " Error points: " + points.length + ".";
-  }
+  const statusEl = document.getElementById("plot-status");
   if (filterInfo.driveWarning) {
-    statusNote += " Warning: static mode on data that looks like a drive test.";
+    statusEl.textContent = "Warning: static mode on data that looks like a drive test.";
+    statusEl.className = "error";
+  } else {
+    statusEl.textContent = "";
+    statusEl.className = "";
   }
-  statusNote += " Zoom/pan on any time-based plot syncs time and rescales Y to the visible window.";
-  document.getElementById("plot-status").textContent = statusNote;
-  document.getElementById("plot-status").className = filterInfo.driveWarning ? "error" : "";
 }
 
 function attachPlotControlListeners() {
@@ -2044,14 +2001,6 @@ function attachPlotControlListeners() {
   plotListenersAttached = true;
 
   document.getElementById("axis-mode").addEventListener("change", rerenderPositionPlots);
-  if (window.gnssDisplayTz) {
-    window.gnssDisplayTz.onChange(() => {
-      const axisMode = document.getElementById("axis-mode");
-      if (axisMode && axisMode.value === "local") {
-        rerenderPositionPlots();
-      }
-    });
-  }
   document.getElementById("show-dop-1d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-dop-2d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-dop-3d").addEventListener("change", rerenderPositionPlots);
