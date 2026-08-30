@@ -599,11 +599,11 @@ function meterAxisBase() {
 
 function meterFormatFromSpan(span) {
   if (!Number.isFinite(span) || span <= 0) {
-    return { tickformat: ".3f", hoverformat: ".4f" };
+    return { tickformat: ".3f", hoverformat: ".3f" };
   }
-  const decimals = Math.max(0, Math.min(6, Math.ceil(3 - Math.log10(Math.max(span, 1e-9)))));
+  const decimals = Math.max(0, Math.min(3, Math.ceil(3 - Math.log10(Math.max(span, 1e-9)))));
   const tickformat = decimals > 0 ? `.${decimals}f` : ".0f";
-  const hoverDecimals = Math.min(decimals + 1, 6);
+  const hoverDecimals = Math.min(decimals + 1, 3);
   const hoverformat = hoverDecimals > 0 ? `.${hoverDecimals}f` : ".1f";
   return { tickformat, hoverformat };
 }
@@ -819,12 +819,76 @@ function verticalSigma(points) {
   return points.map((p) => (Number.isFinite(p.vprec) ? p.vprec : null));
 }
 
+function enrichGnssHeightsWithSigma(gnssHeights, positionPoints) {
+  if (!gnssHeights.length || !positionPoints.length) return gnssHeights;
+  const byTime = new Map();
+  const byRounded = new Map();
+  positionPoints.forEach((p) => {
+    if (!Number.isFinite(p.vprec)) return;
+    byTime.set(p.t, p.vprec);
+    byRounded.set(timeMatchKey(p.t), p.vprec);
+  });
+  return gnssHeights.map((p) => {
+    const vprec = byTime.get(p.t) ?? byRounded.get(timeMatchKey(p.t));
+    return vprec != null ? { ...p, vprec } : p;
+  });
+}
+
+function addSeries(a, b) {
+  return a.map((v, i) => {
+    const w = b[i];
+    if (!Number.isFinite(v) || !Number.isFinite(w)) return null;
+    return v + w;
+  });
+}
+
 function negateSeries(values) {
   return values.map((v) => (Number.isFinite(v) ? -v : null));
 }
 
 function scaleSeries(values, factor) {
   return values.map((v) => (Number.isFinite(v) ? factor * v : null));
+}
+
+function heightRelativeSigmaBandTraces(x, center, sigma, options = {}) {
+  const {
+    show1Sigma = true,
+    show2Sigma = false,
+    show3Sigma = false,
+    sigmaColorKeys = { 1: "up", 2: "d2", 3: "d3" }
+  } = options;
+  const suffix = " U";
+  const lineStyle = { dash: "dot", width: 1.5 };
+  const wideStyle = { dash: "dash", width: 1 };
+  const colorFor = (level) => sigmaColorKeys[level] || "up";
+  const traces = [];
+  if (show1Sigma) {
+    traces.push(
+      coloredLine(x, addSeries(center, sigma), `+1σ${suffix}`, colorFor(1), { line: lineStyle })
+    );
+    traces.push(
+      coloredLine(x, addSeries(center, negateSeries(sigma)), `-1σ${suffix}`, colorFor(1), { line: lineStyle })
+    );
+  }
+  if (show2Sigma) {
+    const sigma2 = scaleSeries(sigma, 2);
+    traces.push(
+      coloredLine(x, addSeries(center, sigma2), `+2σ${suffix}`, colorFor(2), { line: wideStyle })
+    );
+    traces.push(
+      coloredLine(x, addSeries(center, negateSeries(sigma2)), `-2σ${suffix}`, colorFor(2), { line: wideStyle })
+    );
+  }
+  if (show3Sigma) {
+    const sigma3 = scaleSeries(sigma, 3);
+    traces.push(
+      coloredLine(x, addSeries(center, sigma3), `+3σ${suffix}`, colorFor(3), { line: wideStyle })
+    );
+    traces.push(
+      coloredLine(x, addSeries(center, negateSeries(sigma3)), `-3σ${suffix}`, colorFor(3), { line: wideStyle })
+    );
+  }
+  return traces;
 }
 
 function sigmaBandTraces(x, sigma, options = {}) {
@@ -1860,6 +1924,7 @@ function gnssHeightPointsForPlot(isMoving, points, atsMode) {
       .map((p) => ({
         t: p.t,
         height: p.absHeight,
+        vprec: Number.isFinite(p.vprec) ? p.vprec : null,
         gpsWeek: p.gpsWeek,
         gpsSec: p.gpsSec
       }));
@@ -1880,6 +1945,49 @@ function adjustedAtsHeight(ele, heightOffset) {
   if (!Number.isFinite(ele)) return null;
   if (!Number.isFinite(heightOffset)) return ele;
   return ele + heightOffset;
+}
+
+function buildAtsHeightSigmaTraces(
+  mode,
+  gnssHeights,
+  atsPoints,
+  timeOrigin,
+  allowFullGnssFallback,
+  heightOffset,
+  sigmaOptions
+) {
+  if (!atsPoints.length) return [];
+
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
+  const traces = [];
+  const hasOffset = Number.isFinite(heightOffset);
+
+  if (gnssForPlot.length) {
+    const gnssAxis = axisData(gnssForPlot, mode, timeOrigin);
+    const x = gnssAxis.x;
+    const heights = gnssForPlot.map((p) => p.height);
+    const sigmas = gnssForPlot.map((p) => p.vprec);
+    if (sigmas.some(Number.isFinite)) {
+      traces.push(...heightRelativeSigmaBandTraces(x, heights, sigmas, sigmaOptions));
+    }
+    traces.push(coloredLine(
+      x,
+      heights,
+      "GNSS Height",
+      "d2",
+      { line: { width: 2.5 } }
+    ));
+  }
+
+  const atsAxis = axisData(atsPoints, mode, timeOrigin);
+  traces.push(coloredLine(
+    atsAxis.x,
+    atsPoints.map((p) => adjustedAtsHeight(p.ele, heightOffset)),
+    hasOffset ? "ATS Height (Ele + offset)" : "ATS Height (Ele)",
+    "north",
+    { line: { width: 2.5, dash: "dash" } }
+  ));
+  return traces;
 }
 
 function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFullGnssFallback, heightOffset) {
@@ -1911,12 +2019,21 @@ function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFul
   return traces;
 }
 
-function renderAtsHeightPlots(mode, gnssHeights, atsPoints, timeOrigin, filterInfo, allowFullGnssFallback) {
+function renderAtsHeightPlots(
+  mode,
+  gnssHeights,
+  atsPoints,
+  timeOrigin,
+  filterInfo,
+  allowFullGnssFallback,
+  positionPoints
+) {
   if (!atsPoints.length) return false;
 
+  const gnssHeightsWithSigma = enrichGnssHeightsWithSigma(gnssHeights, positionPoints);
   const traces = buildAtsHeightTraces(
     mode,
-    gnssHeights,
+    gnssHeightsWithSigma,
     atsPoints,
     timeOrigin,
     allowFullGnssFallback,
@@ -1924,10 +2041,28 @@ function renderAtsHeightPlots(mode, gnssHeights, atsPoints, timeOrigin, filterIn
   );
   if (!traces.length) return false;
 
-  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
+  const showHeightSigma1 = document.getElementById("show-height-sigma-1")?.checked;
+  const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
+  const showHeightSigma3 = document.getElementById("show-height-sigma-3")?.checked;
+  const sigmaTraces = buildAtsHeightSigmaTraces(
+    mode,
+    gnssHeightsWithSigma,
+    atsPoints,
+    timeOrigin,
+    allowFullGnssFallback,
+    filterInfo.atsHeightOffset,
+    {
+      show1Sigma: showHeightSigma1,
+      show2Sigma: showHeightSigma2,
+      show3Sigma: showHeightSigma3,
+      sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
+    }
+  );
+
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeightsWithSigma, atsPoints, allowFullGnssFallback);
   const axisPoints = gnssForPlot.length ? [...gnssForPlot, ...atsPoints] : atsPoints;
   const axis = axisData(axisPoints, mode, timeOrigin);
-  const heightValues = yValuesFromTraces(traces, "y");
+  const heightValues = yValuesFromTraces(sigmaTraces.length ? sigmaTraces : traces, "y");
   const layoutBase = {
     ...timePlotLayout(axis.layout, mode),
     yaxis: {
@@ -1945,10 +2080,15 @@ function renderAtsHeightPlots(mode, gnssHeights, atsPoints, timeOrigin, filterIn
     attachAdaptiveMeterAxis("plot-height-error", "yaxis", "y");
   });
 
-  drawPlotIfOpen("plot-height-sigma", traces, {
+  drawPlotIfOpen("plot-height-sigma", sigmaTraces, {
     ...layoutBase,
     margin: { ...layoutBase.margin, r: Y2_AXIS_RIGHT_MARGIN },
-    title: "GNSS / ATS Height and Sigma"
+    title: "GNSS / ATS Height and Sigma",
+    legend: {
+      ...layoutBase.legend,
+      itemclick: "toggle",
+      itemdoubleclick: "toggleothers"
+    }
   }).then(() => {
     attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
   });
@@ -2122,7 +2262,8 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     allAtsPoints,
     timeOrigin,
     filterInfo,
-    allowFullGnssFallback
+    allowFullGnssFallback,
+    points
   );
   const heightPlotTitle = showAtsHeightMode
     ? "GNSS / ATS Height"
