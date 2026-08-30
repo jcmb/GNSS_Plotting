@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 
 import GPS_TIME
 
+from gnss_time import gps_unix_to_posix
 from parse_ats import gnss_local_timezone
 
 
@@ -64,12 +65,16 @@ def format_tz_offset_line():
     return "Local TZ offset: {}{}:{:02d}".format(prefix, hours, minutes)
 
 
-def format_local(unix_sec):
-    return datetime.fromtimestamp(unix_sec, tz=local_timezone()).strftime("%Y-%m-%d %H:%M:%S")
+def format_local(gps_unix):
+    return datetime.fromtimestamp(
+        gps_unix_to_posix(gps_unix), tz=local_timezone()
+    ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def format_utc(unix_sec):
-    return datetime.fromtimestamp(unix_sec, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+def format_utc(gps_unix):
+    return datetime.fromtimestamp(
+        gps_unix_to_posix(gps_unix), tz=timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def print_range(prefix, min_unix, max_unix):

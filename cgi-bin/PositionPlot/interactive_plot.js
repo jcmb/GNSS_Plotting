@@ -2,8 +2,12 @@ const GPS_EPOCH_SEC = 315964800;
 const SECONDS_IN_WEEK = 604800;
 const GNSS_LEAP_SECONDS = 18;
 
+function gpsUnixToPosix(gpsUnix) {
+  return gpsUnix + GNSS_LEAP_SECONDS;
+}
+
 function gpsWeekSecondsToUnix(week, seconds) {
-  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds + GNSS_LEAP_SECONDS;
+  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds;
 }
 
 function unixToGpsWeekSeconds(unixSec) {
@@ -704,20 +708,20 @@ function gpsAxisLayout(points, xValues) {
   };
 }
 
-function formatLocalTime(unixSec) {
-  const d = new Date(unixSec * 1000);
+function formatLocalTime(gpsUnix) {
+  const d = new Date(gpsUnixToPosix(gpsUnix) * 1000);
   const pad = (n) => String(n).padStart(2, "0");
   return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
 }
 
-function formatUtcTime(unixSec) {
-  const d = new Date(unixSec * 1000);
+function formatUtcTime(gpsUnix) {
+  const d = new Date(gpsUnixToPosix(gpsUnix) * 1000);
   const pad = (n) => String(n).padStart(2, "0");
   return pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds());
 }
 
-function utcPlotDate(unixSec) {
-  const d = new Date(unixSec * 1000);
+function utcPlotDate(gpsUnix) {
+  const d = new Date(gpsUnixToPosix(gpsUnix) * 1000);
   return new Date(d.getTime() + d.getTimezoneOffset() * 60000);
 }
 
@@ -739,7 +743,7 @@ function dateTimeAxisLayout(points, mode) {
     };
   }
   return {
-    x: points.map((p) => new Date(p.t * 1000)),
+    x: points.map((p) => new Date(gpsUnixToPosix(p.t) * 1000)),
     layout: {
       title: "Local Time (" + formatLocalTime(firstT) + ")",
       type: "date",

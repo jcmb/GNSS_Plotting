@@ -6,13 +6,11 @@ from __future__ import annotations
 import csv
 import sys
 
-import GPS_TIME
-
-LEAP_SECONDS = 18
+from gnss_time import gps_week_sow_to_gps_unix
 
 
-def gnss_unix_utc(week: int, sow: float) -> float:
-    return GPS_TIME.Week_Seconds_To_Unix(week, sow) + LEAP_SECONDS
+def gnss_gps_unix(week: int, sow: float) -> float:
+    return gps_week_sow_to_gps_unix(week, sow)
 
 
 def export_gnss_heights(path: str) -> list[tuple[float, float]]:
@@ -31,7 +29,7 @@ def export_gnss_heights(path: str) -> list[tuple[float, float]]:
                 height = float(fields[12])
             except ValueError:
                 continue
-            rows.append((gnss_unix_utc(week, sow), height))
+            rows.append((gnss_gps_unix(week, sow), height))
     rows.sort(key=lambda row: row[0])
     return rows
 

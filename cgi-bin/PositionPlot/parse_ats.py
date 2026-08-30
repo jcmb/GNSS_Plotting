@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import os
 
+from gnss_time import gps_unix_to_posix, posix_to_gps_unix
+
 
 @dataclass(frozen=True)
 class AtsTruthPoint:
@@ -36,8 +38,10 @@ def format_ats_local_display(date_str: str, time_str: str) -> str:
 
 def format_ats_utc_display(date_str: str, time_str: str) -> str:
     """Return ATS local Date/Time converted to UTC."""
-    unix = _parse_ats_timestamp(date_str, time_str)
-    return datetime.fromtimestamp(unix, tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    gps_unix = _parse_ats_timestamp(date_str, time_str)
+    return datetime.fromtimestamp(
+        gps_unix_to_posix(gps_unix), tz=timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S UTC")
 
 
 def _parse_ats_timestamp(date_str: str, time_str: str) -> float:
@@ -51,14 +55,14 @@ def _parse_ats_timestamp(date_str: str, time_str: str) -> float:
                 dt = dt.replace(tzinfo=local_tz)
             else:
                 dt = dt.replace(tzinfo=local_tz)
-            return dt.timestamp()
+            return posix_to_gps_unix(dt.timestamp())
         except ValueError:
             continue
     raise ValueError(f"Unrecognized ATS date/time: {date_str!r} {time_str!r}")
 
 
 def parse_ats_file(path: str) -> list[AtsTruthPoint]:
-    """Return ATSDataEvent truth rows sorted by UTC unix time."""
+    """Return ATSDataEvent truth rows sorted by GPS unix time."""
     header_cols: dict[str, int] | None = None
     points: list[AtsTruthPoint] = []
 
