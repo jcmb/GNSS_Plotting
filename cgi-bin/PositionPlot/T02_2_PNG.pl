@@ -223,14 +223,10 @@ if ($file_link){
     $file_uploaded = 0;
 }
 
-my ( $name, $extension );
-( $name, $extension, $filename ) = parse_session_filename($filename);
-
-my $report_url = "/results/Position$project$Point_Dir/$name/";
-$ENV{GNSS_REPORT_URL} = $report_url;
+my ( $gnss_name, $extension, $filename ) = parse_session_filename($filename);
+my $name = $gnss_name;
 
 print "<html><head><title>Plotting GNSS Data</title>";
-print "<base href=\"$report_url\">";
 print "</head>";
 print "<body><h1>Processing $filename:</h1>\n";
 
@@ -261,8 +257,15 @@ if ($truth_filename) {
     } else {
         die "Truth filename contains invalid characters";
     }
+    my ($ats_name) = parse_session_filename($truth_filename);
+    $name = $ats_name;
     $truth_upload = JCMBSoft_Config::upload_dir() . $name . "_truth_" . $truth_filename;
 }
+
+my $report_url = "/results/Position$project$Point_Dir/$name/";
+$ENV{GNSS_REPORT_URL} = $report_url;
+$ENV{GNSS_SESSION_NAME} = $name;
+print "<base href=\"$report_url\">";
 
 if ($skip_gnss_upload || ( $testing_mode && $file_uploaded && -f $upload_file ) ) {
     unless ( -f $upload_file ) {

@@ -25,7 +25,11 @@ FileFull="$(basename "$1")"
 Dir="$(dirname "$0")"
 normalDir="$(cd "${Dir}" && pwd)"
 . "$normalDir/JCMBSoft_Config.sh"
-File="$(gnss_resolve_session_name "$FileFull" "$2")"
+if [ -n "${GNSS_SESSION_NAME:-}" ]; then
+   File="$(gnss_sanitize_path_segment "$GNSS_SESSION_NAME")"
+else
+   File="$(gnss_resolve_session_name "$FileFull" "$2")"
+fi
 PATH="${normalDir}:/usr/local/bin:~/bin:$PATH"
 Point=$4
 Ant=$5
@@ -494,7 +498,7 @@ then
    echo "ATS truth session — ENU errors vs interpolated truth"
    logger "ATS truth session for $FileFull"
 
-   $normalDir/kml_trajectory.py $File $File.sol
+   $normalDir/kml_point.py $File $Lat $Long $Height
    echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
 
    {
@@ -530,7 +534,12 @@ then
    cat trajectory_summary.txt
    } > llh.mean
 
-   $normalDir/kml_trajectory.py $File $File.sol
+   if [ "$TRUTH_ATTEMPTED" = "yes" ]
+   then
+      $normalDir/kml_point.py $File $Lat $Long $Height
+   else
+      $normalDir/kml_trajectory.py $File $File.sol
+   fi
    echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
 
    echo ""
