@@ -302,15 +302,15 @@ def main(argv: list[str] | None = None) -> int:
         print("ATS truth file has fewer than 2 usable ATSDataEvent points", file=sys.stderr)
         return 2
 
-    gnss_rows = read_gnss_rows(args.sol, args.sol_type)
-    if not gnss_rows:
+    all_gnss_rows = read_gnss_rows(args.sol, None)
+    if not all_gnss_rows:
         print("No GNSS rows found in .sol file", file=sys.stderr)
         return 1
 
-    if not has_sufficient_overlap(gnss_rows, truth):
+    if not has_sufficient_overlap(all_gnss_rows, truth):
         print("NO_OVERLAP: ATS time range does not overlap GNSS data sufficiently", file=sys.stderr)
         print(
-            f"  GNSS UTC: {gnss_rows[0]['t']:.3f} .. {gnss_rows[-1]['t']:.3f}",
+            f"  GNSS UTC: {all_gnss_rows[0]['t']:.3f} .. {all_gnss_rows[-1]['t']:.3f}",
             file=sys.stderr,
         )
         print(
@@ -318,6 +318,32 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
+
+    gnss_rows = all_gnss_rows
+    if args.sol_type is not None:
+        gnss_rows = read_gnss_rows(args.sol, args.sol_type)
+        if not gnss_rows:
+            print(
+                f"No GNSS rows match solution type {args.sol_type}",
+                file=sys.stderr,
+            )
+            return 1
+        if len(trim_to_overlap(gnss_rows, truth)) < 2:
+            print(
+                "NO_OVERLAP: ATS overlaps GNSS overall but fewer than 2 epochs "
+                f"match solution type {args.sol_type} in the ATS window",
+                file=sys.stderr,
+            )
+            print(
+                f"  GNSS UTC (type {args.sol_type}): "
+                f"{gnss_rows[0]['t']:.3f} .. {gnss_rows[-1]['t']:.3f}",
+                file=sys.stderr,
+            )
+            print(
+                f"  ATS UTC:  {truth[0].t:.3f} .. {truth[-1].t:.3f}",
+                file=sys.stderr,
+            )
+            return 2
 
     matched, meta = build_enu_errors(gnss_rows, truth)
     write_enu_file(matched, args.out)

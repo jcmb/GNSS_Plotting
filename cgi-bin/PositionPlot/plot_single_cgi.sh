@@ -435,14 +435,8 @@ then
    set_processing_status "Aligning ATS truth file"
    logger "Attempting ATS truth alignment for $FileFull"
 
-   TRUTH_SOL_ARGS=""
-   if [ "$MEAN_SOL" != "all" ] && [ -n "$MEAN_SOL" ]
-   then
-      TRUTH_SOL_ARGS="--sol-type $MEAN_SOL"
-   fi
-
    if $normalDir/truth_gnss_enu.py --ats "$TRUTH_FILE" --sol "$File.sol" \
-        --out "$File.enu" --report truth_report.txt $TRUTH_SOL_ARGS
+        --out "$File.enu" --report truth_report.txt
    then
       TRUTH_APPLIED=yes
       SESSION_USED="moving"
