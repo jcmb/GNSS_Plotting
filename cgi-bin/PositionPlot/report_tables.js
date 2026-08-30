@@ -95,13 +95,13 @@ function renderTimeRange(text) {
   if (hasAts) {
     rows.push([
       "Start (ATS)",
-      "—",
+      kv["ATS Start GPS"] || "—",
       kv["ATS Start UTC"] || "—",
       kv["ATS Start Local"] || "—"
     ]);
     rows.push([
       "End (ATS)",
-      "—",
+      kv["ATS End GPS"] || "—",
       kv["ATS End UTC"] || "—",
       kv["ATS End Local"] || "—"
     ]);

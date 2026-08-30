@@ -102,17 +102,19 @@ def read_gnss_range():
 
 
 def print_ats_range(ats_path):
-    from parse_ats import format_ats_local_display, format_ats_utc_display, parse_ats_file
+    from parse_ats import parse_ats_file
 
     truth = parse_ats_file(ats_path)
     if not truth:
         return
     first = truth[0]
     last = truth[-1]
-    print("ATS Start UTC: {}".format(format_ats_utc_display(first.date_str, first.time_str)))
-    print("ATS End UTC: {}".format(format_ats_utc_display(last.date_str, last.time_str)))
-    print("ATS Start Local: {}".format(format_ats_local_display(first.date_str, first.time_str)))
-    print("ATS End Local: {}".format(format_ats_local_display(last.date_str, last.time_str)))
+    print("ATS Start GPS: {}".format(format_gps(first.t)))
+    print("ATS End GPS: {}".format(format_gps(last.t)))
+    print("ATS Start UTC: {}".format(format_utc(first.t)))
+    print("ATS End UTC: {}".format(format_utc(last.t)))
+    print("ATS Start Local: {}".format(format_local(first.t)))
+    print("ATS End Local: {}".format(format_local(last.t)))
 
 
 def main():

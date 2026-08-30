@@ -497,7 +497,8 @@ let plotFilterInfo = {
   driveWarning: false,
   truth: false,
   truthHeightOffset: null,
-  atsData: false
+  atsData: false,
+  atsProvided: false
 };
 let plotListenersAttached = false;
 
@@ -1042,13 +1043,13 @@ const TIME_LINKED_PLOT_IDS = [
   ...ATS_TIME_PLOT_IDS
 ];
 
-function activeTimePlotIds(isMoving, hasTruth, hasAtsData) {
+function activeTimePlotIds(isMoving, hasTruth, hasAtsPlots) {
   const movingPlotsOnly = isMoving && !hasTruth;
   const ids = [
     ...SOLUTION_TIME_PLOT_IDS,
     ...(movingPlotsOnly ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
   ];
-  if (hasAtsData) {
+  if (hasAtsPlots) {
     ids.push(...ATS_TIME_PLOT_IDS);
   }
   return ids.filter((id) => {
@@ -1225,7 +1226,7 @@ function closePlotCard(cardId) {
   linkTimePlotZoom(activeTimePlotIds(
     plotFilterInfo.session === "moving" && !plotFilterInfo.truth,
     plotFilterInfo.truth,
-    plotFilterInfo.atsData && allAtsPoints.length > 0
+    plotFilterInfo.atsProvided || (plotFilterInfo.atsData && allAtsPoints.length > 0)
   ));
 }
 
@@ -1609,6 +1610,7 @@ function parsePlotFilter(text) {
   let truth = false;
   let truthHeightOffset = null;
   let atsData = false;
+  let atsProvided = false;
   for (const line of lines) {
     if (!line) continue;
     if (line.startsWith("mean_name:")) {
@@ -1630,6 +1632,8 @@ function parsePlotFilter(text) {
       truthHeightOffset = Number.isFinite(value) ? value : null;
     } else if (line.startsWith("ats_data:")) {
       atsData = line.slice(9).trim() === "yes";
+    } else if (line.startsWith("ats_provided:")) {
+      atsProvided = line.slice(13).trim() === "yes";
     } else {
       filter = line;
     }
@@ -1644,11 +1648,12 @@ function parsePlotFilter(text) {
     driveWarning,
     truth,
     truthHeightOffset,
-    atsData
+    atsData,
+    atsProvided
   };
 }
 
-function applySessionPlotVisibility(isMoving, hasTruth, hasAtsData) {
+function applySessionPlotVisibility(isMoving, hasTruth, showAtsPlots) {
   const hideStatic = isMoving && !hasTruth;
   document.querySelectorAll(".plot-static-only").forEach((el) => {
     el.style.display = hideStatic ? "none" : "";
@@ -1657,7 +1662,7 @@ function applySessionPlotVisibility(isMoving, hasTruth, hasAtsData) {
     el.style.display = hideStatic ? "" : "none";
   });
   document.querySelectorAll(".plot-ats-only").forEach((el) => {
-    el.style.display = hasAtsData ? "" : "none";
+    el.style.display = showAtsPlots ? "" : "none";
   });
   const heightCard = document.getElementById("plot-height-error");
   if (heightCard) {
@@ -1696,8 +1701,29 @@ function pdopMarkerStyle(points, usedSv, maxUsedSv) {
   };
 }
 
-function renderAtsPlots(atsPoints, mode, timeOrigin) {
-  if (!atsPoints.length) return;
+function renderAtsPlots(atsPoints, mode, timeOrigin, showWhenEmpty) {
+  if (!atsPoints.length) {
+    if (!showWhenEmpty) return;
+
+    const emptyLayout = {
+      margin: { l: 60, r: 30, t: 50, b: 45 },
+      title: "ATS data unavailable",
+      xaxis: { visible: false },
+      yaxis: { visible: false },
+      annotations: [{
+        text: "An ATS file was provided but no plot points were exported.",
+        showarrow: false,
+        xref: "paper",
+        yref: "paper",
+        x: 0.5,
+        y: 0.5,
+        font: { size: 14, color: "#666" }
+      }]
+    };
+    drawPlotIfOpen("plot-ats-ne", [], emptyLayout);
+    drawPlotIfOpen("plot-ats-height", [], emptyLayout);
+    return;
+  }
 
   const axis = axisData(atsPoints, mode, timeOrigin);
   const x = axis.x;
@@ -1730,9 +1756,11 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const isMovingSession = filterInfo.session === "moving";
   const hasTruth = !!filterInfo.truth;
-  const hasAtsData = !!filterInfo.atsData && allAtsPoints.length > 0;
+  const hasAtsProvided = !!filterInfo.atsProvided;
+  const hasAtsData = allAtsPoints.length > 0;
+  const showAtsPlots = hasAtsProvided || hasAtsData;
   const isMoving = isMovingSession && !hasTruth;
-  applySessionPlotVisibility(isMovingSession, hasTruth, hasAtsData);
+  applySessionPlotVisibility(isMovingSession, hasTruth, showAtsPlots);
   initPlotCardChrome();
 
   purgeAllPlots();
@@ -1816,8 +1844,8 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     }
   });
 
-  if (hasAtsData) {
-    renderAtsPlots(allAtsPoints, mode, timeOrigin);
+  if (showAtsPlots) {
+    renderAtsPlots(allAtsPoints, mode, timeOrigin, hasAtsProvided && !hasAtsData);
   }
 
   const heightTraces = [
@@ -2064,7 +2092,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   );
   }
 
-  linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth, hasAtsData));
+  linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth, showAtsPlots));
   applyPlotCardClosedState();
 
   const statusEl = document.getElementById("plot-status");
@@ -2152,7 +2180,8 @@ function loadInteractivePosition() {
     .then((filterText) => {
       plotFilterInfo = parsePlotFilter(filterText);
       const isMoving = plotFilterInfo.session === "moving" && !plotFilterInfo.truth;
-      const atsPromise = plotFilterInfo.atsData
+      const shouldLoadAts = plotFilterInfo.atsProvided || plotFilterInfo.atsData;
+      const atsPromise = shouldLoadAts
         ? fetchStep("Loading ATS data...", "ats_data.csv", true)
         : Promise.resolve("");
       return atsPromise
@@ -2166,9 +2195,6 @@ function loadInteractivePosition() {
       allPositionPoints = attachSolutionTypes(parsePositionCsv(posText, isMoving), solutionPoints);
       allSolutionPoints = solutionPoints;
       allAtsPoints = atsText ? parseAtsCsv(atsText) : [];
-      if (plotFilterInfo.atsData && !allAtsPoints.length) {
-        plotFilterInfo = { ...plotFilterInfo, atsData: false };
-      }
       const types = solutionTypesInData(allPositionPoints, allSolutionPoints);
       buildSolutionTypeFilterUI(types);
       attachPlotControlListeners();

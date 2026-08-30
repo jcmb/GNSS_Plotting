@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250829k"></script>
+<script src="interactive_plot.js?v=20250829l"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -247,7 +247,7 @@
     display: none;
   }
 </style>
-<script src="report_tables.js?v=20250829k"></script>
+<script src="report_tables.js?v=20250829l"></script>
 </head>
 <body onload="loadReportTables(); loadInteractivePosition(); checkProcessingStatus();">
 <div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">

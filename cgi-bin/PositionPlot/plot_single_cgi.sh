@@ -661,10 +661,11 @@ logger "Generating interactive plot data for $FileFull"
 
 if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
 then
-   if $normalDir/export_ats_csv.py "$TRUTH_FILE" > ats_data.csv 2>/dev/null
+   if $normalDir/export_ats_csv.py "$TRUTH_FILE" > ats_data.csv
    then
       gzip -9 -f ats_data.csv
    else
+      echo "WARNING: Could not export ATS plot data from $(basename "$TRUTH_FILE")"
       rm -f ats_data.csv ats_data.csv.gz
    fi
 fi
@@ -700,6 +701,12 @@ _write_plot_filter() {
       echo "ats_data:yes" >> plot_filter.txt
    else
       echo "ats_data:no" >> plot_filter.txt
+   fi
+   if [ "$TRUTH_ATTEMPTED" = "yes" ]
+   then
+      echo "ats_provided:yes" >> plot_filter.txt
+   else
+      echo "ats_provided:no" >> plot_filter.txt
    fi
 }
 
