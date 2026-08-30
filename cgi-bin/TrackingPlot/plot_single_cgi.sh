@@ -86,6 +86,7 @@ ln -s "$normalDir"/Diff_Tracking_Plot.shtml
 ln -s "$normalDir"/Buttons.html
 ln -s "$normalDir"/Tracking_Buttons.html
 ln -s "$normalDir"/index.shtml
+ln -sf "$normalDir"/antenna_common.js
 
 echo "Plotting Singles"
 logger "Plotting Singles"
