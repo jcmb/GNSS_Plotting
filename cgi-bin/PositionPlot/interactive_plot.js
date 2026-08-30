@@ -360,6 +360,33 @@ function parsePositionCsv(text, isMoving) {
   return data;
 }
 
+function parseAtsCsv(text) {
+  const rows = String(text || "").trim().split(/\r?\n/);
+  if (rows.length < 2) return [];
+  const data = [];
+  for (let i = 1; i < rows.length; i += 1) {
+    const row = rows[i];
+    if (!row) continue;
+    const parts = row.split(",");
+    if (parts.length < 4) continue;
+    const t = Number(parts[0]);
+    const n = Number(parts[1]);
+    const e = Number(parts[2]);
+    const ele = Number(parts[3]);
+    if (!Number.isFinite(t)) continue;
+    const gps = unixToGpsWeekSeconds(t);
+    data.push({
+      t,
+      n,
+      e,
+      ele,
+      gpsWeek: gps.gpsWeek,
+      gpsSec: gps.gpsSec
+    });
+  }
+  return data;
+}
+
 function attachSolutionTypes(positionPoints, solutionPoints) {
   if (!solutionPoints.length) return positionPoints;
   const byTime = new Map();
@@ -459,6 +486,7 @@ function buildSolutionTypeFilterUI(types) {
 
 let allPositionPoints = [];
 let allSolutionPoints = [];
+let allAtsPoints = [];
 let plotFilterInfo = {
   filter: "unknown",
   mean: "unknown",
@@ -468,7 +496,8 @@ let plotFilterInfo = {
   sessionRequest: "-1",
   driveWarning: false,
   truth: false,
-  truthHeightOffset: null
+  truthHeightOffset: null,
+  atsData: false
 };
 let plotListenersAttached = false;
 
@@ -1002,17 +1031,26 @@ const MOVING_POSITION_TIME_PLOT_IDS = [
   "plot-sigma-3d"
 ];
 
-const TIME_LINKED_PLOT_IDS = [
-  ...SOLUTION_TIME_PLOT_IDS,
-  ...POSITION_TIME_PLOT_IDS
+const ATS_TIME_PLOT_IDS = [
+  "plot-ats-ne",
+  "plot-ats-height"
 ];
 
-function activeTimePlotIds(isMoving, hasTruth) {
+const TIME_LINKED_PLOT_IDS = [
+  ...SOLUTION_TIME_PLOT_IDS,
+  ...POSITION_TIME_PLOT_IDS,
+  ...ATS_TIME_PLOT_IDS
+];
+
+function activeTimePlotIds(isMoving, hasTruth, hasAtsData) {
   const movingPlotsOnly = isMoving && !hasTruth;
   const ids = [
     ...SOLUTION_TIME_PLOT_IDS,
     ...(movingPlotsOnly ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
   ];
+  if (hasAtsData) {
+    ids.push(...ATS_TIME_PLOT_IDS);
+  }
   return ids.filter((id) => {
     if (!shouldDrawPlot(id)) return false;
     const el = document.getElementById(id);
@@ -1031,6 +1069,8 @@ const ALL_PLOT_IDS = [
 const DEFAULT_PLOT_CARD_ORDER = [
   "plot-solution-latency",
   "plot-sv",
+  "plot-ats-ne",
+  "plot-ats-height",
   "plot-height-error",
   "plot-height-sigma",
   "plot-velocity-neu",
@@ -1182,7 +1222,11 @@ function closePlotCard(cardId) {
     purgePlotElementsInCard(card);
   }
   updatePlotRestoreBar();
-  linkTimePlotZoom(activeTimePlotIds(plotFilterInfo.session === "moving", plotFilterInfo.truth));
+  linkTimePlotZoom(activeTimePlotIds(
+    plotFilterInfo.session === "moving" && !plotFilterInfo.truth,
+    plotFilterInfo.truth,
+    plotFilterInfo.atsData && allAtsPoints.length > 0
+  ));
 }
 
 function restorePlotCard(cardId) {
@@ -1564,6 +1608,7 @@ function parsePlotFilter(text) {
   let driveWarning = false;
   let truth = false;
   let truthHeightOffset = null;
+  let atsData = false;
   for (const line of lines) {
     if (!line) continue;
     if (line.startsWith("mean_name:")) {
@@ -1583,6 +1628,8 @@ function parsePlotFilter(text) {
     } else if (line.startsWith("truth_height_offset:")) {
       const value = Number(line.slice(20).trim());
       truthHeightOffset = Number.isFinite(value) ? value : null;
+    } else if (line.startsWith("ats_data:")) {
+      atsData = line.slice(9).trim() === "yes";
     } else {
       filter = line;
     }
@@ -1596,17 +1643,21 @@ function parsePlotFilter(text) {
     sessionRequest,
     driveWarning,
     truth,
-    truthHeightOffset
+    truthHeightOffset,
+    atsData
   };
 }
 
-function applySessionPlotVisibility(isMoving, hasTruth) {
+function applySessionPlotVisibility(isMoving, hasTruth, hasAtsData) {
   const hideStatic = isMoving && !hasTruth;
   document.querySelectorAll(".plot-static-only").forEach((el) => {
     el.style.display = hideStatic ? "none" : "";
   });
   document.querySelectorAll(".plot-moving-only").forEach((el) => {
     el.style.display = hideStatic ? "" : "none";
+  });
+  document.querySelectorAll(".plot-ats-only").forEach((el) => {
+    el.style.display = hasAtsData ? "" : "none";
   });
   const heightCard = document.getElementById("plot-height-error");
   if (heightCard) {
@@ -1645,6 +1696,31 @@ function pdopMarkerStyle(points, usedSv, maxUsedSv) {
   };
 }
 
+function renderAtsPlots(atsPoints, mode, timeOrigin) {
+  if (!atsPoints.length) return;
+
+  const axis = axisData(atsPoints, mode, timeOrigin);
+  const x = axis.x;
+  const commonLayout = timePlotLayout(axis.layout, mode);
+
+  drawPlotIfOpen("plot-ats-ne", [
+    coloredLine(x, atsPoints.map((p) => p.n), "Northing", "north"),
+    coloredLine(x, atsPoints.map((p) => p.e), "Easting", "east")
+  ], {
+    ...commonLayout,
+    title: "ATS Northing and Easting",
+    yaxis: { title: "Meters" }
+  });
+
+  drawPlotIfOpen("plot-ats-height", [
+    coloredLine(x, atsPoints.map((p) => p.ele), "Height (Ele)", "up")
+  ], {
+    ...commonLayout,
+    title: "ATS Height",
+    yaxis: { title: "Height (m)" }
+  });
+}
+
 function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   if (!points.length) {
     document.getElementById("plot-status").textContent = "No position points found in position_data.csv.";
@@ -1654,14 +1730,15 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const isMovingSession = filterInfo.session === "moving";
   const hasTruth = !!filterInfo.truth;
+  const hasAtsData = !!filterInfo.atsData && allAtsPoints.length > 0;
   const isMoving = isMovingSession && !hasTruth;
-  applySessionPlotVisibility(isMovingSession, hasTruth);
+  applySessionPlotVisibility(isMovingSession, hasTruth, hasAtsData);
   initPlotCardChrome();
 
   purgeAllPlots();
 
   const solPoints = solutionPoints.length ? solutionPoints : points;
-  const timeOrigin = sharedTimeOrigin(points, solPoints);
+  const timeOrigin = sharedTimeOrigin(points, solPoints, allAtsPoints);
   const axis = axisData(points, mode, timeOrigin);
   const solAxis = axisData(solPoints, mode, timeOrigin);
   const x = axis.x;
@@ -1738,6 +1815,10 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
       automargin: true
     }
   });
+
+  if (hasAtsData) {
+    renderAtsPlots(allAtsPoints, mode, timeOrigin);
+  }
 
   const heightTraces = [
     latencyTrace(x, latency),
@@ -1983,7 +2064,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   );
   }
 
-  linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth));
+  linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth, hasAtsData));
   applyPlotCardClosedState();
 
   const statusEl = document.getElementById("plot-status");
@@ -2070,16 +2151,24 @@ function loadInteractivePosition() {
   fetchStep("Loading plot filter metadata...", "plot_filter.txt", true)
     .then((filterText) => {
       plotFilterInfo = parsePlotFilter(filterText);
-      const isMoving = plotFilterInfo.session === "moving";
-      return fetchStep("Loading position data...", "position_data.csv")
-        .then((posText) => fetchStep("Loading solution data...", "position_solution.csv", true)
-          .then((solText) => ({ posText, solText, isMoving })));
+      const isMoving = plotFilterInfo.session === "moving" && !plotFilterInfo.truth;
+      const atsPromise = plotFilterInfo.atsData
+        ? fetchStep("Loading ATS data...", "ats_data.csv", true)
+        : Promise.resolve("");
+      return atsPromise
+        .then((atsText) => fetchStep("Loading position data...", "position_data.csv")
+          .then((posText) => fetchStep("Loading solution data...", "position_solution.csv", true)
+            .then((solText) => ({ posText, solText, atsText, isMoving }))));
     })
-    .then(({ posText, solText, isMoving }) => {
+    .then(({ posText, solText, atsText, isMoving }) => {
       setPlotStatus("Parsing plot data...", "loading");
       const solutionPoints = solText ? parseX29Csv(solText) : [];
       allPositionPoints = attachSolutionTypes(parsePositionCsv(posText, isMoving), solutionPoints);
       allSolutionPoints = solutionPoints;
+      allAtsPoints = atsText ? parseAtsCsv(atsText) : [];
+      if (plotFilterInfo.atsData && !allAtsPoints.length) {
+        plotFilterInfo = { ...plotFilterInfo, atsData: false };
+      }
       const types = solutionTypesInData(allPositionPoints, allSolutionPoints);
       buildSolutionTypeFilterUI(types);
       attachPlotControlListeners();

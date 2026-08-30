@@ -659,6 +659,16 @@ fi
 echo Generating interactive plot data for $FileFull
 logger "Generating interactive plot data for $FileFull"
 
+if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+then
+   if $normalDir/export_ats_csv.py "$TRUTH_FILE" > ats_data.csv 2>/dev/null
+   then
+      gzip -9 -f ats_data.csv
+   else
+      rm -f ats_data.csv ats_data.csv.gz
+   fi
+fi
+
 echo "$FileFull" >file.html
 
 _write_plot_filter() {
@@ -684,6 +694,12 @@ _write_plot_filter() {
       fi
    else
       echo "truth:no" >> plot_filter.txt
+   fi
+   if [ -f ats_data.csv.gz ] || [ -f ats_data.csv ]
+   then
+      echo "ats_data:yes" >> plot_filter.txt
+   else
+      echo "ats_data:no" >> plot_filter.txt
    fi
 }
 
