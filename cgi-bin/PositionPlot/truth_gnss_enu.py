@@ -204,7 +204,7 @@ def write_report(path: str, *, matched: int, dropped_start: int, dropped_end: in
         f"Matched epochs: {matched}",
         f"Dropped before overlap: {dropped_start}",
         f"Dropped after overlap: {dropped_end}",
-        f"Leap seconds ({LEAP_SECONDS} s) applied to GNSS plot time; ATS uses local civil POSIX",
+        f"Leap seconds (-{LEAP_SECONDS} s) applied to GNSS GPS time; ATS uses local civil POSIX",
         "ATS elevation: orthometric (offset removed)",
         f"Height offset (mean GNSS height - ATS Ele): {height_offset:.4f} m",
         f"truth_height_offset: {height_offset:.4f}",

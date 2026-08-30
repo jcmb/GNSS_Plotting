@@ -3,11 +3,11 @@ const SECONDS_IN_WEEK = 604800;
 const GNSS_LEAP_SECONDS = 18;
 
 function gpsWeekSecondsToUnix(week, seconds) {
-  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds + GNSS_LEAP_SECONDS;
+  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds - GNSS_LEAP_SECONDS;
 }
 
 function unixToGpsWeekSeconds(plotUnix) {
-  const gpsTotal = plotUnix - GNSS_LEAP_SECONDS - GPS_EPOCH_SEC;
+  const gpsTotal = plotUnix + GNSS_LEAP_SECONDS - GPS_EPOCH_SEC;
   const gpsWeek = Math.floor(gpsTotal / SECONDS_IN_WEEK);
   const gpsSec = gpsTotal - gpsWeek * SECONDS_IN_WEEK;
   return { gpsWeek, gpsSec };

@@ -133,7 +133,7 @@ def main():
         return
 
     print(format_tz_offset_line())
-    print("GNSS leap seconds: +{} s applied to plot time".format(LEAP_SECONDS))
+    print("GNSS leap seconds: -{} s applied to plot time".format(LEAP_SECONDS))
     print_range("", min_unix, max_unix)
 
     if args.ats:
