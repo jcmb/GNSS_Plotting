@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250830a"></script>
+<script src="interactive_plot.js?v=20250830b"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -336,6 +336,11 @@ Location: <!--#include virtual="kml.html" -->
   <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="2"> Show 2σ</label>
   <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="3"> Show 3σ</label>
   <div id="plot-ats-height-delta" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-ats-only" data-card-id="plot-ats-error-sigma">
+  <h3>GNSS / ATS Error/Sigma</h3>
+  <div id="plot-ats-error-sigma" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card plot-moving-only" data-card-id="plot-velocity-neu">

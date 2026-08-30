@@ -155,7 +155,10 @@ const TRACE_NAME_TO_COLOR = {
   "3D Sigma": "d3",
   "2D Sigma Ratio": "d2",
   "3D Sigma Ratio": "d3",
-  "1D Sigma Ratio": "up"
+  "1D Sigma Ratio": "up",
+  "GNSS error |Δ|": "up",
+  "1σ (V)": "up",
+  "Error/Sigma": "up"
 };
 
 function resolveTraceColor(trace) {
@@ -1147,7 +1150,7 @@ function plotErrorSigmaRatioChart(
     title,
     yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
     yaxis2: {
-      title: "Sigma ratio",
+      title: ratioName,
       overlaying: "y",
       side: "right",
       rangemode: "tozero",
@@ -1157,7 +1160,7 @@ function plotErrorSigmaRatioChart(
     legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   }).then(() => {
     attachOverlayAxisLegendSync(elementId, {
-      yaxis2: { title: "Sigma ratio", traces: [ratioName] }
+      yaxis2: { title: ratioName, traces: [ratioName] }
     });
   });
 }
@@ -1248,7 +1251,8 @@ const MOVING_POSITION_TIME_PLOT_IDS = [
 
 const ATS_TIME_PLOT_IDS = [
   "plot-ats-ne",
-  "plot-ats-height-delta"
+  "plot-ats-height-delta",
+  "plot-ats-error-sigma"
 ];
 
 const TIME_LINKED_PLOT_IDS = [
@@ -1288,6 +1292,7 @@ const DEFAULT_PLOT_CARD_ORDER = [
   "plot-height-error",
   "plot-height-sigma",
   "plot-ats-height-delta",
+  "plot-ats-error-sigma",
   "plot-velocity-neu",
   "plot-velocity-speed",
   "plot-enu",
@@ -1935,6 +1940,7 @@ function applySessionPlotVisibility(isMoving, hasTruth, showAtsPlots) {
     setPlotCardTitle("plot-height-error", "GNSS / ATS Height");
     setPlotCardTitle("plot-height-sigma", "GNSS / ATS Height and Sigma");
     setPlotCardTitle("plot-ats-height-delta", "GNSS / ATS Delta and Sigma");
+    setPlotCardTitle("plot-ats-error-sigma", "GNSS / ATS Error/Sigma");
   } else if (isMoving) {
     setPlotCardTitle("plot-height-error", "Height");
     setPlotCardTitle("plot-height-sigma", "Height and Sigma");
@@ -2091,6 +2097,45 @@ function buildAtsHeightDeltaSigmaTraces(
   return traces;
 }
 
+function renderAtsHeightErrorSigmaRatio(mode, deltaPoints, timeOrigin, annotations) {
+  if (!deltaPoints.length || !shouldDrawPlot("plot-ats-error-sigma")) return;
+
+  const axis = axisData(deltaPoints, mode, timeOrigin);
+  const x = axis.x;
+  const errY = deltaPoints.map((p) => (
+    Number.isFinite(p.delta) ? Math.abs(p.delta) : null
+  ));
+  const sigY = deltaPoints.map((p) => p.vprec);
+  const ratioY = deltaPoints.map((p, i) => {
+    const sigma = sigY[i];
+    const err = errY[i];
+    return Number.isFinite(err) && Number.isFinite(sigma) && sigma > 0 ? err / sigma : null;
+  });
+
+  const layoutBase = timePlotLayout(axis.layout, mode);
+  plotErrorSigmaRatioChart(
+    "plot-ats-error-sigma",
+    "GNSS / ATS Error/Sigma",
+    x,
+    errY,
+    sigY,
+    ratioY,
+    "GNSS error |Δ|",
+    "1σ (V)",
+    "Error/Sigma",
+    "up",
+    {
+      ...layoutBase,
+      margin: {
+        ...layoutBase.margin,
+        t: Math.max(layoutBase.margin.t, usesDateTimeAxis(mode) ? 78 : 70)
+      },
+      annotations: annotations || []
+    },
+    { sigmaLegendOnly: true }
+  );
+}
+
 function buildAtsHeightSigmaTraces(
   mode,
   gnssHeights,
@@ -2234,13 +2279,13 @@ function renderAtsHeightPlots(
     filterInfo.atsHeightOffset,
     sigmaOptions
   );
+  const deltaPoints = gnssAtsHeightDeltaPoints(
+    gnssHeightsWithSigma,
+    atsPoints,
+    allowFullGnssFallback,
+    filterInfo.atsHeightOffset
+  );
   if (deltaTraces.length) {
-    const deltaPoints = gnssAtsHeightDeltaPoints(
-      gnssHeightsWithSigma,
-      atsPoints,
-      allowFullGnssFallback,
-      filterInfo.atsHeightOffset
-    );
     const deltaAxis = axisData(deltaPoints, mode, timeOrigin);
     const deltaValues = yValuesFromTraces(deltaTraces, "y");
     drawPlotIfOpen("plot-ats-height-delta", deltaTraces, atsSigmaPlotLayout(deltaAxis.layout, mode, {
@@ -2255,6 +2300,9 @@ function renderAtsHeightPlots(
     })).then(() => {
       attachAdaptiveMeterAxis("plot-ats-height-delta", "yaxis", "y");
     });
+  }
+  if (deltaPoints.length) {
+    renderAtsHeightErrorSigmaRatio(mode, deltaPoints, timeOrigin, heightOffsetNotes);
   }
 
   return true;
