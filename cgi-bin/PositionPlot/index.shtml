@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250829z"></script>
+<script src="interactive_plot.js?v=20250830a"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -324,15 +324,17 @@ Location: <!--#include virtual="kml.html" -->
 
 <div class="plot-card" data-card-id="plot-height-sigma">
   <h3>Height and Sigma</h3>
-  <label><input type="checkbox" id="show-height-sigma-1" checked> Show 1σ</label>
-  <label><input type="checkbox" id="show-height-sigma-2"> Show 2σ</label>
-  <label><input type="checkbox" id="show-height-sigma-3"> Show 3σ</label>
+  <label><input type="checkbox" id="show-height-sigma-1" class="ats-height-sigma-toggle" data-level="1" checked> Show 1σ</label>
+  <label><input type="checkbox" id="show-height-sigma-2" class="ats-height-sigma-toggle" data-level="2"> Show 2σ</label>
+  <label><input type="checkbox" id="show-height-sigma-3" class="ats-height-sigma-toggle" data-level="3"> Show 3σ</label>
   <div id="plot-height-sigma" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card plot-ats-only" data-card-id="plot-ats-height-delta">
   <h3>GNSS / ATS Delta and Sigma</h3>
-  <p class="plot-layout-hint">Uses Show 1σ/2σ/3σ from Height and Sigma above.</p>
+  <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="1" checked> Show 1σ</label>
+  <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="2"> Show 2σ</label>
+  <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="3"> Show 3σ</label>
   <div id="plot-ats-height-delta" style="width: 100%; height: 420px;"></div>
 </div>
 

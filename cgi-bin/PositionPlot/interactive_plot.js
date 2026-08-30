@@ -769,6 +769,48 @@ function timePlotLayout(xaxisLayout, mode) {
   };
 }
 
+function readAtsHeightSigmaOptions() {
+  const readLevel = (level) => {
+    const toggles = document.querySelectorAll(`.ats-height-sigma-toggle[data-level="${level}"]`);
+    if (!toggles.length) return level === "1";
+    return Array.from(toggles).some((el) => el.checked);
+  };
+  return {
+    show1Sigma: readLevel("1"),
+    show2Sigma: readLevel("2"),
+    show3Sigma: readLevel("3"),
+    sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
+  };
+}
+
+function syncAtsHeightSigmaToggles(source) {
+  const level = source?.dataset?.level;
+  if (!level) return;
+  document.querySelectorAll(`.ats-height-sigma-toggle[data-level="${level}"]`).forEach((el) => {
+    if (el !== source) el.checked = source.checked;
+  });
+}
+
+function atsSigmaPlotLayout(axisLayout, mode, options = {}) {
+  const base = timePlotLayout(axisLayout, mode);
+  return {
+    ...base,
+    margin: {
+      ...base.margin,
+      r: Y2_AXIS_RIGHT_MARGIN,
+      t: Math.max(base.margin.t, usesDateTimeAxis(mode) ? 78 : 70)
+    },
+    title: options.title,
+    yaxis: options.yaxis,
+    annotations: options.annotations || [],
+    legend: {
+      ...base.legend,
+      itemclick: "toggle",
+      itemdoubleclick: "toggleothers"
+    }
+  };
+}
+
 function sharedTimeOrigin(...pointSets) {
   let minT = Infinity;
   pointSets.forEach((pts) => {
@@ -1627,7 +1669,7 @@ function shouldRescaleYForPlot(plotId) {
     const names = new Set((el.data || []).map((trace) => trace.name));
     if (
       names.has("GNSS Height")
-      || names.has("GNSS − ATS Height")
+      || names.has("GNSS error")
       || [...names].some((name) => name.startsWith("ATS Height"))
     ) {
       return false;
@@ -2037,13 +2079,13 @@ function buildAtsHeightDeltaSigmaTraces(
   const sigmas = deltaPoints.map((p) => p.vprec);
   const traces = [];
   if (sigmas.some(Number.isFinite)) {
-    traces.push(...heightRelativeSigmaBandTraces(x, deltas, sigmas, sigmaOptions));
+    traces.push(...verticalSigmaBandTraces(x, sigmas, sigmaOptions));
   }
   traces.push(coloredLine(
     x,
     deltas,
-    "GNSS − ATS Height",
-    "d2",
+    "GNSS error",
+    "up",
     { line: { width: 2.5 } }
   ));
   return traces;
@@ -2143,9 +2185,7 @@ function renderAtsHeightPlots(
   );
   if (!traces.length) return false;
 
-  const showHeightSigma1 = document.getElementById("show-height-sigma-1")?.checked;
-  const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
-  const showHeightSigma3 = document.getElementById("show-height-sigma-3")?.checked;
+  const sigmaOptions = readAtsHeightSigmaOptions();
   const sigmaTraces = buildAtsHeightSigmaTraces(
     mode,
     gnssHeightsWithSigma,
@@ -2153,44 +2193,34 @@ function renderAtsHeightPlots(
     timeOrigin,
     allowFullGnssFallback,
     filterInfo.atsHeightOffset,
-    {
-      show1Sigma: showHeightSigma1,
-      show2Sigma: showHeightSigma2,
-      show3Sigma: showHeightSigma3,
-      sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
-    }
+    sigmaOptions
   );
 
   const gnssForPlot = gnssHeightsInAtsWindow(gnssHeightsWithSigma, atsPoints, allowFullGnssFallback);
   const axisPoints = gnssForPlot.length ? [...gnssForPlot, ...atsPoints] : atsPoints;
   const axis = axisData(axisPoints, mode, timeOrigin);
   const heightValues = yValuesFromTraces(sigmaTraces.length ? sigmaTraces : traces, "y");
-  const layoutBase = {
-    ...timePlotLayout(axis.layout, mode),
+  const heightOffsetNotes = heightOffsetAnnotation(filterInfo.atsHeightOffset);
+  const heightSigmaLayout = atsSigmaPlotLayout(axis.layout, mode, {
+    title: "GNSS / ATS Height and Sigma",
     yaxis: {
       title: "Height (m)",
       autorange: true,
       ...meterAxisFromValues(heightValues)
     },
-    annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
-  };
+    annotations: heightOffsetNotes
+  });
 
   drawPlotIfOpen("plot-height-error", traces, {
-    ...layoutBase,
+    ...heightSigmaLayout,
     title: "GNSS / ATS Height"
   }).then(() => {
     attachAdaptiveMeterAxis("plot-height-error", "yaxis", "y");
   });
 
   drawPlotIfOpen("plot-height-sigma", sigmaTraces, {
-    ...layoutBase,
-    margin: { ...layoutBase.margin, r: Y2_AXIS_RIGHT_MARGIN },
-    title: "GNSS / ATS Height and Sigma",
-    legend: {
-      ...layoutBase.legend,
-      itemclick: "toggle",
-      itemdoubleclick: "toggleothers"
-    }
+    ...heightSigmaLayout,
+    title: "GNSS / ATS Height and Sigma"
   }).then(() => {
     attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
   });
@@ -2202,12 +2232,7 @@ function renderAtsHeightPlots(
     timeOrigin,
     allowFullGnssFallback,
     filterInfo.atsHeightOffset,
-    {
-      show1Sigma: showHeightSigma1,
-      show2Sigma: showHeightSigma2,
-      show3Sigma: showHeightSigma3,
-      sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
-    }
+    sigmaOptions
   );
   if (deltaTraces.length) {
     const deltaPoints = gnssAtsHeightDeltaPoints(
@@ -2218,21 +2243,16 @@ function renderAtsHeightPlots(
     );
     const deltaAxis = axisData(deltaPoints, mode, timeOrigin);
     const deltaValues = yValuesFromTraces(deltaTraces, "y");
-    drawPlotIfOpen("plot-ats-height-delta", deltaTraces, {
-      ...timePlotLayout(deltaAxis.layout, mode),
+    drawPlotIfOpen("plot-ats-height-delta", deltaTraces, atsSigmaPlotLayout(deltaAxis.layout, mode, {
       title: "GNSS / ATS Delta and Sigma",
       yaxis: {
-        title: "Zero-mean GNSS − ATS (m)",
+        title: "GNSS error (m)",
         zeroline: true,
         autorange: true,
         ...meterAxisFromValues(deltaValues)
       },
-      annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset),
-      legend: {
-        itemclick: "toggle",
-        itemdoubleclick: "toggleothers"
-      }
-    }).then(() => {
+      annotations: heightOffsetNotes
+    })).then(() => {
       attachAdaptiveMeterAxis("plot-ats-height-delta", "yaxis", "y");
     });
   }
@@ -2703,9 +2723,24 @@ function attachPlotControlListeners() {
   document.getElementById("show-sol-3d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-velocity-neu").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-velocity-speed").addEventListener("change", rerenderPositionPlots);
-  document.getElementById("show-height-sigma-1").addEventListener("change", rerenderPositionPlots);
-  document.getElementById("show-height-sigma-2").addEventListener("change", rerenderPositionPlots);
-  document.getElementById("show-height-sigma-3").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-height-sigma-1").addEventListener("change", (event) => {
+    syncAtsHeightSigmaToggles(event.target);
+    rerenderPositionPlots();
+  });
+  document.getElementById("show-height-sigma-2").addEventListener("change", (event) => {
+    syncAtsHeightSigmaToggles(event.target);
+    rerenderPositionPlots();
+  });
+  document.getElementById("show-height-sigma-3").addEventListener("change", (event) => {
+    syncAtsHeightSigmaToggles(event.target);
+    rerenderPositionPlots();
+  });
+  document.querySelectorAll(".ats-height-sigma-toggle:not([id])").forEach((el) => {
+    el.addEventListener("change", (event) => {
+      syncAtsHeightSigmaToggles(event.target);
+      rerenderPositionPlots();
+    });
+  });
   document.getElementById("show-enu-sigma-2").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-enu-sigma-3").addEventListener("change", rerenderPositionPlots);
 }
