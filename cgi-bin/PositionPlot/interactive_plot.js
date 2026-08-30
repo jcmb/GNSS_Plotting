@@ -1555,7 +1555,7 @@ function shouldRescaleYForPlot(plotId) {
   if (isCategoricalYAxis(plotId, "yaxis")) return false;
   if (plotId === "plot-height-error" || plotId === "plot-height-sigma") {
     const names = new Set((el.data || []).map((trace) => trace.name));
-    if (names.has("GNSS Height") || names.has("ATS Height (Ele)")) {
+    if (names.has("GNSS Height") || [...names].some((name) => name.startsWith("ATS Height"))) {
       return false;
     }
   }
@@ -1876,11 +1876,18 @@ function gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback) {
   return gnssHeights;
 }
 
-function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFullGnssFallback) {
+function adjustedAtsHeight(ele, heightOffset) {
+  if (!Number.isFinite(ele)) return null;
+  if (!Number.isFinite(heightOffset)) return ele;
+  return ele + heightOffset;
+}
+
+function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFullGnssFallback, heightOffset) {
   if (!atsPoints.length) return [];
 
   const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
   const traces = [];
+  const hasOffset = Number.isFinite(heightOffset);
 
   if (gnssForPlot.length) {
     const gnssAxis = axisData(gnssForPlot, mode, timeOrigin);
@@ -1896,8 +1903,8 @@ function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFul
   const atsAxis = axisData(atsPoints, mode, timeOrigin);
   traces.push(coloredLine(
     atsAxis.x,
-    atsPoints.map((p) => p.ele),
-    "ATS Height (Ele)",
+    atsPoints.map((p) => adjustedAtsHeight(p.ele, heightOffset)),
+    hasOffset ? "ATS Height (Ele + offset)" : "ATS Height (Ele)",
     "north",
     { line: { width: 2.5, dash: "dash" } }
   ));
@@ -1912,7 +1919,8 @@ function renderAtsHeightPlots(mode, gnssHeights, atsPoints, timeOrigin, filterIn
     gnssHeights,
     atsPoints,
     timeOrigin,
-    allowFullGnssFallback
+    allowFullGnssFallback,
+    filterInfo.atsHeightOffset
   );
   if (!traces.length) return false;
 
@@ -1951,7 +1959,7 @@ function renderAtsHeightPlots(mode, gnssHeights, atsPoints, timeOrigin, filterIn
 function heightOffsetAnnotation(offset) {
   if (!Number.isFinite(offset)) return [];
   return [{
-    text: "Mean GNSS − ATS height: " + offset.toFixed(4) + " m",
+    text: "Mean GNSS − ATS height: " + offset.toFixed(4) + " m (applied to ATS Ele)",
     showarrow: false,
     xref: "paper",
     yref: "paper",
