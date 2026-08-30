@@ -397,7 +397,7 @@ function parseAtsCsv(text) {
     const n = Number(parts[1]);
     const e = Number(parts[2]);
     const ele = Number(parts[3]);
-    if (!Number.isFinite(t)) continue;
+    if (!Number.isFinite(t) || !Number.isFinite(ele)) continue;
     const gps = unixToGpsWeekSeconds(t);
     data.push({
       t,
@@ -668,15 +668,6 @@ function attachAdaptiveMeterAxis(plotId, yLayoutKey, yaxisId) {
     }
   });
   apply();
-}
-
-function timeLinkedPlotLayout(commonLayout, extra) {
-  return {
-    margin: commonLayout.margin,
-    xaxis: commonLayout.xaxis,
-    legend: commonLayout.legend,
-    ...(extra || {})
-  };
 }
 
 function gpsAxisLayout(points, xValues) {
@@ -1442,9 +1433,25 @@ function initPlotCardChrome() {
   applyPlotCardClosedState();
 }
 
+let plotDrawBatch = null;
+
+function beginPlotDrawBatch() {
+  plotDrawBatch = [];
+}
+
+function endPlotDrawBatch(done) {
+  const batch = plotDrawBatch || [];
+  plotDrawBatch = null;
+  Promise.all(batch).finally(() => {
+    if (typeof done === "function") done();
+  });
+}
+
 function drawPlotIfOpen(plotId, traces, layout, config) {
   if (!shouldDrawPlot(plotId)) return Promise.resolve();
-  return drawPlot(plotId, traces, layout, config);
+  const promise = drawPlot(plotId, traces, layout, config);
+  if (plotDrawBatch) plotDrawBatch.push(promise);
+  return promise;
 }
 
 function plotLatencyDistributionIfOpen(elementId, dist) {
@@ -1539,7 +1546,14 @@ function shouldRescaleYForPlot(plotId) {
   if (plotId === "plot-solution-latency") return false;
   const el = document.getElementById(plotId);
   if (!el || !el.layout) return true;
-  return !isCategoricalYAxis(plotId, "yaxis");
+  if (isCategoricalYAxis(plotId, "yaxis")) return false;
+  if (plotId === "plot-height-error" || plotId === "plot-height-sigma") {
+    const names = new Set((el.data || []).map((trace) => trace.name));
+    if (names.has("GNSS Height") || names.has("ATS Height (Ele)")) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function yRangeUsesToZero(plotId, axisKey) {
@@ -1851,19 +1865,26 @@ function gnssHeightPointsForPlot(isMoving, points, atsMode) {
   return [];
 }
 
-function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin) {
-  if (!atsPoints.length) return [];
-
+function gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback) {
+  if (!gnssHeights.length || !atsPoints.length) return [];
   const tMin = Math.min(...atsPoints.map((p) => p.t));
   const tMax = Math.max(...atsPoints.map((p) => p.t));
-  const gnssInWindow = gnssHeights.filter((p) => p.t >= tMin && p.t <= tMax);
+  const inWindow = gnssHeights.filter((p) => p.t >= tMin && p.t <= tMax);
+  if (inWindow.length || !allowFullGnssFallback) return inWindow;
+  return gnssHeights;
+}
+
+function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFullGnssFallback) {
+  if (!atsPoints.length) return [];
+
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
   const traces = [];
 
-  if (gnssInWindow.length) {
-    const gnssAxis = axisData(gnssInWindow, mode, timeOrigin);
+  if (gnssForPlot.length) {
+    const gnssAxis = axisData(gnssForPlot, mode, timeOrigin);
     traces.push(coloredLine(
       gnssAxis.x,
-      gnssInWindow.map((p) => p.height),
+      gnssForPlot.map((p) => p.height),
       "GNSS Height",
       "d2",
       { line: { width: 2.5 } }
@@ -1879,6 +1900,54 @@ function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin) {
     { line: { width: 2.5, dash: "dash" } }
   ));
   return traces;
+}
+
+function buildAtsHeightChart(mode, gnssHeights, atsPoints, timeOrigin, options = {}) {
+  if (!atsPoints.length) return null;
+
+  const allowFullGnssFallback = !!options.allowFullGnssFallback;
+  const traces = buildAtsHeightTraces(
+    mode,
+    gnssHeights,
+    atsPoints,
+    timeOrigin,
+    allowFullGnssFallback
+  );
+  if (!traces.length) return null;
+
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
+  const axisPoints = gnssForPlot.length ? [...gnssForPlot, ...atsPoints] : atsPoints;
+  const axis = axisData(axisPoints, mode, timeOrigin);
+  const heightValues = yValuesFromTraces(traces, "y");
+
+  return {
+    traces,
+    layout: {
+      margin: {
+        l: 60,
+        r: 30,
+        t: usesDateTimeAxis(mode) ? 58 : 50,
+        b: 45
+      },
+      xaxis: axis.layout,
+      yaxis: {
+        title: "Height (m)",
+        autorange: true,
+        ...meterAxisFromValues(heightValues)
+      },
+      legend: {
+        orientation: "h",
+        y: 1.02,
+        x: 0,
+        xanchor: "left",
+        yanchor: "bottom",
+        itemclick: "toggle",
+        itemdoubleclick: "toggleothers"
+      },
+      title: options.title || "Height",
+      annotations: options.annotations || []
+    }
+  };
 }
 
 function heightOffsetAnnotation(offset) {
@@ -1952,6 +2021,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   initPlotCardChrome();
 
   purgeAllPlots();
+  beginPlotDrawBatch();
 
   const solPoints = solutionPoints.length ? solutionPoints : points;
   const timeOrigin = sharedTimeOrigin(points, solPoints);
@@ -2037,25 +2107,23 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   }
 
   const gnssHeights = gnssHeightPointsForPlot(isMoving, points, showAtsPlots);
+  const hasAtsHeightMatch = Number.isFinite(filterInfo.atsHeightMatched) && filterInfo.atsHeightMatched > 0;
   const showAtsHeightMode = showAtsPlots && allAtsPoints.length > 0;
-  const atsHeightTraces = showAtsHeightMode
-    ? buildAtsHeightTraces(mode, gnssHeights, allAtsPoints, timeOrigin)
-    : [];
+  const allowFullGnssFallback = hasAtsHeightMatch && gnssHeights.length > 0;
+  const atsHeightChart = showAtsHeightMode
+    ? buildAtsHeightChart(mode, gnssHeights, allAtsPoints, timeOrigin, {
+      title: "Height",
+      allowFullGnssFallback,
+      annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
+    })
+    : null;
   const heightPlotTitle = showAtsHeightMode
     ? "Height"
     : (isMoving ? "Height" : "Height Error");
   const heightY2Title = isMoving ? "Height (m)" : "Height Error (m)";
 
-  if (showAtsHeightMode && atsHeightTraces.length) {
-    const heightValues = yValuesFromTraces(atsHeightTraces, "y");
-    drawPlotIfOpen("plot-height-error", atsHeightTraces, {
-      ...timeLinkedPlotLayout(commonLayout, {
-        title: heightPlotTitle,
-        yaxis: { title: "Height (m)", ...meterAxisFromValues(heightValues) },
-        legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
-        annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
-      })
-    }).then(() => {
+  if (atsHeightChart) {
+    drawPlotIfOpen("plot-height-error", atsHeightChart.traces, atsHeightChart.layout).then(() => {
       attachAdaptiveMeterAxis("plot-height-error", "yaxis", "y");
     });
   } else {
@@ -2109,26 +2177,21 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     show3Sigma: showHeightSigma3,
     sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
   });
-  if (showAtsHeightMode && atsHeightTraces.length) {
-    const heightValues = yValuesFromTraces(atsHeightTraces, "y");
+  if (atsHeightChart) {
     drawPlotIfOpen("plot-height-sigma", [
       ...heightSigmaTraces.map((trace) => ({ ...trace, yaxis: "y2" })),
-      ...atsHeightTraces
+      ...atsHeightChart.traces
     ], {
-      ...timeLinkedPlotLayout(commonLayout, {
-        margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
-        title: "Height and Sigma",
-        yaxis: { title: "Height (m)", ...meterAxisFromValues(heightValues) },
-        yaxis2: {
-          title: "V Sigma (m)",
-          overlaying: "y",
-          side: "right",
-          zeroline: true,
-          showgrid: false
-        },
-        legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
-        annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
-      })
+      ...atsHeightChart.layout,
+      margin: { ...atsHeightChart.layout.margin, r: Y2_AXIS_RIGHT_MARGIN },
+      title: "Height and Sigma",
+      yaxis2: {
+        title: "V Sigma (m)",
+        overlaying: "y",
+        side: "right",
+        zeroline: true,
+        showgrid: false
+      }
     }).then(() => {
       attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
     });
@@ -2338,12 +2401,18 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   );
   }
 
-  linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth, showAtsPlots));
-  applyPlotCardClosedState();
+  endPlotDrawBatch(() => {
+    linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth, showAtsPlots));
+    applyPlotCardClosedState();
+  });
 
   const statusEl = document.getElementById("plot-status");
   if (filterInfo.driveWarning) {
     statusEl.textContent = "Warning: static mode on data that looks like a drive test.";
+    statusEl.className = "error";
+  } else if (showAtsPlots && !allAtsPoints.length && hasAtsHeightMatch) {
+    statusEl.textContent =
+      "ATS height offset was computed on the server, but ATS plot data failed to load in the browser.";
     statusEl.className = "error";
   } else {
     statusEl.textContent = "";
@@ -2386,6 +2455,19 @@ function gunzipToText(buffer) {
   return new Response(stream).text();
 }
 
+function decodeFetchedText(resp, buffer) {
+  const encoding = (resp.headers.get("Content-Encoding") || "").toLowerCase();
+  if (encoding.includes("gzip")) {
+    return resp.text();
+  }
+  if (!buffer) return resp.text();
+  return gunzipToText(buffer).catch(() => {
+    const text = new TextDecoder().decode(buffer);
+    if (/unix_time|,/.test(text)) return text;
+    return Promise.reject(new Error("gzip decode failed"));
+  });
+}
+
 function fetchTextFile(baseUrl, optional) {
   const loadPlain = () =>
     fetch(baseUrl, { cache: "no-store" }).then((resp) => {
@@ -2399,8 +2481,12 @@ function fetchTextFile(baseUrl, optional) {
   return fetch(baseUrl + ".gz", { cache: "no-store" })
     .then((resp) => {
       if (!resp.ok) return loadPlain();
+      const encoding = (resp.headers.get("Content-Encoding") || "").toLowerCase();
+      if (encoding.includes("gzip")) {
+        return resp.text();
+      }
       return resp.arrayBuffer().then((buf) =>
-        gunzipToText(buf).catch(() => loadPlain())
+        decodeFetchedText(resp, buf).catch(() => loadPlain())
       );
     });
 }
