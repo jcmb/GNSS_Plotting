@@ -158,7 +158,7 @@ const TRACE_NAME_TO_COLOR = {
   "1D Sigma Ratio": "up",
   "GNSS error |Δ|": "up",
   "1σ (V)": "up",
-  "Error/Sigma": "up"
+  "Error/Sigma": "d2"
 };
 
 function resolveTraceColor(trace) {
@@ -1120,8 +1120,9 @@ function plotErrorSigmaRatioChart(
   elementId, title, x, errY, sigY, ratioY,
   errName, sigName, ratioName, colorKey, layoutBase, options = {}
 ) {
-  const { sigmaLegendOnly = true } = options;
+  const { sigmaLegendOnly = true, ratioColorKey = colorKey } = options;
   const color = ERROR_COLORS[colorKey];
+  const ratioColor = ERROR_COLORS[ratioColorKey] || color;
   return drawPlot(elementId, [
     coloredLine(x, errY, errName, colorKey),
     {
@@ -1141,8 +1142,8 @@ function plotErrorSigmaRatioChart(
       name: ratioName,
       mode: "lines",
       yaxis: "y2",
-      line: { color, width: 2 },
-      marker: { color }
+      line: { color: ratioColor, width: 2 },
+      marker: { color: ratioColor }
     }
   ], {
     ...layoutBase,
@@ -2132,7 +2133,7 @@ function renderAtsHeightErrorSigmaRatio(mode, deltaPoints, timeOrigin, annotatio
       },
       annotations: annotations || []
     },
-    { sigmaLegendOnly: true }
+    { sigmaLegendOnly: true, ratioColorKey: "d2" }
   );
 }
 
