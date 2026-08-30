@@ -148,8 +148,7 @@ def _fit_helmert_2d_raw(src_n: list[float], src_e: list[float],
     ata = [[0.0] * 4 for _ in range(4)]
     atb = [0.0] * 4
     for ns, es, nt, et in zip(src_n, src_e, tgt_n, tgt_e):
-        for coeff_n, rhs in ((ns, -es, 1.0, 0.0, nt), (es, ns, 0.0, 1.0, et)):
-            coeffs = list(coeff_n)
+        for coeffs, rhs in (([ns, -es, 1.0, 0.0], nt), ([es, ns, 0.0, 1.0], et)):
             for i in range(4):
                 atb[i] += coeffs[i] * rhs
                 for j in range(4):

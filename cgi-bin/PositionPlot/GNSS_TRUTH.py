@@ -1,58 +1,64 @@
 #!/usr/bin/python3
 #GNSS_TRUTH.py
-#print  "GNSS_TRUTH"
-import sqlite3
 import argparse
+import os
+import sqlite3
+import sys
 
 parser = argparse.ArgumentParser(description='Return information for a point.')
 parser.add_argument("Pt_Id", help="The Point ID that you want information on")
 args = parser.parse_args()
 
-exec(compile(open("/mnt/GPS_Admin/cgi-bin/PositionPlot/db.TRUTH.inc.py", "rb").read(), "/mnt/GPS_Admin/cgi-bin/PositionPlot/db.TRUTH.inc.py", 'exec'))
+if args.Pt_Id in ("", "-1"):
+    sys.exit(1)
 
-#print "After Load"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+inc_candidates = [
+    os.path.join(script_dir, "db.TRUTH.inc.py"),
+    "/mnt/GPS_Admin/cgi-bin/PositionPlot/db.TRUTH.inc.py",
+]
+inc_path = next((path for path in inc_candidates if os.path.isfile(path)), None)
+if inc_path is None:
+    sys.exit(1)
+
+exec(compile(open(inc_path, "rb").read(), inc_path, "exec"))
+
 
 class DB_Class:
 
     def __init__(self):
-        self.conn=None
-        pass;
+        self.conn = None
 
-    def open (self):
-
+    def open(self):
+        db_path = databaseFile()
+        if not os.path.isfile(db_path):
+            sys.exit(1)
         try:
-           self.conn = sqlite3.connect(databaseFile())
-        #   print databaseFile()+ " Open\n"
+            self.conn = sqlite3.connect(db_path)
         except sqlite3.Error:
-           print("Error opening db. " + databaseFile() +"\n")
-           quit()
+            sys.exit(1)
 
         self.conn.row_factory = sqlite3.Row
-        self.GNSS   = self.conn.cursor()
+        self.GNSS = self.conn.cursor()
 
-    def read_GNSS_Settings (self,Pt_Id):
+    def read_GNSS_Settings(self, Pt_Id):
         query = 'SELECT * FROM GNSS_Truth where Pt_Id="' + str(Pt_Id) + '"'
-        self.GNSS.execute(query);
+        self.GNSS.execute(query)
         row = self.GNSS.fetchone()
 
         if row:
-            self.Lat=row["Lat"]
-            self.Long=row["Long"]
-            self.Height=row["Height"]
-            self.Pt_Id=row["Pt_Id"]
-            self.Solution=row["Solution"]
+            self.Lat = row["Lat"]
+            self.Long = row["Long"]
+            self.Height = row["Height"]
+            self.Pt_Id = row["Pt_Id"]
+            self.Solution = row["Solution"]
             return True
-        else:
-            return False
+        return False
 
 
-#print(args.Pt_Id)
-
-DB=DB_Class()
+DB = DB_Class()
 DB.open()
-if DB.read_GNSS_Settings(args.Pt_Id.upper()) :
-    print("Lat="+str(DB.Lat)+";Long="+str(DB.Long)+";Height="+str(DB.Height)+";Sol="+str(DB.Solution))
-    quit (0)
-else:
-    quit(1)
-#    print "Point " + args.Pt_Id + " is not in the Database"
+if DB.read_GNSS_Settings(args.Pt_Id.upper()):
+    print("Lat=" + str(DB.Lat) + ";Long=" + str(DB.Long) + ";Height=" + str(DB.Height) + ";Sol=" + str(DB.Solution))
+    sys.exit(0)
+sys.exit(1)

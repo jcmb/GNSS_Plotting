@@ -203,9 +203,10 @@ echo "$File" >file.html
 
 set_processing_status "Checking database for $Point"
 
-#$normalDir/GNSS_TRUTH.py $Point
-
-eval $($normalDir/GNSS_TRUTH.py $Point)
+if [ "$Point" != "-1" ] && [ -n "$Point" ]
+then
+   eval $($normalDir/GNSS_TRUTH.py $Point)
+fi
 
 # Truth DB may return Solution — use it only when a specific type was requested
 PLOT_FILTER_SOL=""
@@ -715,6 +716,13 @@ fi
 
 echo "$FileFull" >file.html
 
+write_empty_range_summaries() {
+   for summary in range1cm.sum range2cm.sum range2sig.sum range3sig.sum
+   do
+      printf '%s\n' "Not applicable (moving session)" > "$summary"
+   done
+}
+
 _write_plot_filter() {
    if [ "$ALL_SOL_TYPES" = "1" ]; then
       echo "all" > plot_filter.txt
@@ -799,6 +807,7 @@ then
    rm -f $File.trajectory
    _write_plot_filter
    gzip -9 -f position_data.csv position_solution.csv
+   write_empty_range_summaries
    echo -n "$File,moving" > $File.sum.csv
 else
 #cp $normalDir/plot_index.html index.shtml
@@ -842,10 +851,7 @@ set_processing_status "Writing report files"
 ln -sf $normalDir/index.shtml .
 ln -sf $normalDir/interactive_plot.js
 ln -sf $normalDir/report_tables.js
-rm outage1cm.csv
-rm outage2cm.csv
-rm outage2sig.csv
-rm outage3sig.csv
+rm -f outage1cm.csv outage2cm.csv outage2sig.csv outage3sig.csv
 #rm range1cm.csv
 #rm range2cm.csv
 rm -f range2sig.csv range3sig.csv
