@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250829l"></script>
+<script src="interactive_plot.js?v=20250829n"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -247,7 +247,7 @@
     display: none;
   }
 </style>
-<script src="report_tables.js?v=20250829l"></script>
+<script src="report_tables.js?v=20250829n"></script>
 </head>
 <body onload="loadReportTables(); loadInteractivePosition(); checkProcessingStatus();">
 <div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">
@@ -315,11 +315,6 @@ Location: <!--#include virtual="kml.html" -->
 <div class="plot-card plot-ats-only" data-card-id="plot-ats-ne">
   <h3>ATS Northing and Easting</h3>
   <div id="plot-ats-ne" style="width: 100%; height: 420px;"></div>
-</div>
-
-<div class="plot-card plot-ats-only" data-card-id="plot-ats-height">
-  <h3>ATS Height</h3>
-  <div id="plot-ats-height" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card" data-card-id="plot-height-error">

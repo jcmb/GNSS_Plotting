@@ -423,6 +423,11 @@ if [ "$TRUTH_ATTEMPTED" = "yes" ]
 then
    echo "ATS filename: $(basename "$TRUTH_FILE")"
 fi
+if [ -n "${ATS_HEIGHT_OFFSET:-}" ]
+then
+   echo "ATS height offset (mean GNSS - ATS Ele): ${ATS_HEIGHT_OFFSET} m"
+   echo "ATS height matched epochs: ${ATS_HEIGHT_MATCHED:-0}"
+fi
 echo "Detection ran: $DETECTION_RAN"
 echo "Outlier fraction: ${OUTLIER_FRACTION}% (>10 sigma, 2D)"
 echo "Outlier epochs: $OUTLIER_COUNT / $VALID_COUNT"
@@ -453,7 +458,31 @@ else
    detect_session_type
 fi
 
+ATS_HEIGHT_OFFSET=""
+ATS_HEIGHT_MATCHED=""
+if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -f "$File.sol" ] && [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+then
+   if $normalDir/ats_height_offset.py --sol "$File.sol" --ats "$TRUTH_FILE" --report ats_height_offset.txt
+   then
+      ATS_HEIGHT_OFFSET=$(grep '^ats_height_offset:' ats_height_offset.txt | head -1 | awk '{print $2}')
+      ATS_HEIGHT_MATCHED=$(grep '^ats_height_matched:' ats_height_offset.txt | head -1 | awk '{print $2}')
+   else
+      rm -f ats_height_offset.txt
+   fi
+fi
+
 write_session_type_txt
+
+if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -f "$File.sol" ]
+then
+   if $normalDir/export_gnss_height_csv.py "$File.sol" > gnss_height.csv
+   then
+      gzip -9 -f gnss_height.csv
+   else
+      echo "WARNING: Could not export GNSS height data from $File.sol"
+      rm -f gnss_height.csv gnss_height.csv.gz
+   fi
+fi
 
 if [ "$TRUTH_APPLIED" = "yes" ]
 then
@@ -707,6 +736,17 @@ _write_plot_filter() {
       echo "ats_provided:yes" >> plot_filter.txt
    else
       echo "ats_provided:no" >> plot_filter.txt
+   fi
+   if [ -f gnss_height.csv.gz ] || [ -f gnss_height.csv ]
+   then
+      echo "gnss_height:yes" >> plot_filter.txt
+   else
+      echo "gnss_height:no" >> plot_filter.txt
+   fi
+   if [ -f ats_height_offset.txt ]
+   then
+      grep '^ats_height_offset:' ats_height_offset.txt >> plot_filter.txt || true
+      grep '^ats_height_matched:' ats_height_offset.txt >> plot_filter.txt || true
    fi
 }
 

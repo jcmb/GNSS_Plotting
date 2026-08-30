@@ -335,6 +335,12 @@ function renderSessionType(text, plotFilterText) {
     rows.push(["ATS file", atsFilename]);
   }
   rows.push(["ATS truth", parseAtsTruthStatus(kv, plotFilterText)]);
+  if (kv["ATS height offset (mean GNSS - ATS Ele)"]) {
+    rows.push(["ATS height offset", kv["ATS height offset (mean GNSS - ATS Ele)"]]);
+  }
+  if (kv["ATS height matched epochs"]) {
+    rows.push(["ATS height matched epochs", kv["ATS height matched epochs"]]);
+  }
   if (kv["Detection ran"] === "yes") {
     rows.push(["Motion detection", "Ran (2D, >10σ threshold)"]);
     if (kv["Outlier fraction"]) {
@@ -381,6 +387,15 @@ function parseTrajectoryCoords(text) {
       ? (heightMin + heightMax) / 2
       : null
   };
+}
+
+function renderAtsHeightOffsetSummary(text) {
+  if (!/ATS_HEIGHT_OFFSET/m.test(text)) return "";
+  const rows = parseKeyValueLines(
+    text.split(/\r?\n/).filter((line) => !/^ATS_HEIGHT_OFFSET$/i.test(line.trim())).join("\n")
+  ).filter(([key]) => key !== "ats_height_offset" && key !== "ats_height_matched");
+  if (!rows.length) return "";
+  return sectionHtml("ATS / GNSS Height", tableHtml(["Metric", "Value"], rows, "report-table"));
 }
 
 function isAtsTruthSession(text) {
@@ -917,14 +932,15 @@ async function buildReportTables() {
   const root = document.getElementById("report-summary-root");
   if (!root) return;
 
-  const [meanInfo, timeRange, llhMean, sumTxt, neeMean, sessionType, plotFilter] = await Promise.all([
+  const [meanInfo, timeRange, llhMean, sumTxt, neeMean, sessionType, plotFilter, atsHeightOffset] = await Promise.all([
     loadText("raw-mean-info", "mean.info"),
     loadText("raw-time-range", "time_range.txt"),
     loadText("raw-llh-mean", "llh.mean"),
     loadText("raw-sum-txt", "sum.txt"),
     loadText("raw-nee-mean", "nee.mean"),
     loadText("raw-session-type", "session_type.txt"),
-    loadText("raw-plot-filter", "plot_filter.txt")
+    loadText("raw-plot-filter", "plot_filter.txt"),
+    loadText("raw-ats-height-offset", "ats_height_offset.txt")
   ]);
 
   const sessionKv = parseSessionType(sessionType);
@@ -948,6 +964,9 @@ async function buildReportTables() {
   let html = "";
   html += renderTimeRange(timeRange);
   html += renderSessionType(sessionType, plotFilter);
+  if (atsHeightOffset && !plotFilterFlags.truth) {
+    html += renderAtsHeightOffsetSummary(atsHeightOffset);
+  }
   if (isMoving) {
     html += renderTrajectorySummary(llhMean);
   } else if (plotFilterFlags.truth) {

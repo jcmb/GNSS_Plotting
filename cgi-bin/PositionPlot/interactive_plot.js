@@ -1,8 +1,9 @@
 const GPS_EPOCH_SEC = 315964800;
 const SECONDS_IN_WEEK = 604800;
+const GNSS_LEAP_SECONDS = 18;
 
 function gpsWeekSecondsToUnix(week, seconds) {
-  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds;
+  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds + GNSS_LEAP_SECONDS;
 }
 
 function unixToGpsWeekSeconds(unixSec) {
@@ -360,6 +361,29 @@ function parsePositionCsv(text, isMoving) {
   return data;
 }
 
+function parseGnssHeightCsv(text) {
+  const rows = String(text || "").trim().split(/\r?\n/);
+  if (rows.length < 2) return [];
+  const data = [];
+  for (let i = 1; i < rows.length; i += 1) {
+    const row = rows[i];
+    if (!row) continue;
+    const parts = row.split(",");
+    if (parts.length < 2) continue;
+    const t = Number(parts[0]);
+    const height = Number(parts[1]);
+    if (!Number.isFinite(t) || !Number.isFinite(height)) continue;
+    const gps = unixToGpsWeekSeconds(t);
+    data.push({
+      t,
+      height,
+      gpsWeek: gps.gpsWeek,
+      gpsSec: gps.gpsSec
+    });
+  }
+  return data;
+}
+
 function parseAtsCsv(text) {
   const rows = String(text || "").trim().split(/\r?\n/);
   if (rows.length < 2) return [];
@@ -487,6 +511,7 @@ function buildSolutionTypeFilterUI(types) {
 let allPositionPoints = [];
 let allSolutionPoints = [];
 let allAtsPoints = [];
+let allGnssHeightPoints = [];
 let plotFilterInfo = {
   filter: "unknown",
   mean: "unknown",
@@ -498,7 +523,10 @@ let plotFilterInfo = {
   truth: false,
   truthHeightOffset: null,
   atsData: false,
-  atsProvided: false
+  atsProvided: false,
+  gnssHeight: false,
+  atsHeightOffset: null,
+  atsHeightMatched: null
 };
 let plotListenersAttached = false;
 
@@ -1033,8 +1061,7 @@ const MOVING_POSITION_TIME_PLOT_IDS = [
 ];
 
 const ATS_TIME_PLOT_IDS = [
-  "plot-ats-ne",
-  "plot-ats-height"
+  "plot-ats-ne"
 ];
 
 const TIME_LINKED_PLOT_IDS = [
@@ -1071,7 +1098,6 @@ const DEFAULT_PLOT_CARD_ORDER = [
   "plot-solution-latency",
   "plot-sv",
   "plot-ats-ne",
-  "plot-ats-height",
   "plot-height-error",
   "plot-height-sigma",
   "plot-velocity-neu",
@@ -1611,6 +1637,9 @@ function parsePlotFilter(text) {
   let truthHeightOffset = null;
   let atsData = false;
   let atsProvided = false;
+  let gnssHeight = false;
+  let atsHeightOffset = null;
+  let atsHeightMatched = null;
   for (const line of lines) {
     if (!line) continue;
     if (line.startsWith("mean_name:")) {
@@ -1634,6 +1663,14 @@ function parsePlotFilter(text) {
       atsData = line.slice(9).trim() === "yes";
     } else if (line.startsWith("ats_provided:")) {
       atsProvided = line.slice(13).trim() === "yes";
+    } else if (line.startsWith("gnss_height:")) {
+      gnssHeight = line.slice(12).trim() === "yes";
+    } else if (line.startsWith("ats_height_offset:")) {
+      const value = Number(line.slice(18).trim());
+      atsHeightOffset = Number.isFinite(value) ? value : null;
+    } else if (line.startsWith("ats_height_matched:")) {
+      const value = Number(line.slice(19).trim());
+      atsHeightMatched = Number.isFinite(value) ? value : null;
     } else {
       filter = line;
     }
@@ -1649,7 +1686,10 @@ function parsePlotFilter(text) {
     truth,
     truthHeightOffset,
     atsData,
-    atsProvided
+    atsProvided,
+    gnssHeight,
+    atsHeightOffset,
+    atsHeightMatched
   };
 }
 
@@ -1667,12 +1707,18 @@ function applySessionPlotVisibility(isMoving, hasTruth, showAtsPlots) {
   const heightCard = document.getElementById("plot-height-error");
   if (heightCard) {
     const heading = heightCard.closest(".plot-card")?.querySelector("h3");
-    if (heading) heading.textContent = isMoving ? "Height" : "Height Error";
+    if (heading) {
+      heading.textContent = showAtsPlots && allAtsPoints.length ? "Height" : (isMoving ? "Height" : "Height Error");
+    }
   }
   const heightSigmaCard = document.getElementById("plot-height-sigma");
   if (heightSigmaCard) {
     const heading = heightSigmaCard.closest(".plot-card")?.querySelector("h3");
-    if (heading) heading.textContent = isMoving ? "Height and Sigma" : "Height Error and Sigma";
+    if (heading) {
+      heading.textContent = showAtsPlots && allAtsPoints.length
+        ? "Height and Sigma"
+        : (isMoving ? "Height and Sigma" : "Height Error and Sigma");
+    }
   }
 }
 
@@ -1701,49 +1747,102 @@ function pdopMarkerStyle(points, usedSv, maxUsedSv) {
   };
 }
 
-function renderAtsPlots(atsPoints, mode, timeOrigin, showWhenEmpty) {
+function gnssHeightPointsForPlot(isMoving, points) {
+  if (allGnssHeightPoints.length) return allGnssHeightPoints;
+  if (isMoving) {
+    return points
+      .filter((p) => Number.isFinite(p.absHeight))
+      .map((p) => ({
+        t: p.t,
+        height: p.absHeight,
+        gpsWeek: p.gpsWeek,
+        gpsSec: p.gpsSec
+      }));
+  }
+  return [];
+}
+
+function buildAtsHeightOverlay(mode, gnssHeights, atsPoints) {
+  if (!atsPoints.length || !gnssHeights.length) {
+    return null;
+  }
+
+  const tMin = Math.min(...atsPoints.map((p) => p.t));
+  const tMax = Math.max(...atsPoints.map((p) => p.t));
+  const gnssInWindow = gnssHeights.filter((p) => p.t >= tMin && p.t <= tMax);
+  if (!gnssInWindow.length) {
+    return null;
+  }
+
+  const compareOrigin = sharedTimeOrigin(gnssInWindow, atsPoints);
+  const gnssAxis = axisData(gnssInWindow, mode, compareOrigin);
+  const atsAxis = axisData(atsPoints, mode, compareOrigin);
+  return {
+    gnssTrace: coloredLine(
+      gnssAxis.x,
+      gnssInWindow.map((p) => p.height),
+      "GNSS Height",
+      "d2",
+      { yaxis: "y2", line: { width: 2.5 } }
+    ),
+    atsTrace: coloredLine(
+      atsAxis.x,
+      atsPoints.map((p) => p.ele),
+      "ATS Height (Ele)",
+      "north",
+      { yaxis: "y2", line: { width: 2.5, dash: "dash" } }
+    )
+  };
+}
+
+function heightOffsetAnnotation(offset) {
+  if (!Number.isFinite(offset)) return [];
+  return [{
+    text: "Mean GNSS − ATS height: " + offset.toFixed(4) + " m",
+    showarrow: false,
+    xref: "paper",
+    yref: "paper",
+    x: 0,
+    y: 1.12,
+    xanchor: "left",
+    yanchor: "bottom",
+    font: { size: 12, color: "#333" }
+  }];
+}
+
+function renderAtsNePlot(atsPoints, mode, showWhenEmpty) {
+  const emptyLayout = {
+    margin: { l: 60, r: 30, t: 50, b: 45 },
+    title: "ATS data unavailable",
+    xaxis: { visible: false },
+    yaxis: { visible: false },
+    annotations: [{
+      text: "An ATS file was provided but no ATS plot points were exported.",
+      showarrow: false,
+      xref: "paper",
+      yref: "paper",
+      x: 0.5,
+      y: 0.5,
+      font: { size: 14, color: "#666" }
+    }]
+  };
+
   if (!atsPoints.length) {
     if (!showWhenEmpty) return;
-
-    const emptyLayout = {
-      margin: { l: 60, r: 30, t: 50, b: 45 },
-      title: "ATS data unavailable",
-      xaxis: { visible: false },
-      yaxis: { visible: false },
-      annotations: [{
-        text: "An ATS file was provided but no plot points were exported.",
-        showarrow: false,
-        xref: "paper",
-        yref: "paper",
-        x: 0.5,
-        y: 0.5,
-        font: { size: 14, color: "#666" }
-      }]
-    };
     drawPlotIfOpen("plot-ats-ne", [], emptyLayout);
-    drawPlotIfOpen("plot-ats-height", [], emptyLayout);
     return;
   }
 
-  const axis = axisData(atsPoints, mode, timeOrigin);
-  const x = axis.x;
-  const commonLayout = timePlotLayout(axis.layout, mode);
-
+  const atsTimeOrigin = sharedTimeOrigin(atsPoints);
+  const atsAxis = axisData(atsPoints, mode, atsTimeOrigin);
+  const atsX = atsAxis.x;
   drawPlotIfOpen("plot-ats-ne", [
-    coloredLine(x, atsPoints.map((p) => p.n), "Northing", "north"),
-    coloredLine(x, atsPoints.map((p) => p.e), "Easting", "east")
+    coloredLine(atsX, atsPoints.map((p) => p.n), "Northing", "north"),
+    coloredLine(atsX, atsPoints.map((p) => p.e), "Easting", "east")
   ], {
-    ...commonLayout,
+    ...timePlotLayout(atsAxis.layout, mode),
     title: "ATS Northing and Easting",
     yaxis: { title: "Meters" }
-  });
-
-  drawPlotIfOpen("plot-ats-height", [
-    coloredLine(x, atsPoints.map((p) => p.ele), "Height (Ele)", "up")
-  ], {
-    ...commonLayout,
-    title: "ATS Height",
-    yaxis: { title: "Height (m)" }
   });
 }
 
@@ -1766,7 +1865,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   purgeAllPlots();
 
   const solPoints = solutionPoints.length ? solutionPoints : points;
-  const timeOrigin = sharedTimeOrigin(points, solPoints, allAtsPoints);
+  const timeOrigin = sharedTimeOrigin(points, solPoints);
   const axis = axisData(points, mode, timeOrigin);
   const solAxis = axisData(solPoints, mode, timeOrigin);
   const x = axis.x;
@@ -1845,25 +1944,41 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   if (showAtsPlots) {
-    renderAtsPlots(allAtsPoints, mode, timeOrigin, hasAtsProvided && !hasAtsData);
+    renderAtsNePlot(allAtsPoints, mode, hasAtsProvided && !allAtsPoints.length);
   }
+
+  const gnssHeights = gnssHeightPointsForPlot(isMoving, points);
+  const atsHeightOverlay = showAtsPlots
+    ? buildAtsHeightOverlay(mode, gnssHeights, allAtsPoints)
+    : null;
+  const showAtsOnHeightPlot = !!atsHeightOverlay;
+  const heightPlotTitle = showAtsOnHeightPlot
+    ? "Height"
+    : (isMoving ? "Height" : "Height Error");
+  const heightY2Title = showAtsOnHeightPlot
+    ? "Height (m)"
+    : (isMoving ? "Height (m)" : "Height Error (m)");
 
   const heightTraces = [
     latencyTrace(x, latency),
-    { ...vdopTrace(x, points, "y3"), visible: "legendonly" },
-    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up", {
+    { ...vdopTrace(x, points, "y3"), visible: "legendonly" }
+  ];
+  if (showAtsOnHeightPlot) {
+    heightTraces.push(atsHeightOverlay.gnssTrace, atsHeightOverlay.atsTrace);
+  } else {
+    heightTraces.push(coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up", {
       yaxis: "y2",
       line: { width: 2.5 }
-    })
-  ];
+    }));
+  }
   const heightLayout = {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
-    title: isMoving ? "Height" : "Height Error",
+    title: heightPlotTitle,
     yaxis: latencyPrimaryYAxis(),
     yaxis2: overlayLeftYAxis({
-      title: isMoving ? "Height (m)" : "Height Error (m)",
-      zeroline: !isMoving
+      title: heightY2Title,
+      zeroline: !showAtsOnHeightPlot && !isMoving
     }),
     yaxis3: {
       title: "VDOP",
@@ -1873,7 +1988,8 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
       position: 1.0,
       showgrid: false
     },
-    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
+    annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
   };
   drawPlotIfOpen("plot-height-error", heightTraces, heightLayout).then(() => {
     attachOverlayAxisLegendSync("plot-height-error", {
@@ -1894,14 +2010,15 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const heightSigmaLayout = {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
-    title: isMoving ? "Height and Sigma" : "Height Error and Sigma",
+    title: showAtsOnHeightPlot ? "Height and Sigma" : (isMoving ? "Height and Sigma" : "Height Error and Sigma"),
     yaxis: {
-      title: isMoving ? "Height (m)" : "Height Error (m)",
-      zeroline: true
+      title: heightY2Title,
+      zeroline: !showAtsOnHeightPlot
     },
-    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
+    annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
   };
-  if (isMoving) {
+  if (isMoving && !showAtsOnHeightPlot) {
     heightSigmaLayout.yaxis2 = {
       title: "V Sigma (m)",
       overlaying: "y",
@@ -1910,9 +2027,12 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
       showgrid: false
     };
   }
+  const heightSigmaMainTraces = showAtsOnHeightPlot
+    ? [atsHeightOverlay.gnssTrace, atsHeightOverlay.atsTrace]
+    : [coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")];
   drawPlotIfOpen("plot-height-sigma", [
-    ...heightSigmaTraces.map((trace) => (isMoving ? { ...trace, yaxis: "y2" } : trace)),
-    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")
+    ...heightSigmaTraces.map((trace) => (isMoving && !showAtsOnHeightPlot ? { ...trace, yaxis: "y2" } : trace)),
+    ...heightSigmaMainTraces
   ], heightSigmaLayout);
 
   if (isMoving) {
@@ -2181,20 +2301,31 @@ function loadInteractivePosition() {
       plotFilterInfo = parsePlotFilter(filterText);
       const isMoving = plotFilterInfo.session === "moving" && !plotFilterInfo.truth;
       const shouldLoadAts = plotFilterInfo.atsProvided || plotFilterInfo.atsData;
+      const shouldLoadGnssHeight = plotFilterInfo.atsProvided || plotFilterInfo.gnssHeight;
       const atsPromise = shouldLoadAts
         ? fetchStep("Loading ATS data...", "ats_data.csv", true)
         : Promise.resolve("");
-      return atsPromise
-        .then((atsText) => fetchStep("Loading position data...", "position_data.csv")
+      const gnssHeightPromise = shouldLoadGnssHeight
+        ? fetchStep("Loading GNSS height data...", "gnss_height.csv", true)
+        : Promise.resolve("");
+      return Promise.all([atsPromise, gnssHeightPromise])
+        .then(([atsText, gnssHeightText]) => fetchStep("Loading position data...", "position_data.csv")
           .then((posText) => fetchStep("Loading solution data...", "position_solution.csv", true)
-            .then((solText) => ({ posText, solText, atsText, isMoving }))));
+            .then((solText) => ({
+              posText,
+              solText,
+              atsText,
+              gnssHeightText,
+              isMoving
+            }))));
     })
-    .then(({ posText, solText, atsText, isMoving }) => {
+    .then(({ posText, solText, atsText, gnssHeightText, isMoving }) => {
       setPlotStatus("Parsing plot data...", "loading");
       const solutionPoints = solText ? parseX29Csv(solText) : [];
       allPositionPoints = attachSolutionTypes(parsePositionCsv(posText, isMoving), solutionPoints);
       allSolutionPoints = solutionPoints;
       allAtsPoints = atsText ? parseAtsCsv(atsText) : [];
+      allGnssHeightPoints = gnssHeightText ? parseGnssHeightCsv(gnssHeightText) : [];
       const types = solutionTypesInData(allPositionPoints, allSolutionPoints);
       buildSolutionTypeFilterUI(types);
       attachPlotControlListeners();
