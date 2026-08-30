@@ -1985,21 +1985,33 @@ function interpolateAtsAtTime(atsPoints, tQuery) {
   };
 }
 
-function gnssAtsHeightDeltaPoints(gnssHeights, atsPoints, allowFullGnssFallback) {
+function gnssAtsHeightDeltaPoints(gnssHeights, atsPoints, allowFullGnssFallback, heightOffset) {
   const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
-  const deltas = [];
+  const raw = [];
   gnssForPlot.forEach((p) => {
     const sample = interpolateAtsAtTime(atsPoints, p.t);
     if (!sample || !Number.isFinite(p.height) || !Number.isFinite(sample.ele)) return;
-    deltas.push({
+    raw.push({
       t: p.t,
-      delta: p.height - sample.ele,
+      rawDelta: p.height - sample.ele,
       vprec: p.vprec,
       gpsWeek: p.gpsWeek,
       gpsSec: p.gpsSec
     });
   });
-  return deltas;
+  if (!raw.length) return [];
+
+  const meanOffset = Number.isFinite(heightOffset)
+    ? heightOffset
+    : raw.reduce((sum, p) => sum + p.rawDelta, 0) / raw.length;
+
+  return raw.map((p) => ({
+    t: p.t,
+    delta: p.rawDelta - meanOffset,
+    vprec: p.vprec,
+    gpsWeek: p.gpsWeek,
+    gpsSec: p.gpsSec
+  }));
 }
 
 function buildAtsHeightDeltaSigmaTraces(
@@ -2008,9 +2020,15 @@ function buildAtsHeightDeltaSigmaTraces(
   atsPoints,
   timeOrigin,
   allowFullGnssFallback,
+  heightOffset,
   sigmaOptions
 ) {
-  const deltaPoints = gnssAtsHeightDeltaPoints(gnssHeights, atsPoints, allowFullGnssFallback);
+  const deltaPoints = gnssAtsHeightDeltaPoints(
+    gnssHeights,
+    atsPoints,
+    allowFullGnssFallback,
+    heightOffset
+  );
   if (!deltaPoints.length) return [];
 
   const axis = axisData(deltaPoints, mode, timeOrigin);
@@ -2183,6 +2201,7 @@ function renderAtsHeightPlots(
     atsPoints,
     timeOrigin,
     allowFullGnssFallback,
+    filterInfo.atsHeightOffset,
     {
       show1Sigma: showHeightSigma1,
       show2Sigma: showHeightSigma2,
@@ -2194,7 +2213,8 @@ function renderAtsHeightPlots(
     const deltaPoints = gnssAtsHeightDeltaPoints(
       gnssHeightsWithSigma,
       atsPoints,
-      allowFullGnssFallback
+      allowFullGnssFallback,
+      filterInfo.atsHeightOffset
     );
     const deltaAxis = axisData(deltaPoints, mode, timeOrigin);
     const deltaValues = yValuesFromTraces(deltaTraces, "y");
@@ -2202,11 +2222,12 @@ function renderAtsHeightPlots(
       ...timePlotLayout(deltaAxis.layout, mode),
       title: "GNSS / ATS Delta and Sigma",
       yaxis: {
-        title: "GNSS − ATS (m)",
+        title: "Zero-mean GNSS − ATS (m)",
         zeroline: true,
         autorange: true,
         ...meterAxisFromValues(deltaValues)
       },
+      annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset),
       legend: {
         itemclick: "toggle",
         itemdoubleclick: "toggleothers"
