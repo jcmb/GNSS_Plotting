@@ -590,12 +590,92 @@ function plainNumericAxisFormat() {
   };
 }
 
-function meterAxisFormat() {
+function meterAxisBase() {
   return {
     exponentformat: "none",
-    showexponent: "none",
-    tickformat: ".3f",
-    hoverformat: ".3f"
+    showexponent: "none"
+  };
+}
+
+function meterFormatFromSpan(span) {
+  if (!Number.isFinite(span) || span <= 0) {
+    return { tickformat: ".3f", hoverformat: ".4f" };
+  }
+  const decimals = Math.max(0, Math.min(6, Math.ceil(3 - Math.log10(Math.max(span, 1e-9)))));
+  const tickformat = decimals > 0 ? `.${decimals}f` : ".0f";
+  const hoverDecimals = Math.min(decimals + 1, 6);
+  const hoverformat = hoverDecimals > 0 ? `.${hoverDecimals}f` : ".1f";
+  return { tickformat, hoverformat };
+}
+
+function meterAxisFromValues(values) {
+  const finite = (values || []).filter(Number.isFinite);
+  if (!finite.length) {
+    return { ...meterAxisBase(), ...meterFormatFromSpan(1) };
+  }
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  const span = max - min || Math.max(Math.abs(max), Math.abs(min), 1);
+  return { ...meterAxisBase(), ...meterFormatFromSpan(span) };
+}
+
+function yValuesFromTraces(traces, yaxisId) {
+  const values = [];
+  (traces || []).forEach((trace) => {
+    const id = trace.yaxis || "y";
+    if (id !== yaxisId) return;
+    (trace.y || []).forEach((v) => {
+      if (Number.isFinite(v)) values.push(v);
+    });
+  });
+  return values;
+}
+
+function attachAdaptiveMeterAxis(plotId, yLayoutKey, yaxisId) {
+  const el = document.getElementById(plotId);
+  if (!el) return;
+
+  const apply = () => {
+    if (!el.layout || !el.data) return;
+    const axis = el.layout[yLayoutKey] || {};
+    let span;
+    if (Array.isArray(axis.range) && axis.range.length === 2) {
+      span = Math.abs(axis.range[1] - axis.range[0]);
+    } else {
+      const values = yValuesFromTraces(el.data, yaxisId);
+      if (!values.length) return;
+      span = Math.max(...values) - Math.min(...values);
+    }
+    const fmt = meterFormatFromSpan(span || 1);
+    Plotly.relayout(plotId, {
+      [yLayoutKey + ".tickformat"]: fmt.tickformat,
+      [yLayoutKey + ".hoverformat"]: fmt.hoverformat
+    });
+  };
+
+  el.on("plotly_relayout", (eventData) => {
+    if (!eventData) return;
+    const rangeKey = yLayoutKey + ".range";
+    const range0Key = yLayoutKey + ".range[0]";
+    if (
+      eventData[rangeKey] ||
+      eventData[range0Key] !== undefined ||
+      eventData[yLayoutKey + ".autorange"] === true ||
+      eventData["xaxis.range"] ||
+      eventData["xaxis.autorange"] === true
+    ) {
+      window.setTimeout(apply, 0);
+    }
+  });
+  apply();
+}
+
+function timeLinkedPlotLayout(commonLayout, extra) {
+  return {
+    margin: commonLayout.margin,
+    xaxis: commonLayout.xaxis,
+    legend: commonLayout.legend,
+    ...(extra || {})
   };
 }
 
@@ -1771,35 +1851,32 @@ function gnssHeightPointsForPlot(isMoving, points, atsMode) {
   return [];
 }
 
-function buildAtsHeightTraces(mode, gnssHeights, atsPoints) {
+function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin) {
   if (!atsPoints.length) return [];
 
   const tMin = Math.min(...atsPoints.map((p) => p.t));
   const tMax = Math.max(...atsPoints.map((p) => p.t));
   const gnssInWindow = gnssHeights.filter((p) => p.t >= tMin && p.t <= tMax);
-  const compareOrigin = sharedTimeOrigin(
-    ...(gnssInWindow.length ? [gnssInWindow, atsPoints] : [atsPoints])
-  );
   const traces = [];
 
   if (gnssInWindow.length) {
-    const gnssAxis = axisData(gnssInWindow, mode, compareOrigin);
+    const gnssAxis = axisData(gnssInWindow, mode, timeOrigin);
     traces.push(coloredLine(
       gnssAxis.x,
       gnssInWindow.map((p) => p.height),
       "GNSS Height",
       "d2",
-      { yaxis: "y2", line: { width: 2.5 } }
+      { line: { width: 2.5 } }
     ));
   }
 
-  const atsAxis = axisData(atsPoints, mode, compareOrigin);
+  const atsAxis = axisData(atsPoints, mode, timeOrigin);
   traces.push(coloredLine(
     atsAxis.x,
     atsPoints.map((p) => p.ele),
     "ATS Height (Ele)",
     "north",
-    { yaxis: "y2", line: { width: 2.5, dash: "dash" } }
+    { line: { width: 2.5, dash: "dash" } }
   ));
   return traces;
 }
@@ -1819,7 +1896,7 @@ function heightOffsetAnnotation(offset) {
   }];
 }
 
-function renderAtsNePlot(atsPoints, mode, showWhenEmpty) {
+function renderAtsNePlot(atsPoints, mode, showWhenEmpty, timeOrigin) {
   const emptyLayout = {
     margin: { l: 60, r: 30, t: 50, b: 45 },
     title: "ATS data unavailable",
@@ -1842,16 +1919,19 @@ function renderAtsNePlot(atsPoints, mode, showWhenEmpty) {
     return;
   }
 
-  const atsTimeOrigin = sharedTimeOrigin(atsPoints);
-  const atsAxis = axisData(atsPoints, mode, atsTimeOrigin);
+  const atsAxis = axisData(atsPoints, mode, timeOrigin ?? sharedTimeOrigin(atsPoints));
   const atsX = atsAxis.x;
-  drawPlotIfOpen("plot-ats-ne", [
+  const neTraces = [
     coloredLine(atsX, atsPoints.map((p) => p.n), "Northing", "north"),
     coloredLine(atsX, atsPoints.map((p) => p.e), "Easting", "east")
-  ], {
+  ];
+  const neValues = yValuesFromTraces(neTraces, "y");
+  drawPlotIfOpen("plot-ats-ne", neTraces, {
     ...timePlotLayout(atsAxis.layout, mode),
     title: "ATS Northing and Easting",
-    yaxis: { title: "Meters", ...meterAxisFormat() }
+    yaxis: { title: "Meters", ...meterAxisFromValues(neValues) }
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-ats-ne", "yaxis", "y");
   });
 }
 
@@ -1953,64 +2033,72 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   if (showAtsPlots) {
-    renderAtsNePlot(allAtsPoints, mode, hasAtsProvided && !allAtsPoints.length);
+    renderAtsNePlot(allAtsPoints, mode, hasAtsProvided && !allAtsPoints.length, timeOrigin);
   }
 
   const gnssHeights = gnssHeightPointsForPlot(isMoving, points, showAtsPlots);
   const showAtsHeightMode = showAtsPlots && allAtsPoints.length > 0;
   const atsHeightTraces = showAtsHeightMode
-    ? buildAtsHeightTraces(mode, gnssHeights, allAtsPoints)
+    ? buildAtsHeightTraces(mode, gnssHeights, allAtsPoints, timeOrigin)
     : [];
   const heightPlotTitle = showAtsHeightMode
     ? "Height"
     : (isMoving ? "Height" : "Height Error");
-  const heightY2Title = showAtsHeightMode
-    ? "Height (m)"
-    : (isMoving ? "Height (m)" : "Height Error (m)");
+  const heightY2Title = isMoving ? "Height (m)" : "Height Error (m)";
 
-  const heightTraces = [
-    latencyTrace(x, latency),
-    { ...vdopTrace(x, points, "y3"), visible: "legendonly" }
-  ];
   if (showAtsHeightMode && atsHeightTraces.length) {
-    heightTraces.push(...atsHeightTraces);
-  } else {
-    heightTraces.push(coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up", {
-      yaxis: "y2",
-      line: { width: 2.5 }
-    }));
-  }
-  const heightLayout = {
-    ...commonLayout,
-    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
-    title: heightPlotTitle,
-    yaxis: latencyPrimaryYAxis(),
-    yaxis2: overlayLeftYAxis({
-      title: heightY2Title,
-      zeroline: !showAtsHeightMode && !isMoving,
-      ...meterAxisFormat()
-    }),
-    yaxis3: {
-      title: "VDOP",
-      overlaying: "y",
-      side: "right",
-      anchor: "free",
-      position: 1.0,
-      showgrid: false
-    },
-    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
-    annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
-  };
-  drawPlotIfOpen("plot-height-error", heightTraces, heightLayout).then(() => {
-    attachOverlayAxisLegendSync("plot-height-error", {
-      yaxis: { title: "Latency (s)", traces: ["Latency (s)"] },
-      yaxis2: {
-        title: heightY2Title,
-        traces: ["GNSS Height", "ATS Height (Ele)", "Height", "Height Error"]
-      },
-      yaxis3: { title: "VDOP", traces: ["VDOP"] }
+    const heightValues = yValuesFromTraces(atsHeightTraces, "y");
+    drawPlotIfOpen("plot-height-error", atsHeightTraces, {
+      ...timeLinkedPlotLayout(commonLayout, {
+        title: heightPlotTitle,
+        yaxis: { title: "Height (m)", ...meterAxisFromValues(heightValues) },
+        legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
+        annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
+      })
+    }).then(() => {
+      attachAdaptiveMeterAxis("plot-height-error", "yaxis", "y");
     });
-  });
+  } else {
+    const heightTraces = [
+      latencyTrace(x, latency),
+      { ...vdopTrace(x, points, "y3"), visible: "legendonly" },
+      coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up", {
+        yaxis: "y2",
+        line: { width: 2.5 }
+      })
+    ];
+    const heightLayout = {
+      ...commonLayout,
+      margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
+      title: heightPlotTitle,
+      yaxis: latencyPrimaryYAxis(),
+      yaxis2: overlayLeftYAxis({
+        title: heightY2Title,
+        zeroline: !isMoving,
+        ...meterAxisFromValues(signedHeight.filter(Number.isFinite))
+      }),
+      yaxis3: {
+        title: "VDOP",
+        overlaying: "y",
+        side: "right",
+        anchor: "free",
+        position: 1.0,
+        showgrid: false
+      },
+      legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+    };
+    drawPlotIfOpen("plot-height-error", heightTraces, heightLayout).then(() => {
+      attachOverlayAxisLegendSync("plot-height-error", {
+        yaxis: { title: "Latency (s)", traces: ["Latency (s)"] },
+        yaxis2: {
+          title: heightY2Title,
+          traces: ["Height", "Height Error"]
+        },
+        yaxis3: { title: "VDOP", traces: ["VDOP"] }
+      });
+      attachAdaptiveMeterAxis("plot-height-error", "yaxis2", "y2");
+    });
+  }
 
   const showHeightSigma1 = document.getElementById("show-height-sigma-1")?.checked;
   const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
@@ -2021,45 +2109,57 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     show3Sigma: showHeightSigma3,
     sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
   });
-  const heightSigmaLayout = {
-    ...commonLayout,
-    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
-    title: showAtsHeightMode ? "Height and Sigma" : (isMoving ? "Height and Sigma" : "Height Error and Sigma"),
-    yaxis: showAtsHeightMode
-      ? { title: "V Sigma (m)", zeroline: true }
-      : {
-        title: heightY2Title,
-        zeroline: true
-      },
-    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
-    annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
-  };
-  if (showAtsHeightMode) {
-    heightSigmaLayout.yaxis2 = overlayLeftYAxis({
-      title: "Height (m)",
-      zeroline: false,
-      ...meterAxisFormat()
+  if (showAtsHeightMode && atsHeightTraces.length) {
+    const heightValues = yValuesFromTraces(atsHeightTraces, "y");
+    drawPlotIfOpen("plot-height-sigma", [
+      ...heightSigmaTraces.map((trace) => ({ ...trace, yaxis: "y2" })),
+      ...atsHeightTraces
+    ], {
+      ...timeLinkedPlotLayout(commonLayout, {
+        margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
+        title: "Height and Sigma",
+        yaxis: { title: "Height (m)", ...meterAxisFromValues(heightValues) },
+        yaxis2: {
+          title: "V Sigma (m)",
+          overlaying: "y",
+          side: "right",
+          zeroline: true,
+          showgrid: false
+        },
+        legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" },
+        annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
+      })
+    }).then(() => {
+      attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
     });
-  } else if (isMoving) {
-    heightSigmaLayout.yaxis2 = {
-      title: "V Sigma (m)",
-      overlaying: "y",
-      side: "right",
-      zeroline: true,
-      showgrid: false
+  } else {
+    const heightSigmaLayout = {
+      ...commonLayout,
+      margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
+      title: isMoving ? "Height and Sigma" : "Height Error and Sigma",
+      yaxis: {
+        title: heightY2Title,
+        zeroline: true,
+        ...meterAxisFromValues(signedHeight.filter(Number.isFinite))
+      },
+      legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
     };
+    if (isMoving) {
+      heightSigmaLayout.yaxis2 = {
+        title: "V Sigma (m)",
+        overlaying: "y",
+        side: "right",
+        zeroline: true,
+        showgrid: false
+      };
+    }
+    drawPlotIfOpen("plot-height-sigma", [
+      ...heightSigmaTraces.map((trace) => (isMoving ? { ...trace, yaxis: "y2" } : trace)),
+      coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")
+    ], heightSigmaLayout).then(() => {
+      attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
+    });
   }
-  const heightSigmaMainTraces = showAtsHeightMode && atsHeightTraces.length
-    ? atsHeightTraces
-    : [coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")];
-  drawPlotIfOpen("plot-height-sigma", [
-    ...heightSigmaTraces.map((trace) => (
-      showAtsHeightMode
-        ? trace
-        : (isMoving ? { ...trace, yaxis: "y2" } : trace)
-    )),
-    ...heightSigmaMainTraces
-  ], heightSigmaLayout);
 
   if (isMoving) {
     const vel = velocitySeries(points);
