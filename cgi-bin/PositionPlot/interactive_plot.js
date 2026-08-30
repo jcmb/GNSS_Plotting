@@ -1254,6 +1254,12 @@ function purgePlotElementsInCard(card) {
   });
 }
 
+function setPlotCardTitle(cardId, title) {
+  const card = plotCardElement(cardId);
+  const heading = card?.querySelector(".plot-card-header h3, :scope > h3");
+  if (heading) heading.textContent = title;
+}
+
 function plotCardTitle(cardId) {
   const card = plotCardElement(cardId);
   const heading = card?.querySelector(".plot-card-header h3, h3");
@@ -1807,21 +1813,17 @@ function applySessionPlotVisibility(isMoving, hasTruth, showAtsPlots) {
   document.querySelectorAll(".plot-ats-only").forEach((el) => {
     el.style.display = showAtsPlots ? "" : "none";
   });
-  const heightCard = document.getElementById("plot-height-error");
-  if (heightCard) {
-    const heading = heightCard.closest(".plot-card")?.querySelector("h3");
-    if (heading) {
-      heading.textContent = showAtsPlots && allAtsPoints.length ? "Height" : (isMoving ? "Height" : "Height Error");
-    }
-  }
-  const heightSigmaCard = document.getElementById("plot-height-sigma");
-  if (heightSigmaCard) {
-    const heading = heightSigmaCard.closest(".plot-card")?.querySelector("h3");
-    if (heading) {
-      heading.textContent = showAtsPlots && allAtsPoints.length
-        ? "Height and Sigma"
-        : (isMoving ? "Height and Sigma" : "Height Error and Sigma");
-    }
+
+  const hasAtsHeightData = showAtsPlots && allAtsPoints.length > 0;
+  if (hasAtsHeightData) {
+    setPlotCardTitle("plot-height-error", "GNSS / ATS Height");
+    setPlotCardTitle("plot-height-sigma", "GNSS / ATS Height and Sigma");
+  } else if (isMoving) {
+    setPlotCardTitle("plot-height-error", "Height");
+    setPlotCardTitle("plot-height-sigma", "Height and Sigma");
+  } else {
+    setPlotCardTitle("plot-height-error", "Height Error");
+    setPlotCardTitle("plot-height-sigma", "Height Error and Sigma");
   }
 }
 
@@ -1902,10 +1904,9 @@ function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFul
   return traces;
 }
 
-function buildAtsHeightChart(mode, gnssHeights, atsPoints, timeOrigin, options = {}) {
-  if (!atsPoints.length) return null;
+function renderAtsHeightPlots(mode, gnssHeights, atsPoints, timeOrigin, filterInfo, allowFullGnssFallback) {
+  if (!atsPoints.length) return false;
 
-  const allowFullGnssFallback = !!options.allowFullGnssFallback;
   const traces = buildAtsHeightTraces(
     mode,
     gnssHeights,
@@ -1913,41 +1914,38 @@ function buildAtsHeightChart(mode, gnssHeights, atsPoints, timeOrigin, options =
     timeOrigin,
     allowFullGnssFallback
   );
-  if (!traces.length) return null;
+  if (!traces.length) return false;
 
   const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
   const axisPoints = gnssForPlot.length ? [...gnssForPlot, ...atsPoints] : atsPoints;
   const axis = axisData(axisPoints, mode, timeOrigin);
   const heightValues = yValuesFromTraces(traces, "y");
-
-  return {
-    traces,
-    layout: {
-      margin: {
-        l: 60,
-        r: 30,
-        t: usesDateTimeAxis(mode) ? 58 : 50,
-        b: 45
-      },
-      xaxis: axis.layout,
-      yaxis: {
-        title: "Height (m)",
-        autorange: true,
-        ...meterAxisFromValues(heightValues)
-      },
-      legend: {
-        orientation: "h",
-        y: 1.02,
-        x: 0,
-        xanchor: "left",
-        yanchor: "bottom",
-        itemclick: "toggle",
-        itemdoubleclick: "toggleothers"
-      },
-      title: options.title || "Height",
-      annotations: options.annotations || []
-    }
+  const layoutBase = {
+    ...timePlotLayout(axis.layout, mode),
+    yaxis: {
+      title: "Height (m)",
+      autorange: true,
+      ...meterAxisFromValues(heightValues)
+    },
+    annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
   };
+
+  drawPlotIfOpen("plot-height-error", traces, {
+    ...layoutBase,
+    title: "GNSS / ATS Height"
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-height-error", "yaxis", "y");
+  });
+
+  drawPlotIfOpen("plot-height-sigma", traces, {
+    ...layoutBase,
+    margin: { ...layoutBase.margin, r: Y2_AXIS_RIGHT_MARGIN },
+    title: "GNSS / ATS Height and Sigma"
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
+  });
+
+  return true;
 }
 
 function heightOffsetAnnotation(offset) {
@@ -2017,8 +2015,8 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const hasAtsData = allAtsPoints.length > 0;
   const showAtsPlots = hasAtsProvided || hasAtsData;
   const isMoving = isMovingSession && !hasTruth;
-  applySessionPlotVisibility(isMovingSession, hasTruth, showAtsPlots);
   initPlotCardChrome();
+  applySessionPlotVisibility(isMovingSession, hasTruth, showAtsPlots);
 
   purgeAllPlots();
   beginPlotDrawBatch();
@@ -2110,23 +2108,20 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   const hasAtsHeightMatch = Number.isFinite(filterInfo.atsHeightMatched) && filterInfo.atsHeightMatched > 0;
   const showAtsHeightMode = showAtsPlots && allAtsPoints.length > 0;
   const allowFullGnssFallback = hasAtsHeightMatch && gnssHeights.length > 0;
-  const atsHeightChart = showAtsHeightMode
-    ? buildAtsHeightChart(mode, gnssHeights, allAtsPoints, timeOrigin, {
-      title: "Height",
-      allowFullGnssFallback,
-      annotations: heightOffsetAnnotation(filterInfo.atsHeightOffset)
-    })
-    : null;
+  const renderedAtsHeights = showAtsHeightMode && renderAtsHeightPlots(
+    mode,
+    gnssHeights,
+    allAtsPoints,
+    timeOrigin,
+    filterInfo,
+    allowFullGnssFallback
+  );
   const heightPlotTitle = showAtsHeightMode
-    ? "Height"
+    ? "GNSS / ATS Height"
     : (isMoving ? "Height" : "Height Error");
   const heightY2Title = isMoving ? "Height (m)" : "Height Error (m)";
 
-  if (atsHeightChart) {
-    drawPlotIfOpen("plot-height-error", atsHeightChart.traces, atsHeightChart.layout).then(() => {
-      attachAdaptiveMeterAxis("plot-height-error", "yaxis", "y");
-    });
-  } else {
+  if (!renderedAtsHeights) {
     const heightTraces = [
       latencyTrace(x, latency),
       { ...vdopTrace(x, points, "y3"), visible: "legendonly" },
@@ -2168,34 +2163,16 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     });
   }
 
-  const showHeightSigma1 = document.getElementById("show-height-sigma-1")?.checked;
-  const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
-  const showHeightSigma3 = document.getElementById("show-height-sigma-3")?.checked;
-  const heightSigmaTraces = verticalSigmaBandTraces(x, vSigma, {
-    show1Sigma: showHeightSigma1,
-    show2Sigma: showHeightSigma2,
-    show3Sigma: showHeightSigma3,
-    sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
-  });
-  if (atsHeightChart) {
-    drawPlotIfOpen("plot-height-sigma", [
-      ...heightSigmaTraces.map((trace) => ({ ...trace, yaxis: "y2" })),
-      ...atsHeightChart.traces
-    ], {
-      ...atsHeightChart.layout,
-      margin: { ...atsHeightChart.layout.margin, r: Y2_AXIS_RIGHT_MARGIN },
-      title: "Height and Sigma",
-      yaxis2: {
-        title: "V Sigma (m)",
-        overlaying: "y",
-        side: "right",
-        zeroline: true,
-        showgrid: false
-      }
-    }).then(() => {
-      attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
+  if (!renderedAtsHeights) {
+    const showHeightSigma1 = document.getElementById("show-height-sigma-1")?.checked;
+    const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
+    const showHeightSigma3 = document.getElementById("show-height-sigma-3")?.checked;
+    const heightSigmaTraces = verticalSigmaBandTraces(x, vSigma, {
+      show1Sigma: showHeightSigma1,
+      show2Sigma: showHeightSigma2,
+      show3Sigma: showHeightSigma3,
+      sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
     });
-  } else {
     const heightSigmaLayout = {
       ...commonLayout,
       margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },

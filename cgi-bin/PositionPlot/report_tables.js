@@ -296,10 +296,14 @@ function parseAtsTruthStatus(sessionKv, plotFilterText) {
   const line = sessionKv["ATS truth file"] || sessionKv["Truth file"];
   const filename = sessionKv["ATS filename"] || parseAtsFilename(line);
   if (line) {
-    if (/not used/i.test(line)) {
+    if (/not used|not applied/i.test(line)) {
+      const dash = line.indexOf("—");
+      const detail = dash >= 0
+        ? line.slice(dash + 1).trim()
+        : "not used (processed as normal)";
       return filename
-        ? `Provided (${filename}) — not used (no GNSS time overlap; processed as normal)`
-        : "Provided — not used (no GNSS time overlap; processed as normal)";
+        ? `Provided (${filename}) — ${detail}`
+        : `Provided — ${detail}`;
     }
     if (/applied/i.test(line)) {
       return filename

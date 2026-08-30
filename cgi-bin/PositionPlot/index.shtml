@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250829q"></script>
+<script src="interactive_plot.js?v=20250829r"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -247,7 +247,7 @@
     display: none;
   }
 </style>
-<script src="report_tables.js?v=20250829n"></script>
+<script src="report_tables.js?v=20250829r"></script>
 </head>
 <body onload="loadReportTables(); loadInteractivePosition(); checkProcessingStatus();">
 <div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">
@@ -318,12 +318,12 @@ Location: <!--#include virtual="kml.html" -->
 </div>
 
 <div class="plot-card" data-card-id="plot-height-error">
-  <h3>Height Error</h3>
+  <h3>Height</h3>
   <div id="plot-height-error" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card" data-card-id="plot-height-sigma">
-  <h3>Height Error and Sigma</h3>
+  <h3>Height and Sigma</h3>
   <label><input type="checkbox" id="show-height-sigma-1" checked> Show 1σ</label>
   <label><input type="checkbox" id="show-height-sigma-2"> Show 2σ</label>
   <label><input type="checkbox" id="show-height-sigma-3"> Show 3σ</label>

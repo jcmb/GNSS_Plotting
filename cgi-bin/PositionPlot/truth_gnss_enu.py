@@ -148,8 +148,8 @@ def solve_linear_system(matrix: list[list[float]], rhs: list[float]) -> list[flo
     return [aug[i][n] for i in range(n)]
 
 
-def fit_helmert_2d(src_n: list[float], src_e: list[float],
-                   tgt_n: list[float], tgt_e: list[float]) -> tuple[float, float, float, float]:
+def _fit_helmert_2d_raw(src_n: list[float], src_e: list[float],
+                        tgt_n: list[float], tgt_e: list[float]) -> tuple[float, float, float, float]:
     ata = [[0.0] * 4 for _ in range(4)]
     atb = [0.0] * 4
     for ns, es, nt, et in zip(src_n, src_e, tgt_n, tgt_e):
@@ -160,6 +160,26 @@ def fit_helmert_2d(src_n: list[float], src_e: list[float],
                 for j in range(4):
                     ata[i][j] += coeffs[i] * coeffs[j]
     a_val, b_val, tx, ty = solve_linear_system(ata, atb)
+    return a_val, b_val, tx, ty
+
+
+def fit_helmert_2d(src_n: list[float], src_e: list[float],
+                   tgt_n: list[float], tgt_e: list[float]) -> tuple[float, float, float, float]:
+    """Fit 2D Helmert transform; center coordinates first for UTM-scale stability."""
+    count = len(src_n)
+    if count == 0:
+        raise ValueError("No points for Helmert fit")
+    mean_sn = sum(src_n) / count
+    mean_se = sum(src_e) / count
+    mean_tn = sum(tgt_n) / count
+    mean_te = sum(tgt_e) / count
+    src_n_c = [value - mean_sn for value in src_n]
+    src_e_c = [value - mean_se for value in src_e]
+    tgt_n_c = [value - mean_tn for value in tgt_n]
+    tgt_e_c = [value - mean_te for value in tgt_e]
+    a_val, b_val, tx_c, ty_c = _fit_helmert_2d_raw(src_n_c, src_e_c, tgt_n_c, tgt_e_c)
+    tx = tx_c + mean_tn - (a_val * mean_sn - b_val * mean_se)
+    ty = ty_c + mean_te - (b_val * mean_sn + a_val * mean_se)
     return a_val, b_val, tx, ty
 
 

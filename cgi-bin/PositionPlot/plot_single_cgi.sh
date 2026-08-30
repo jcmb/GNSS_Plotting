@@ -415,7 +415,12 @@ then
    echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — applied"
 elif [ "$TRUTH_ATTEMPTED" = "yes" ]
 then
-   echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — not used (no GNSS overlap)"
+   if [ -n "${ATS_HEIGHT_MATCHED:-}" ] && [ "${ATS_HEIGHT_MATCHED:-0}" -gt 0 ]
+   then
+      echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — ENU alignment not applied (${ATS_HEIGHT_MATCHED} GNSS/ATS height epochs overlap; processed as normal)"
+   else
+      echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — not used (no GNSS time overlap; processed as normal)"
+   fi
 else
    echo "ATS truth file: no"
 fi
