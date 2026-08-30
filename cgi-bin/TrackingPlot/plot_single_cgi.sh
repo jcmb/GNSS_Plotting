@@ -78,6 +78,7 @@ SNR_STATS.py
 echo "Linking interactive plot pages"
 ln -s "$normalDir"/SNR_Plot.shtml
 ln -s "$normalDir"/Tracking_Plot.shtml
+ln -s "$normalDir"/All_SVs_Tracking_Plot.shtml
 ln -s "$normalDir"/Slips_Plot.shtml
 ln -s "$normalDir"/SV_Tracking_Plot.shtml
 ln -s "$normalDir"/SV_SNR_Plot.shtml

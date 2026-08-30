@@ -48,7 +48,7 @@ function create_plot(System,SV,Mode) {
         }
 
     if (System == "BDS") {
-        Max_Bands=3;
+        Max_Bands=5;
         }
 
     if (System == "GAL") {
@@ -177,8 +177,10 @@ function create_plot(System,SV,Mode) {
 
     if (System == "BDS") {
         options.series[0] = {name:  "B1"}
-        options.series[1] = {name:  "B2"}
-        options.series[2] = {name:  "B3"}
+        options.series[1] = {name:  "B2a"}
+        options.series[2] = {name:  "B2b"}
+        options.series[3] = {name:  "B2I"}
+        options.series[4] = {name:  "B3"}
         }
 
     File_Name=antennaFilePrefix(plotAntennas, plotAntenna) + System + "-" + SV +".SNR-SV";
@@ -295,7 +297,7 @@ function create_compare_plot(System, SV, Mode) {
     } else if (System == "SBAS") {
         Max_Bands = 2;
     } else if (System == "BDS") {
-        Max_Bands = 3;
+        Max_Bands = 5;
     } else {
         Max_Bands = 2;
     }

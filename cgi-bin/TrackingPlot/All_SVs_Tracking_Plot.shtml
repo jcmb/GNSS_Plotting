@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+   <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+   <meta charset="utf-8" />
+   <title>All SV Tracking</title>
+</head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="./">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content">
+
+<script src="/libraries/jquery-1.10.2.min.js"></script>
+<script src="antenna_common.js"></script>
+<script src="/libraries/highcharts.js"></script>
+<script src="/libraries/highcharts-more.js"></script>
+<script src="/libraries/exporting.js"></script>
+<h1 id="title">All SV Tracking: <!--#include virtual="file.html" --></h1>
+<p>Every tracked satellite across all constellations and bands on one timeline. Colors are by constellation; slip events use the alert marker.</p>
+<div id="antenna-selector"></div>
+<p/>
+<div id="container"></div>
+<div id="status"></div><br/>
+<p>
+<a href="index.shtml">Results index</a> |
+<a href="#" onclick="navigatePlot('Tracking_Plot.shtml'); return false;">Single-band tracking</a> |
+<a href="#" onclick="navigatePlot('SV_Tracking_Plot.shtml'); return false;">Single SV tracking</a>
+</p>
+
+<script>
+var plotAntennas = ["0"];
+var plotAntenna = "0";
+
+initAntennaPage("antenna-selector", function(antennas, antenna) {
+    plotAntennas = antennas;
+    plotAntenna = antenna;
+    create_all_sv_plot();
+});
+
+function createTrackingSeries() {
+    var series = [];
+    ALL_SV_TRACKING_LAYOUT.forEach(function(block) {
+        series.push({
+            name: block.system,
+            color: block.color,
+            data: []
+        });
+    });
+    return series;
+}
+
+function create_all_sv_plot() {
+    var yRange = allSvTrackingYRange();
+    var options = interactiveChartOptions({
+        chart: {
+            renderTo: "container",
+            type: "scatter",
+            animation: false
+        },
+        legend: {
+            enabled: true
+        },
+        title: {
+            text: "All SV Tracking"
+        },
+        xAxis: {
+            type: "datetime",
+            title: {
+                text: "GPS Time"
+            }
+        },
+        yAxis: {
+            min: yRange.min,
+            max: yRange.max,
+            endOnTick: false,
+            title: {
+                text: "SV (stacked by constellation)"
+            },
+            plotLines: ALL_SV_TRACKING_LAYOUT.map(function(block) {
+                return {
+                    value: block.yOffset + 0.5,
+                    color: "#cccccc",
+                    width: 1,
+                    zIndex: 2,
+                    label: {
+                        text: block.system,
+                        align: "right",
+                        x: -4,
+                        style: { color: block.color }
+                    }
+                };
+            })
+        },
+        tooltip: {
+            formatter: function() {
+                var p = this.point;
+                return "<b>" + p.system + " " + p.sv + "</b><br/>" +
+                    "Band: " + p.band + "<br/>" +
+                    "Elev: " + p.elev + " Az: " + p.az + "<br/>" +
+                    "SNR: " + p.snr;
+            }
+        },
+        plotOptions: {
+            series: {
+                turboThreshold: 0
+            },
+            scatter: {
+                marker: {
+                    radius: 1,
+                    states: {
+                        hover: {
+                            enabled: true,
+                            lineColor: "rgb(100,100,100)"
+                        }
+                    }
+                }
+            }
+        },
+        series: createTrackingSeries()
+    });
+
+    $("#status").text("Loading tracked bands");
+    loadTrackedBands(plotAntennas, plotAntenna).then(function(bands) {
+        if (!bands.length) {
+            $("#status").text("No tracked bands found.");
+            new Highcharts.Chart(options);
+            return;
+        }
+
+        var lastSlip = {};
+        var requests = bands.map(function(band) {
+            return loadBandSnr(plotAntennas, plotAntenna, band.system, band.freq, band.signal)
+                .then(function(rows) {
+                    return { band: band, rows: rows };
+                });
+        });
+
+        $("#status").text("Loading SNR data (" + bands.length + " bands)");
+        whenAll(requests).done(function(results) {
+            results.forEach(function(result) {
+                result.rows.forEach(function(row) {
+                    appendAllSvTrackingPoint(
+                        options.series,
+                        {
+                            system: result.band.system,
+                            sv: row.sv,
+                            epoch: row.epoch,
+                            elev: row.elev,
+                            az: row.az,
+                            snr: row.snr,
+                            slip: row.slip
+                        },
+                        result.band.label,
+                        lastSlip
+                    );
+                });
+            });
+
+            options.series = options.series.filter(function(series) {
+                return series.data.length > 0;
+            });
+
+            $("#status").text("Creating plot");
+            new Highcharts.Chart(options);
+            $("#status").text("");
+        }).fail(function() {
+            $("#status").text("Unable to load all-SV tracking data.");
+        });
+    }).fail(function() {
+        $("#status").text("Unable to read Tracked.Bands.");
+    });
+}
+</script>
+
+</div>
+</div>
+</div>
+</body>
+</html>

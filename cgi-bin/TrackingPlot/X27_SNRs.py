@@ -188,7 +188,7 @@ def null_sv_row(system, antenna):
     if system == 3:
         return ",,,,,,\n"
     if system == 10:
-        return ",,,,,,,,\n"
+        return ",,,,,,,,,,,\n"
     return ",,,,,,\n"
 
 
@@ -243,6 +243,8 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
         handle.write(
             prefix
             + sv_snr.get(326, "") + ',' + sv_slip.get(326, "") + ','
+            + sv_snr.get(108, "") + ',' + sv_slip.get(108, "") + ','
+            + sv_snr.get(163, "") + ',' + sv_slip.get(163, "") + ','
             + sv_snr.get(178, "") + ',' + sv_slip.get(178, "") + ','
             + sv_snr.get(379, "") + ',' + sv_slip.get(379, "") + "\n"
         )

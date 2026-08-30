@@ -73,7 +73,7 @@ ogo"> </a>
         }
 
     if (System == "BDS") {
-        Max_Bands=3;
+        Max_Bands=5;
         }
 
     if (System == "SBAS") {
@@ -246,8 +246,10 @@ ogo"> </a>
 
     if (System == "BDS") {
         options.series[1].name="B1"
-        options.series[2].name="B2"
-        options.series[3].name="B3"
+        options.series[2].name="B2a"
+        options.series[3].name="B2b"
+        options.series[4].name="B2I"
+        options.series[5].name="B3"
         }
 
 
@@ -346,7 +348,7 @@ ogo"> </a>
     } else if (System == "GAL" || System == "SBAS") {
         Max_Bands = 2;
     } else if (System == "BDS") {
-        Max_Bands = 3;
+        Max_Bands = 5;
     }
 
     var bandNames = bandNamesForSystem(System, Max_Bands);
