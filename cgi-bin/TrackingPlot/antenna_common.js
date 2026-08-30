@@ -504,7 +504,7 @@ function bandNamesForSystem(System, maxBands) {
         return ["E1 C/A", "E5 AltBoc"].slice(0, maxBands);
     }
     if (System === "BDS") {
-        return ["B1", "B2"].slice(0, maxBands);
+        return ["B1", "B2", "B3"].slice(0, maxBands);
     }
     if (System === "SBAS") {
         return ["L1 C/A", "L5 IQ"].slice(0, maxBands);
@@ -523,7 +523,10 @@ function maxBandsForSystem(System) {
     if (System === "GLONASS") {
         return 4;
     }
-    if (System === "GAL" || System === "BDS" || System === "SBAS") {
+    if (System === "BDS") {
+        return 3;
+    }
+    if (System === "GAL" || System === "SBAS") {
         return 2;
     }
     return 2;
@@ -541,6 +544,8 @@ function trackingLimits(System) {
     } else if (System === "SBAS") {
         Min_SVs = 120;
         Max_SVs = 158;
+    } else if (System === "BDS") {
+        Max_SVs = 63;
     }
     return { min: Min_SVs, max: Max_SVs };
 }

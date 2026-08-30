@@ -71,6 +71,7 @@ def output_plot(System, sv_file, plot_base, HTML_File, Plot_Name):
     elif System == "BDS":
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "B1"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "B2"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "B3"))
         print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
     elif System == "SBAS":
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "L1 C/A"))

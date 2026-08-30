@@ -94,6 +94,11 @@ function create_plot(System,Freq,Signal) {
         Max_SVs=158;
         }
 
+    if (System == "BDS") {
+        Min_SVs=1;
+        Max_SVs=63;
+        }
+
 
     var options = interactiveChartOptions({
         chart: {
