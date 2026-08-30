@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 import GPS_TIME
 
-from gnss_time import gps_unix_to_posix
+from gnss_time import LEAP_SECONDS, gnss_week_sow_to_plot_unix, plot_unix_to_gps_unix
 from parse_ats import gnss_local_timezone
 
 
@@ -25,15 +25,16 @@ def parse_unix(fields):
         try:
             week = int(float(week_raw))
             if week >= 0:
-                return GPS_TIME.Week_Seconds_To_Unix(week, sow)
+                return gnss_week_sow_to_plot_unix(week, sow)
         except (TypeError, ValueError):
             pass
     return None
 
 
-def format_gps(unix_sec):
-    week = GPS_TIME.DateTime_To_Week(unix_sec)
-    sow = GPS_TIME.DateTime_To_Seconds_Of_Week(unix_sec)
+def format_gps(plot_unix):
+    gps_unix = plot_unix_to_gps_unix(plot_unix)
+    week = GPS_TIME.DateTime_To_Week(gps_unix)
+    sow = GPS_TIME.DateTime_To_Seconds_Of_Week(gps_unix)
     return "Week {}, {:.3f} s".format(week, sow)
 
 
@@ -65,16 +66,16 @@ def format_tz_offset_line():
     return "Local TZ offset: {}{}:{:02d}".format(prefix, hours, minutes)
 
 
-def format_local(gps_unix):
-    return datetime.fromtimestamp(
-        gps_unix_to_posix(gps_unix), tz=local_timezone()
-    ).strftime("%Y-%m-%d %H:%M:%S")
+def format_local(plot_unix):
+    return datetime.fromtimestamp(plot_unix, tz=local_timezone()).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
-def format_utc(gps_unix):
-    return datetime.fromtimestamp(
-        gps_unix_to_posix(gps_unix), tz=timezone.utc
-    ).strftime("%Y-%m-%d %H:%M:%S UTC")
+def format_utc(plot_unix):
+    return datetime.fromtimestamp(plot_unix, tz=timezone.utc).strftime(
+        "%Y-%m-%d %H:%M:%S UTC"
+    )
 
 
 def print_range(prefix, min_unix, max_unix):
@@ -132,6 +133,7 @@ def main():
         return
 
     print(format_tz_offset_line())
+    print("GNSS leap seconds: +{} s applied to plot time".format(LEAP_SECONDS))
     print_range("", min_unix, max_unix)
 
     if args.ats:

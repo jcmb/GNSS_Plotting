@@ -1,4 +1,4 @@
-"""GNSS GPS-time vs POSIX unix conversions (leap-second handling)."""
+"""GNSS/ATS plot time: POSIX unix with leap seconds applied to GNSS only."""
 
 from __future__ import annotations
 
@@ -7,16 +7,16 @@ import GPS_TIME
 LEAP_SECONDS = 18
 
 
-def gps_week_sow_to_gps_unix(week: int, sow: float) -> float:
-    """Convert GPS week/SOW to internal GPS unix (no leap seconds)."""
-    return GPS_TIME.Week_Seconds_To_Unix(week, sow)
+def gnss_week_sow_to_plot_unix(week: int, sow: float) -> float:
+    """Convert GPS week/SOW to plot time (POSIX unix, UTC-aligned)."""
+    return GPS_TIME.Week_Seconds_To_Unix(week, sow) + LEAP_SECONDS
 
 
-def gps_unix_to_posix(gps_unix: float) -> float:
-    """Convert internal GPS unix to POSIX unix for UTC/local display."""
-    return gps_unix + LEAP_SECONDS
+def plot_unix_to_gps_unix(plot_unix: float) -> float:
+    """Convert plot POSIX unix to GPS-time unix for week/SOW formatting."""
+    return plot_unix - LEAP_SECONDS
 
 
-def posix_to_gps_unix(posix: float) -> float:
-    """Convert POSIX unix (e.g. from datetime.timestamp()) to GPS unix."""
-    return posix - LEAP_SECONDS
+def ats_local_to_plot_unix(posix: float) -> float:
+    """Convert ATS local civil time (datetime.timestamp()) to plot unix."""
+    return posix

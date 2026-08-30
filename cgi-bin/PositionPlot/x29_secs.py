@@ -6,7 +6,7 @@ import sys
 import csv
 import GPS_TIME
 
-from gnss_time import gps_week_sow_to_gps_unix
+from gnss_time import gnss_week_sow_to_plot_unix
 
 writer = csv.writer(sys.stdout)
 
@@ -23,7 +23,7 @@ for line in sys.stdin:
    if len(fields) < 71 :
       continue
    try :
-       fields[1]=gps_week_sow_to_gps_unix(int(fields[0]),float(fields[1]))
+       fields[1]=gnss_week_sow_to_plot_unix(int(fields[0]),float(fields[1]))
        fields[0]=""
        writer.writerow(fields[:29])
 #       print fields

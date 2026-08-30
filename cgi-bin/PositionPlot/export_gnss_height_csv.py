@@ -6,11 +6,7 @@ from __future__ import annotations
 import csv
 import sys
 
-from gnss_time import gps_week_sow_to_gps_unix
-
-
-def gnss_gps_unix(week: int, sow: float) -> float:
-    return gps_week_sow_to_gps_unix(week, sow)
+from gnss_time import gnss_week_sow_to_plot_unix
 
 
 def export_gnss_heights(path: str) -> list[tuple[float, float]]:
@@ -29,7 +25,7 @@ def export_gnss_heights(path: str) -> list[tuple[float, float]]:
                 height = float(fields[12])
             except ValueError:
                 continue
-            rows.append((gnss_gps_unix(week, sow), height))
+            rows.append((gnss_week_sow_to_plot_unix(week, sow), height))
     rows.sort(key=lambda row: row[0])
     return rows
 

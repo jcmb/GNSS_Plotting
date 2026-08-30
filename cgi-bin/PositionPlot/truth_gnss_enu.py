@@ -9,7 +9,7 @@ import sys
 from typing import Iterable
 
 import GPS_TIME
-from gnss_time import LEAP_SECONDS, gps_week_sow_to_gps_unix
+from gnss_time import LEAP_SECONDS, gnss_week_sow_to_plot_unix
 from parse_ats import AtsTruthPoint, parse_ats_file
 WGS84_A = 6378137.0
 WGS84_F = 1 / 298.257223563
@@ -60,7 +60,7 @@ def read_gnss_rows(path: str, sol_type: int | None) -> list[dict]:
                 continue
             rows.append({
                 "fields": fields,
-                "t": gps_week_sow_to_gps_unix(week, sow),
+                "t": gnss_week_sow_to_plot_unix(week, sow),
                 "lat": lat,
                 "lon": lon,
                 "height": height,
@@ -204,7 +204,7 @@ def write_report(path: str, *, matched: int, dropped_start: int, dropped_end: in
         f"Matched epochs: {matched}",
         f"Dropped before overlap: {dropped_start}",
         f"Dropped after overlap: {dropped_end}",
-        f"Leap seconds ({LEAP_SECONDS} s) applied for UTC/local display; internal times use GPS unix",
+        f"Leap seconds ({LEAP_SECONDS} s) applied to GNSS plot time; ATS uses local civil POSIX",
         "ATS elevation: orthometric (offset removed)",
         f"Height offset (mean GNSS height - ATS Ele): {height_offset:.4f} m",
         f"truth_height_offset: {height_offset:.4f}",
