@@ -295,6 +295,108 @@ function mapSolutionType(raw) {
   return n;
 }
 
+const X29_SV_BLOCK_START = 29;
+const X29_SV_BLOCK_END = 70;
+const X29_SV_USED_FLAG = 0x02;
+
+const CONSTELLATION_SV_SERIES = [
+  { key: "GPS", label: "GPS" },
+  { key: "GLONASS", label: "GLONASS" },
+  { key: "Galileo", label: "Galileo" },
+  { key: "BeiDou", label: "BeiDou" },
+  { key: "QZSS", label: "QZSS" },
+  { key: "SBAS", label: "SBAS" },
+  { key: "NavIC", label: "NavIC" }
+];
+
+const CONSTELLATION_SV_COLORS = {
+  GPS: "#1f77b4",
+  GLONASS: "#ff7f0e",
+  Galileo: "#9467bd",
+  BeiDou: "#d62728",
+  QZSS: "#8c564b",
+  SBAS: "#e377c2",
+  NavIC: "#17becf"
+};
+
+function emptyConstellationSvCounts() {
+  const counts = {};
+  CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+    counts[key] = { tracked: 0, used: 0 };
+  });
+  return counts;
+}
+
+function svTypeToConstellation(svType) {
+  switch (Math.trunc(Number(svType))) {
+    case 0: return "GPS";
+    case 1: return "SBAS";
+    case 2: return "GLONASS";
+    case 3: return "Galileo";
+    case 4: return "QZSS";
+    case 5:
+    case 7:
+    case 10: return "BeiDou";
+    case 9: return "NavIC";
+    default: return null;
+  }
+}
+
+function parseConstellationSvCounts(fields) {
+  const counts = emptyConstellationSvCounts();
+  if (!fields || fields.length <= X29_SV_BLOCK_END) {
+    return counts;
+  }
+  for (let i = X29_SV_BLOCK_START; i + 2 <= X29_SV_BLOCK_END; i += 3) {
+    const svId = Number(fields[i]);
+    const svType = Number(fields[i + 1]);
+    const svFlags = Number(fields[i + 2]);
+    if (!Number.isFinite(svId) || svId === 0) continue;
+    const key = svTypeToConstellation(svType);
+    if (!key || !counts[key]) continue;
+    counts[key].tracked += 1;
+    if (Number.isFinite(svFlags) && (Math.trunc(svFlags) & X29_SV_USED_FLAG)) {
+      counts[key].used += 1;
+    }
+  }
+  return counts;
+}
+
+function constellationSvTraces(x, points) {
+  const traces = [];
+  CONSTELLATION_SV_SERIES.forEach(({ key, label }) => {
+    const hasData = points.some((p) => {
+      const entry = p.constellation && p.constellation[key];
+      return entry && (entry.tracked > 0 || entry.used > 0);
+    });
+    if (!hasData) return;
+    const color = CONSTELLATION_SV_COLORS[key];
+    traces.push({
+      x,
+      y: points.map((p) => {
+        const entry = p.constellation && p.constellation[key];
+        return entry && entry.tracked > 0 ? entry.tracked : null;
+      }),
+      name: label + " Tracked",
+      mode: "lines",
+      visible: "legendonly",
+      line: { color, width: 1.5, dash: "dot" }
+    });
+    traces.push({
+      x,
+      y: points.map((p) => {
+        const entry = p.constellation && p.constellation[key];
+        return entry && entry.used > 0 ? entry.used : null;
+      }),
+      name: label + " Used",
+      mode: "lines",
+      visible: "legendonly",
+      line: { color, width: 1.5 }
+    });
+  });
+  return traces;
+}
+
 function parseX29Csv(text) {
   const rows = text.trim().split(/\r?\n/);
   const data = [];
@@ -310,7 +412,14 @@ function parseX29Csv(text) {
     if (!Number.isFinite(t) || solution == null) continue;
     const gps = parseGpsTimeFromFields(f, t);
     data.push({
-      t, solution, tracked, used, latency, gpsWeek: gps.gpsWeek, gpsSec: gps.gpsSec
+      t,
+      solution,
+      tracked,
+      used,
+      latency,
+      constellation: parseConstellationSvCounts(f),
+      gpsWeek: gps.gpsWeek,
+      gpsSec: gps.gpsSec
     });
   }
   return data;
@@ -2438,6 +2547,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   drawPlotIfOpen("plot-sv", [
     { x: solX, y: solPoints.map((p) => p.tracked), name: "Tracked", mode: "lines" },
     { x: solX, y: solPoints.map((p) => p.used), name: "Used", mode: "lines" },
+    ...constellationSvTraces(solX, solPoints),
     {
       x: solX,
       y: solPoints.map((p) => p.solution),
