@@ -3157,15 +3157,15 @@ function pollConstellationSvData(initialLoaded) {
   const pollIntervalMs = 3000;
 
   function poll() {
-    fetchTextFile("constellation_processing.txt", true)
-      .then((statusText) => {
+    Promise.all([
+      fetchTextFile("constellation_processing.txt", true),
+      fetchTextFile("constellation_sv.csv", true)
+    ])
+      .then(([statusText, constellationText]) => {
         const status = (statusText || "").trim();
         if (status) {
           setPlotStatus("Per-constellation SV data: " + status, "loading");
         }
-        return fetchTextFile("constellation_sv.csv", true);
-      })
-      .then((constellationText) => {
         if (constellationCsvReady(constellationText)) {
           allSolutionPoints = mergeConstellationSvData(allSolutionPoints, constellationText);
           rerenderPositionPlots();

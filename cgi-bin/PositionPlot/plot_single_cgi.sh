@@ -336,13 +336,24 @@ fi
 
 _start_constellation_background() {
    local _bg_script="$normalDir/constellation_sv_background.sh"
+   local _sol_copy="${CONSTELLATION_UPLOAD_COPY%.upload}.sol"
    [ -n "$CONSTELLATION_UPLOAD_COPY" ] || return 0
    [ -f "$CONSTELLATION_UPLOAD_COPY" ] || return 0
+   [ -f "$File.sol" ] || return 0
    [ -x "$_bg_script" ] || return 0
+   cp -f "$File.sol" "$_sol_copy" 2>/dev/null || return 0
+   : >> constellation_background.log
    printf '%s\n' "Queued: per-constellation SV data from tracking records" > constellation_processing.txt
-   nohup "$_bg_script" \
-      "$RESULT_DIR" "$CONSTELLATION_UPLOAD_COPY" "$File" "$normalDir" "$Ext" \
-      "$SaveFile" "${GNSS_KEEP_X29:-}" >> constellation_background.log 2>&1 &
+   if command -v setsid >/dev/null 2>&1
+   then
+      setsid nohup "$_bg_script" \
+         "$RESULT_DIR" "$CONSTELLATION_UPLOAD_COPY" "$_sol_copy" "$File" "$normalDir" "$Ext" \
+         "$SaveFile" "${GNSS_KEEP_X29:-}" >> constellation_background.log 2>&1 &
+   else
+      nohup "$_bg_script" \
+         "$RESULT_DIR" "$CONSTELLATION_UPLOAD_COPY" "$_sol_copy" "$File" "$normalDir" "$Ext" \
+         "$SaveFile" "${GNSS_KEEP_X29:-}" >> constellation_background.log 2>&1 &
+   fi
    disown 2>/dev/null || true
    CONSTELLATION_UPLOAD_COPY=""
 }
