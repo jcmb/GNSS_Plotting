@@ -153,59 +153,11 @@ else
 fi
 set_processing_status "Finished viewdat for $File"
 
-CONSTELLATION_CANDIDATES_DIR="${TMP_DIR}$$.constellation"
-mkdir -p "$CONSTELLATION_CANDIDATES_DIR"
-
-_run_constellation_viewdat_passes() {
-   local _upload="$1"
-   local _week=""
-   local _week_script="$normalDir/../TrackingPlot/Week_From_T19.pl"
-
-   [ -f "$_upload" ] || return 0
-   set_processing_status "Running alternate viewdat passes for constellation SV data"
-
-   if [ -x "$_week_script" ]
-   then
-      _week="$(viewdat -d19 "$_upload" 2>/dev/null | "$_week_script" 2>/dev/null || echo "-1")"
-   else
-      _week="-1"
-   fi
-
-   if viewdat -d29 -x -o"${TMP_DIR}$$.x29_native" "$_upload" 2>/dev/null
-   then
-      if tail -n +5 "${TMP_DIR}$$.x29_native" > "${CONSTELLATION_CANDIDATES_DIR}/native.x29" 2>/dev/null \
-         && $normalDir/export_constellation_sv_csv.py "${CONSTELLATION_CANDIDATES_DIR}/native.x29" \
-            > "${CONSTELLATION_CANDIDATES_DIR}/from_native.csv" 2>/dev/null
-      then
-         :
-      else
-         rm -f "${CONSTELLATION_CANDIDATES_DIR}/from_native.csv"
-      fi
-      if [ "${GNSS_KEEP_X29:-}" = "1" ] || [ "$SaveFile" = 1 ]
-      then
-         cp "${TMP_DIR}$$.x29_native" "${File}.x29_native" 2>/dev/null || true
-      fi
-      rm -f "${TMP_DIR}$$.x29_native" "${CONSTELLATION_CANDIDATES_DIR}/native.x29"
-   fi
-
-   if [ "$_week" != "-1" ]
-   then
-      if viewdat -d27 --translate_rec35_sub19_to_rec27 -x "$_upload" 2>/dev/null \
-         | $normalDir/export_constellation_sv_from_x27.py "$_week" \
-            > "${CONSTELLATION_CANDIDATES_DIR}/from_x27.csv" 2>/dev/null
-      then
-         :
-      else
-         rm -f "${CONSTELLATION_CANDIDATES_DIR}/from_x27.csv"
-      fi
-      if [ "${GNSS_KEEP_X29:-}" = "1" ]
-      then
-         viewdat -d27 --translate_rec35_sub19_to_rec27 -x -o"${File}.x27" "$_upload" 2>/dev/null || true
-      fi
-   fi
-}
-
-_run_constellation_viewdat_passes "$1"
+CONSTELLATION_UPLOAD_COPY="${TMP_DIR}constellation_${File}_$$.upload"
+if [ -f "$1" ]
+then
+   cp -f "$1" "$CONSTELLATION_UPLOAD_COPY" 2>/dev/null || CONSTELLATION_UPLOAD_COPY=""
+fi
 
 #viewdat -i -ofile.sum $1
 
@@ -246,14 +198,6 @@ then
     head -n 4 "$File.x29" > x29_header.txt 2>/dev/null || true
     {
        echo "<a href=\"$File.x29\">$File.x29</a> (rec29 via rec35 sub2 translate)"
-       if [ -f "${File}.x29_native" ]
-       then
-          echo " <a href=\"${File}.x29_native\">${File}.x29_native</a> (native rec29)"
-       fi
-       if [ -f "${File}.x27" ]
-       then
-          echo " <a href=\"${File}.x27\">${File}.x27</a> (tracking rec27)"
-       fi
        if [ -f x29_header.txt ]
        then
           echo " <a href=\"x29_header.txt\">x29_header.txt</a>"
@@ -390,28 +334,20 @@ else
    mv $TMP_DIR$File.X29 $File.sol
 fi
 
-_export_constellation_sv() {
-   local _src="$1"
-   local _from_sol="${CONSTELLATION_CANDIDATES_DIR}/from_sol.csv"
-   if [ -f "$_src" ]
-   then
-      $normalDir/export_constellation_sv_csv.py "$_src" > "$_from_sol" 2>/dev/null \
-         || rm -f "$_from_sol"
-   fi
-   if $normalDir/export_constellation_sv_best.py --sol "$_src" \
-      "$_from_sol" \
-      "${CONSTELLATION_CANDIDATES_DIR}/from_native.csv" \
-      "${CONSTELLATION_CANDIDATES_DIR}/from_x27.csv" \
-      > constellation_sv.csv 2>/dev/null
-   then
-      gzip -9 -f constellation_sv.csv
-   else
-      rm -f constellation_sv.csv constellation_sv.csv.gz
-   fi
-   rm -rf "$CONSTELLATION_CANDIDATES_DIR"
+_start_constellation_background() {
+   local _bg_script="$normalDir/constellation_sv_background.sh"
+   [ -n "$CONSTELLATION_UPLOAD_COPY" ] || return 0
+   [ -f "$CONSTELLATION_UPLOAD_COPY" ] || return 0
+   [ -x "$_bg_script" ] || return 0
+   printf '%s\n' "Queued: per-constellation SV data from tracking records" > constellation_processing.txt
+   nohup "$_bg_script" \
+      "$RESULT_DIR" "$CONSTELLATION_UPLOAD_COPY" "$File" "$normalDir" "$Ext" \
+      "$SaveFile" "${GNSS_KEEP_X29:-}" >> constellation_background.log 2>&1 &
+   disown 2>/dev/null || true
+   CONSTELLATION_UPLOAD_COPY=""
 }
 
-_export_constellation_sv "$File.sol"
+_start_constellation_background
 
 POINT_FROM_DB=0
 if [ "$Point" != "-1" ] && [ -n "$Lat" ]
