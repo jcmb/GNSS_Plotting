@@ -6,7 +6,14 @@ from __future__ import annotations
 from gnss_time import gnss_week_sow_to_plot_unix
 
 X29_MIN_FIELDS = 71
+X29_BASE_FIELDS = 29
+X29_PAIR_START = 29
+X29_PAIR_FIELD_COUNT = 12
+X29_EXTENDED_SV_START = 41
 X29_SV_USED_FLAG = 0x02
+
+# Flag values seen when viewdat exports SV flags without id/type (0x22 = used+dgnss).
+_FLAGS_ONLY_VALUES = frozenset({0, 34})
 
 CONSTELLATION_KEYS = (
     "GPS",
@@ -23,7 +30,6 @@ PAIR_ORDERS = (
     ("GPS", "GLONASS", "Galileo", "BeiDou", "QZSS", "SBAS", "NavIC"),
     ("GPS", "SBAS", "GLONASS", "Galileo", "QZSS", "BeiDou"),
     ("GPS", "SBAS", "GLONASS", "Galileo", "BeiDou", "QZSS"),
-    ("GPS", "GLONASS", "Galileo", "BeiDou", "QZSS", "SBAS", "NavIC", "SBAS"),
 )
 
 TRIPLET_ORDERS = (
@@ -40,7 +46,7 @@ def _field_int(fields: list[str], index: int) -> int | None:
     if index < 0 or index >= len(fields):
         return None
     raw = fields[index].strip()
-    if not raw:
+    if not raw or raw.lower() == "nan":
         return None
     try:
         if raw.lower().startswith("0x"):
@@ -86,6 +92,13 @@ def _score_counts(
     return err
 
 
+def _pairs_populated(fields: list[str], start: int, pair_fields: int) -> bool:
+    for index in range(pair_fields):
+        if _field_int(fields, start + index) is not None:
+            return True
+    return False
+
+
 def parse_count_pairs(fields: list[str], start: int, names: tuple[str, ...]) -> dict[str, dict[str, int]]:
     counts = empty_counts()
     for index, name in enumerate(names):
@@ -93,10 +106,48 @@ def parse_count_pairs(fields: list[str], start: int, names: tuple[str, ...]) -> 
             continue
         tracked = _field_int(fields, start + index * 2)
         used = _field_int(fields, start + index * 2 + 1)
-        if tracked is None or used is None:
+        if tracked is None:
             continue
+        if used is None:
+            used = 0
         counts[name]["tracked"] = max(0, tracked)
         counts[name]["used"] = max(0, used)
+    return counts
+
+
+def _normalize_sparse_triplet(vals: list[int | None]) -> tuple[int | None, int | None, int | None]:
+    sv_id, sv_type, flags = vals[0], vals[1], vals[2]
+    if all(v is None for v in vals):
+        return None, None, None
+    if all(v is None or v in _FLAGS_ONLY_VALUES for v in vals):
+        flags = next((v for v in vals if v is not None), None)
+        return None, None, flags
+    if sv_id == sv_type == flags and sv_id is not None:
+        return None, None, sv_id
+    if sv_type in _FLAGS_ONLY_VALUES:
+        sv_type = None
+    if sv_id is not None and sv_id <= 0:
+        sv_id = None
+    if sv_id in _FLAGS_ONLY_VALUES and sv_type is None:
+        sv_id = None
+    return sv_id, sv_type, flags
+
+
+def parse_sparse_sv_triplets(fields: list[str], start: int, end: int) -> dict[str, dict[str, int]]:
+    counts = empty_counts()
+    for base in range(start, min(len(fields) - 2, end), 3):
+        vals = [_field_int(fields, base + offset) for offset in range(3)]
+        sv_id, sv_type, flags = _normalize_sparse_triplet(vals)
+        if flags is None:
+            continue
+        if sv_type is None:
+            continue
+        key = sv_type_to_constellation(sv_type)
+        if key is None:
+            continue
+        counts[key]["tracked"] += 1
+        if flags & X29_SV_USED_FLAG:
+            counts[key]["used"] += 1
     return counts
 
 
@@ -114,6 +165,8 @@ def parse_sv_triplets(
         sv_flags = _field_int(fields, base + flags_idx)
         if sv_id is None or sv_id <= 0 or sv_type is None:
             continue
+        if sv_type in _FLAGS_ONLY_VALUES:
+            continue
         key = sv_type_to_constellation(sv_type)
         if key is None:
             continue
@@ -121,6 +174,10 @@ def parse_sv_triplets(
         if sv_flags is not None and (sv_flags & X29_SV_USED_FLAG):
             counts[key]["used"] += 1
     return counts
+
+
+def _extended_sv_end(fields: list[str]) -> int:
+    return min(len(fields), X29_EXTENDED_SV_START + max(0, len(fields) - X29_EXTENDED_SV_START))
 
 
 def parse_constellation_sv_counts(fields: list[str]) -> dict[str, dict[str, int]]:
@@ -133,16 +190,21 @@ def parse_constellation_sv_counts(fields: list[str]) -> dict[str, dict[str, int]
         return empty_counts()
 
     candidates: list[tuple[int, dict[str, dict[str, int]]]] = []
+    extended = len(fields) > X29_MIN_FIELDS
 
-    for names in PAIR_ORDERS:
-        pair_end = 29 + len(names) * 2 - 1
-        if pair_end > 70:
-            continue
-        counts = parse_count_pairs(fields, 29, names)
-        candidates.append((_score_counts(counts, total_tracked, total_used), counts))
+    if _pairs_populated(fields, X29_PAIR_START, X29_PAIR_FIELD_COUNT):
+        for names in PAIR_ORDERS:
+            if len(names) * 2 > X29_PAIR_FIELD_COUNT:
+                continue
+            counts = parse_count_pairs(fields, X29_PAIR_START, names)
+            candidates.append((_score_counts(counts, total_tracked, total_used), counts))
+
+    sv_end = _extended_sv_end(fields) if extended else 71
+    sparse_counts = parse_sparse_sv_triplets(fields, X29_EXTENDED_SV_START, sv_end)
+    candidates.append((_score_counts(sparse_counts, total_tracked, total_used), sparse_counts))
 
     for order in TRIPLET_ORDERS:
-        for start, end in ((29, 70), (41, 70)):
+        for start, end in ((X29_EXTENDED_SV_START, sv_end), (29, 70)):
             counts = parse_sv_triplets(fields, start, end, order)
             candidates.append((_score_counts(counts, total_tracked, total_used), counts))
 
@@ -153,10 +215,10 @@ def parse_constellation_sv_counts(fields: list[str]) -> dict[str, dict[str, int]
 
 
 def parse_x29_line(raw: str) -> tuple[float, dict[str, dict[str, int]]] | None:
-    line = raw.strip().replace(" ", "").replace("Nan", "")
+    line = raw.strip().replace(" ", "")
     if not line:
         return None
-    fields = line.split(",")
+    fields = ["" if part.lower() == "nan" else part for part in line.split(",")]
     if len(fields) < X29_MIN_FIELDS:
         return None
     try:

@@ -296,9 +296,14 @@ function mapSolutionType(raw) {
 }
 
 const X29_MIN_FIELDS = 71;
+const X29_BASE_FIELDS = 29;
+const X29_PAIR_START = 29;
+const X29_PAIR_FIELD_COUNT = 12;
+const X29_EXTENDED_SV_START = 41;
 const X29_SV_BLOCK_START = 29;
 const X29_SV_BLOCK_END = 70;
 const X29_SV_USED_FLAG = 0x02;
+const X29_FLAGS_ONLY_VALUES = new Set([0, 34]);
 
 const CONSTELLATION_SV_PAIR_ORDERS = [
   ["GPS", "GLONASS", "Galileo", "BeiDou", "QZSS", "SBAS"],
@@ -358,13 +363,56 @@ function svTypeToConstellation(svType) {
 function fieldInt(fields, index) {
   if (!fields || index < 0 || index >= fields.length) return null;
   const raw = String(fields[index] ?? "").trim();
-  if (!raw) return null;
+  if (!raw || raw.toLowerCase() === "nan") return null;
   if (/^0x/i.test(raw)) {
     const parsed = Number.parseInt(raw, 16);
     return Number.isFinite(parsed) ? parsed : null;
   }
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+function pairsPopulated(fields, start, pairFields) {
+  for (let i = 0; i < pairFields; i += 1) {
+    if (fieldInt(fields, start + i) != null) return true;
+  }
+  return false;
+}
+
+function normalizeSparseTriplet(vals) {
+  let svId = vals[0];
+  let svType = vals[1];
+  let flags = vals[2];
+  if (vals.every((v) => v == null)) return { svId: null, svType: null, flags: null };
+  if (vals.every((v) => v == null || X29_FLAGS_ONLY_VALUES.has(v))) {
+    flags = vals.find((v) => v != null) ?? null;
+    return { svId: null, svType: null, flags };
+  }
+  if (svId === svType && svType === flags && svId != null) {
+    return { svId: null, svType: null, flags: svId };
+  }
+  if (svType != null && X29_FLAGS_ONLY_VALUES.has(svType)) svType = null;
+  if (svId != null && svId <= 0) svId = null;
+  if (svId != null && X29_FLAGS_ONLY_VALUES.has(svId) && svType == null) svId = null;
+  return { svId, svType, flags };
+}
+
+function parseSparseSvTriplets(fields, start, end) {
+  const counts = emptyConstellationSvCounts();
+  for (let base = start; base + 2 < end && base + 2 < fields.length; base += 3) {
+    const vals = [fieldInt(fields, base), fieldInt(fields, base + 1), fieldInt(fields, base + 2)];
+    const { svId, svType, flags } = normalizeSparseTriplet(vals);
+    if (flags == null || svType == null) continue;
+    const key = svTypeToConstellation(svType);
+    if (!key || !counts[key]) continue;
+    counts[key].tracked += 1;
+    if (flags & X29_SV_USED_FLAG) counts[key].used += 1;
+  }
+  return counts;
+}
+
+function extendedSvEnd(fields) {
+  return Math.min(fields.length, X29_EXTENDED_SV_START + Math.max(0, fields.length - X29_EXTENDED_SV_START));
 }
 
 function cloneConstellationSvCounts(counts) {
@@ -399,9 +447,9 @@ function parseConstellationSvCountPairs(fields, start, names) {
     if (!counts[key]) return;
     const tracked = fieldInt(fields, start + index * 2);
     const used = fieldInt(fields, start + index * 2 + 1);
-    if (tracked == null || used == null) return;
+    if (tracked == null) return;
     counts[key].tracked = Math.max(0, tracked);
-    counts[key].used = Math.max(0, used);
+    counts[key].used = Math.max(0, used ?? 0);
   });
   return counts;
 }
@@ -413,6 +461,7 @@ function parseConstellationSvTriplets(fields, start, end, order) {
     const svType = fieldInt(fields, i + order.typeIdx);
     const svFlags = fieldInt(fields, i + order.flagsIdx);
     if (svId == null || svId <= 0 || svType == null) continue;
+    if (X29_FLAGS_ONLY_VALUES.has(svType)) continue;
     const key = svTypeToConstellation(svType);
     if (!key || !counts[key]) continue;
     counts[key].tracked += 1;
@@ -435,13 +484,21 @@ function parseConstellationSvCounts(fields) {
   }
 
   const candidates = [];
-  CONSTELLATION_SV_PAIR_ORDERS.forEach((names) => {
-    if (29 + names.length * 2 - 1 > X29_SV_BLOCK_END) return;
-    candidates.push(parseConstellationSvCountPairs(fields, X29_SV_BLOCK_START, names));
-  });
+  const extended = fields.length > X29_MIN_FIELDS;
+  const svEnd = extended ? extendedSvEnd(fields) : 71;
+
+  if (pairsPopulated(fields, X29_PAIR_START, X29_PAIR_FIELD_COUNT)) {
+    CONSTELLATION_SV_PAIR_ORDERS.forEach((names) => {
+      if (names.length * 2 > X29_PAIR_FIELD_COUNT) return;
+      candidates.push(parseConstellationSvCountPairs(fields, X29_PAIR_START, names));
+    });
+  }
+
+  candidates.push(parseSparseSvTriplets(fields, X29_EXTENDED_SV_START, svEnd));
+
   CONSTELLATION_SV_TRIPLET_ORDERS.forEach((order) => {
+    candidates.push(parseConstellationSvTriplets(fields, X29_EXTENDED_SV_START, svEnd, order));
     candidates.push(parseConstellationSvTriplets(fields, X29_SV_BLOCK_START, X29_SV_BLOCK_END, order));
-    candidates.push(parseConstellationSvTriplets(fields, 41, X29_SV_BLOCK_END, order));
   });
 
   let best = empty;
