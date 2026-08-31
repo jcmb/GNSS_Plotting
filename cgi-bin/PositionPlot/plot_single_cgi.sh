@@ -321,6 +321,18 @@ else
    mv $TMP_DIR$File.X29 $File.sol
 fi
 
+_export_constellation_sv() {
+   local _src="$1"
+   if [ -f "$_src" ] && $normalDir/export_constellation_sv_csv.py "$_src" > constellation_sv.csv
+   then
+      gzip -9 -f constellation_sv.csv
+   else
+      rm -f constellation_sv.csv constellation_sv.csv.gz
+   fi
+}
+
+_export_constellation_sv "$File.sol"
+
 POINT_FROM_DB=0
 if [ "$Point" != "-1" ] && [ -n "$Lat" ]
 then

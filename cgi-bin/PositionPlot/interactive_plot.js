@@ -295,9 +295,22 @@ function mapSolutionType(raw) {
   return n;
 }
 
+const X29_MIN_FIELDS = 71;
 const X29_SV_BLOCK_START = 29;
 const X29_SV_BLOCK_END = 70;
 const X29_SV_USED_FLAG = 0x02;
+
+const CONSTELLATION_SV_PAIR_ORDERS = [
+  ["GPS", "GLONASS", "Galileo", "BeiDou", "QZSS", "SBAS"],
+  ["GPS", "GLONASS", "Galileo", "BeiDou", "QZSS", "SBAS", "NavIC"],
+  ["GPS", "SBAS", "GLONASS", "Galileo", "QZSS", "BeiDou"],
+  ["GPS", "SBAS", "GLONASS", "Galileo", "BeiDou", "QZSS"]
+];
+
+const CONSTELLATION_SV_TRIPLET_ORDERS = [
+  { idIdx: 0, typeIdx: 1, flagsIdx: 2 },
+  { idIdx: 1, typeIdx: 0, flagsIdx: 2 }
+];
 
 const CONSTELLATION_SV_SERIES = [
   { key: "GPS", label: "GPS" },
@@ -342,24 +355,143 @@ function svTypeToConstellation(svType) {
   }
 }
 
-function parseConstellationSvCounts(fields) {
-  const counts = emptyConstellationSvCounts();
-  if (!fields || fields.length <= X29_SV_BLOCK_END) {
-    return counts;
+function fieldInt(fields, index) {
+  if (!fields || index < 0 || index >= fields.length) return null;
+  const raw = String(fields[index] ?? "").trim();
+  if (!raw) return null;
+  if (/^0x/i.test(raw)) {
+    const parsed = Number.parseInt(raw, 16);
+    return Number.isFinite(parsed) ? parsed : null;
   }
-  for (let i = X29_SV_BLOCK_START; i + 2 <= X29_SV_BLOCK_END; i += 3) {
-    const svId = Number(fields[i]);
-    const svType = Number(fields[i + 1]);
-    const svFlags = Number(fields[i + 2]);
-    if (!Number.isFinite(svId) || svId === 0) continue;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+function cloneConstellationSvCounts(counts) {
+  const copy = emptyConstellationSvCounts();
+  CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+    copy[key] = {
+      tracked: counts[key].tracked,
+      used: counts[key].used
+    };
+  });
+  return copy;
+}
+
+function scoreConstellationSvCounts(counts, totalTracked, totalUsed) {
+  let trackedSum = 0;
+  let usedSum = 0;
+  let err = 0;
+  CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+    const entry = counts[key];
+    trackedSum += entry.tracked;
+    usedSum += entry.used;
+    if (entry.tracked > 80 || entry.used > 80) err += 200;
+    if (entry.used > entry.tracked) err += 50;
+  });
+  err += Math.abs(trackedSum - totalTracked) + Math.abs(usedSum - totalUsed);
+  return err;
+}
+
+function parseConstellationSvCountPairs(fields, start, names) {
+  const counts = emptyConstellationSvCounts();
+  names.forEach((key, index) => {
+    if (!counts[key]) return;
+    const tracked = fieldInt(fields, start + index * 2);
+    const used = fieldInt(fields, start + index * 2 + 1);
+    if (tracked == null || used == null) return;
+    counts[key].tracked = Math.max(0, tracked);
+    counts[key].used = Math.max(0, used);
+  });
+  return counts;
+}
+
+function parseConstellationSvTriplets(fields, start, end, order) {
+  const counts = emptyConstellationSvCounts();
+  for (let i = start; i + 2 <= end && i + 2 < fields.length; i += 3) {
+    const svId = fieldInt(fields, i + order.idIdx);
+    const svType = fieldInt(fields, i + order.typeIdx);
+    const svFlags = fieldInt(fields, i + order.flagsIdx);
+    if (svId == null || svId <= 0 || svType == null) continue;
     const key = svTypeToConstellation(svType);
     if (!key || !counts[key]) continue;
     counts[key].tracked += 1;
-    if (Number.isFinite(svFlags) && (Math.trunc(svFlags) & X29_SV_USED_FLAG)) {
+    if (svFlags != null && (svFlags & X29_SV_USED_FLAG)) {
       counts[key].used += 1;
     }
   }
   return counts;
+}
+
+function parseConstellationSvCounts(fields) {
+  const empty = emptyConstellationSvCounts();
+  if (!fields || fields.length < X29_MIN_FIELDS) {
+    return empty;
+  }
+  const totalTracked = fieldInt(fields, 3) || 0;
+  const totalUsed = fieldInt(fields, 4) || 0;
+  if (totalTracked <= 0 && totalUsed <= 0) {
+    return empty;
+  }
+
+  const candidates = [];
+  CONSTELLATION_SV_PAIR_ORDERS.forEach((names) => {
+    if (29 + names.length * 2 - 1 > X29_SV_BLOCK_END) return;
+    candidates.push(parseConstellationSvCountPairs(fields, X29_SV_BLOCK_START, names));
+  });
+  CONSTELLATION_SV_TRIPLET_ORDERS.forEach((order) => {
+    candidates.push(parseConstellationSvTriplets(fields, X29_SV_BLOCK_START, X29_SV_BLOCK_END, order));
+    candidates.push(parseConstellationSvTriplets(fields, 41, X29_SV_BLOCK_END, order));
+  });
+
+  let best = empty;
+  let bestScore = Number.POSITIVE_INFINITY;
+  candidates.forEach((counts) => {
+    const score = scoreConstellationSvCounts(counts, totalTracked, totalUsed);
+    if (score < bestScore) {
+      bestScore = score;
+      best = counts;
+    }
+  });
+  return bestScore <= 4 ? best : empty;
+}
+
+function parseConstellationSvCsv(text) {
+  const byTime = new Map();
+  const rows = String(text || "").trim().split(/\r?\n/);
+  if (rows.length < 2) return byTime;
+  const header = rows[0].split(",").map((part) => part.trim());
+  const timeIdx = header.indexOf("unix_time");
+  if (timeIdx < 0) return byTime;
+
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
+    if (!row) continue;
+    const parts = row.split(",");
+    const t = Number(parts[timeIdx]);
+    if (!Number.isFinite(t)) continue;
+    const counts = emptyConstellationSvCounts();
+    CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+      const trackedIdx = header.indexOf(key + "_tracked");
+      const usedIdx = header.indexOf(key + "_used");
+      if (trackedIdx >= 0) counts[key].tracked = Number(parts[trackedIdx]) || 0;
+      if (usedIdx >= 0) counts[key].used = Number(parts[usedIdx]) || 0;
+    });
+    byTime.set(t, counts);
+    byTime.set(timeMatchKey(t), counts);
+  }
+  return byTime;
+}
+
+function mergeConstellationSvData(solutionPoints, constellationText) {
+  if (!constellationText || !solutionPoints.length) return solutionPoints;
+  const byTime = parseConstellationSvCsv(constellationText);
+  if (!byTime.size) return solutionPoints;
+  return solutionPoints.map((point) => {
+    const counts = byTime.get(point.t) ?? byTime.get(timeMatchKey(point.t));
+    if (!counts) return point;
+    return { ...point, constellation: cloneConstellationSvCounts(counts) };
+  });
 }
 
 function constellationSvTraces(x, points) {
@@ -375,7 +507,7 @@ function constellationSvTraces(x, points) {
       x,
       y: points.map((p) => {
         const entry = p.constellation && p.constellation[key];
-        return entry && entry.tracked > 0 ? entry.tracked : null;
+        return entry ? entry.tracked : null;
       }),
       name: label + " Tracked",
       mode: "lines",
@@ -386,7 +518,7 @@ function constellationSvTraces(x, points) {
       x,
       y: points.map((p) => {
         const entry = p.constellation && p.constellation[key];
-        return entry && entry.used > 0 ? entry.used : null;
+        return entry ? entry.used : null;
       }),
       name: label + " Used",
       mode: "lines",
@@ -2986,18 +3118,22 @@ function loadInteractivePosition() {
         : Promise.resolve("");
       return Promise.all([atsPromise, gnssHeightPromise])
         .then(([atsText, gnssHeightText]) => fetchStep("Loading position data...", "position_data.csv")
-          .then((posText) => fetchStep("Loading solution data...", "position_solution.csv", true)
-            .then((solText) => ({
-              posText,
-              solText,
-              atsText,
-              gnssHeightText,
-              isMoving
-            }))));
+          .then((posText) => Promise.all([
+            fetchStep("Loading solution data...", "position_solution.csv", true),
+            fetchStep("Loading constellation SV data...", "constellation_sv.csv", true)
+          ]).then(([solText, constellationText]) => ({
+            posText,
+            solText,
+            constellationText,
+            atsText,
+            gnssHeightText,
+            isMoving
+          }))));
     })
-    .then(({ posText, solText, atsText, gnssHeightText, isMoving }) => {
+    .then(({ posText, solText, constellationText, atsText, gnssHeightText, isMoving }) => {
       setPlotStatus("Parsing plot data...", "loading");
-      const solutionPoints = solText ? parseX29Csv(solText) : [];
+      let solutionPoints = solText ? parseX29Csv(solText) : [];
+      solutionPoints = mergeConstellationSvData(solutionPoints, constellationText);
       allPositionPoints = attachSolutionTypes(parsePositionCsv(posText, isMoving), solutionPoints);
       allSolutionPoints = solutionPoints;
       allAtsPoints = atsText ? parseAtsCsv(atsText) : [];

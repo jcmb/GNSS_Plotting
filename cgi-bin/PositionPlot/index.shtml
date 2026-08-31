@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250830d"></script>
+<script src="interactive_plot.js?v=20250831a"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
