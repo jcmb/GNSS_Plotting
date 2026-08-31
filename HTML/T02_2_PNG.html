@@ -142,6 +142,14 @@ UTC :
 </label>
 </td>
 </tr>
+<tr>
+<td colspan="2">
+<label class="testing-mode-label" for="keep-x29">
+  <input type="checkbox" name="keep_x29" id="keep-x29" value="1">
+  Debug: keep viewdat X29 file (includes column header lines)
+</label>
+</td>
+</tr>
 </table>
 <br/>
 <table border="1" width="100%">
@@ -375,10 +383,23 @@ Point Name (Optional):
     });
   }
 
+  function initKeepX29() {
+    var keepX29 = document.getElementById("keep-x29");
+    if (!keepX29) return;
+    if (window.localStorage.getItem("gnssPlotKeepX29") === "1") {
+      keepX29.checked = true;
+    }
+    keepX29.addEventListener("change", function () {
+      window.localStorage.setItem("gnssPlotKeepX29", keepX29.checked ? "1" : "0");
+    });
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initTestingMode);
+    document.addEventListener("DOMContentLoaded", initKeepX29);
   } else {
     initTestingMode();
+    initKeepX29();
   }
 
   var form = document.getElementById("gnss-plot-form");

@@ -186,10 +186,17 @@ else
 
 fi
 
-if [ "$SaveFile" = 1 ]
+if [ "$SaveFile" = 1 ] || [ "${GNSS_KEEP_X29:-}" = "1" ]
 then
     mv $TMP_DIR$$.x29 $File.x29
-    echo "<a href=\"$File.x29\">$File.x29<a/>">SaveFile.html
+    head -n 4 "$File.x29" > x29_header.txt 2>/dev/null || true
+    {
+       echo "<a href=\"$File.x29\">$File.x29</a>"
+       if [ -f x29_header.txt ]
+       then
+          echo " <a href=\"x29_header.txt\">x29_header.txt</a>"
+       fi
+    } > SaveFile.html
 
 else
     rm $TMP_DIR$$.x29

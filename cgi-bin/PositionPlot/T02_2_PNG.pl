@@ -91,6 +91,7 @@ my $gnss_user = JCMBSoft_Config::enforce_access($query);
 my $safe_filename_characters = "a-zA-Z0-9_.-";
 
 my $testing_mode = defined $query->param('testing_mode');
+my $keep_x29 = defined $query->param('keep_x29');
 my $skip_gnss_upload = defined $query->param('skip_gnss_upload');
 my $skip_truth_upload = defined $query->param('skip_truth_upload');
 my $gnss_basename = sanitize_upload_basename( scalar $query->param('gnss_basename') );
@@ -200,6 +201,7 @@ if ( !defined($MeanSol) || $MeanSol eq "" )
 
 $ENV{GNSS_MEAN_SOL} = $MeanSol;
 $ENV{GNSS_KEEP_UPLOADS} = 1 if $testing_mode;
+$ENV{GNSS_KEEP_X29} = 1 if $keep_x29;
 
 my $tz_decimal = tz_hours_from_form( scalar $query->param('tz_hours'), scalar $query->param('tz_minutes') );
 if ( defined $tz_decimal ) {
