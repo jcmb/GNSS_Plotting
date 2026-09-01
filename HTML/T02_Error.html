@@ -145,6 +145,39 @@ GNSS File:
     resultsPre.textContent = "";
   }
 
+  function parseJsonError(responseText) {
+    if (!responseText) return null;
+    try {
+      var data = JSON.parse(responseText);
+      if (data && data.error) {
+        return data.error;
+      }
+    } catch (ignore) {}
+    return null;
+  }
+
+  function showRequestFailure(xhr) {
+    if (xhr.status === 413 || xhr.status === 500 || xhr.status === 502 ||
+        xhr.status === 504 || xhr.status === 0) {
+      showError(
+        "Upload was interrupted before the server received the full file" +
+        (xhr.status ? " (HTTP " + xhr.status + ")." : ".") +
+        " Try again on a stable connection. Large T0x files may need increased Apache upload limits on the server."
+      );
+      return;
+    }
+    var jsonError = parseJsonError(xhr.responseText || "");
+    if (jsonError) {
+      showError(jsonError);
+      return;
+    }
+    var detail = (xhr.responseText || "").replace(/\s+/g, " ").trim().slice(0, 300);
+    showError(
+      "Upload failed (HTTP " + xhr.status + ")." +
+      (detail ? " " + detail : " Please try again.")
+    );
+  }
+
   function extractPreLog(html) {
     var parts = [];
     var searchFrom = 0;
@@ -208,6 +241,14 @@ GNSS File:
         progressFill.style.width = "100%";
         processingBox.className = "";
 
+        var successJsonError = parseJsonError(xhr.responseText);
+        if (successJsonError) {
+          submitButton.disabled = false;
+          progressBox.className = "";
+          showError(successJsonError);
+          return;
+        }
+
         var logText = extractPreLog(xhr.responseText);
         if (logText) {
           resultsPre.textContent = logText;
@@ -220,19 +261,9 @@ GNSS File:
         return;
       }
 
-      try {
-        var data = JSON.parse(xhr.responseText);
-        if (data.error) {
-          submitButton.disabled = false;
-          progressBox.className = "";
-          showError(data.error);
-          return;
-        }
-      } catch (ignore) {}
-
       submitButton.disabled = false;
       progressBox.className = "";
-      showError("Upload failed (HTTP " + xhr.status + "). Please try again.");
+      showRequestFailure(xhr);
     });
 
     xhr.addEventListener("loadstart", function () {

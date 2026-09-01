@@ -181,6 +181,41 @@ Output as App File:
     return match ? match[1] : "configuration.cfg";
   }
 
+  function parseJsonError(responseText) {
+    if (!responseText) return null;
+    try {
+      var data = JSON.parse(responseText);
+      if (data && data.error) {
+        return data.error;
+      }
+    } catch (ignore) {}
+    return null;
+  }
+
+  function showRequestFailure(xhr) {
+    if (xhr.status === 413 || xhr.status === 500 || xhr.status === 502 ||
+        xhr.status === 504 || xhr.status === 0) {
+      showError(
+        "Upload was interrupted before the server received the full file" +
+        (xhr.status ? " (HTTP " + xhr.status + ")." : ".") +
+        " Try again on a stable connection. Large T0x files may need increased Apache upload limits on the server."
+      );
+      return;
+    }
+    var jsonError = parseJsonError(
+      typeof xhr.responseText === "string" ? xhr.responseText : ""
+    );
+    if (jsonError) {
+      showError(jsonError);
+      return;
+    }
+    var detail = (xhr.responseText || "").replace(/\s+/g, " ").trim().slice(0, 300);
+    showError(
+      "Upload failed (HTTP " + xhr.status + ")." +
+      (detail ? " " + detail : " Please try again.")
+    );
+  }
+
   function triggerDownload(blob, filename) {
     var url = URL.createObjectURL(blob);
     var link = document.createElement("a");
@@ -238,6 +273,16 @@ Output as App File:
         progressFill.style.width = "100%";
         processingBox.className = "";
 
+        if (!appMode) {
+          var successJsonError = parseJsonError(xhr.responseText);
+          if (successJsonError) {
+            submitButton.disabled = false;
+            progressBox.className = "";
+            showError(successJsonError);
+            return;
+          }
+        }
+
         if (appMode) {
           var blob = new Blob([xhr.response], { type: "application/octet-stream" });
           triggerDownload(blob, parseDownloadFilename(xhr.getResponseHeader("Content-Disposition")));
@@ -259,19 +304,9 @@ Output as App File:
         return;
       }
 
-      try {
-        var data = JSON.parse(xhr.responseText);
-        if (data.error) {
-          submitButton.disabled = false;
-          progressBox.className = "";
-          showError(data.error);
-          return;
-        }
-      } catch (ignore) {}
-
       submitButton.disabled = false;
       progressBox.className = "";
-      showError("Upload failed (HTTP " + xhr.status + "). Please try again.");
+      showRequestFailure(xhr);
     });
 
     xhr.addEventListener("loadstart", function () {

@@ -1,24 +1,15 @@
 #!/usr/bin/perl -w
 $| = 1;
 
+BEGIN {
+    $CGI::POST_MAX = 1100 * 1024 * 1024;    # 1.1 GB, match position plot uploads
+}
+
 use CGI qw(param escapeHTML);
 use FindBin;
 
 use lib "$FindBin::Bin/../PositionPlot";
-use JCMBSoft_Config qw(enforce_access parse_session_filename download_to_file);
-
-if ( ( $ENV{HTTP_X_REQUESTED_WITH} || '' ) eq 'XMLHttpRequest' ) {
-    eval { require CGI::Carp; CGI::Carp->import(qw(carpout)); 1 } and do {
-        if ( open my $cgi_log, '>>', '/run/shm/t02_app_cgi.log' ) {
-            carpout($cgi_log);
-        }
-    };
-}
-else {
-    eval { require CGI::Carp; CGI::Carp->import(qw(fatalsToBrowser)); 1 };
-}
-
-$CGI::POST_MAX = 1024 * 190000;    # 190 MB file max
+use JCMBSoft_Config qw(enforce_access parse_session_filename download_to_file upload_dir);
 
 my $xhr = ( $ENV{HTTP_X_REQUESTED_WITH} || '' ) eq 'XMLHttpRequest';
 
@@ -33,6 +24,7 @@ sub json_string {
     my ($s) = @_;
     $s =~ s/\\/\\\\/g;
     $s =~ s/"/\\"/g;
+    $s =~ s/\r?\n/ /g;
     return $s;
 }
 
@@ -52,6 +44,43 @@ sub xhr_error {
     print "<html><body><p>" . escapeHTML($message) . "</p></body></html>";
     exit;
 }
+
+sub init_error_handling {
+    my ($log_name) = @_;
+    my $log_dir = ( -d '/run/shm' && -w '/run/shm' ) ? '/run/shm' : '/tmp';
+
+    if ($xhr) {
+        eval { require CGI::Carp; CGI::Carp->import(qw(carpout)); 1 } and do {
+            if ( open my $cgi_log, '>>', "$log_dir/$log_name" ) {
+                carpout($cgi_log);
+            }
+        };
+        $SIG{__DIE__} = sub {
+            return if $^S;
+            my $msg = shift // 'Internal server error';
+            chomp $msg;
+            $msg =~ s/\s+at\s+\S+.*//s;
+            print_json( "{\"error\":\"" . json_string($msg) . "\"}" );
+            exit 1;
+        };
+    }
+    else {
+        eval { require CGI::Carp; CGI::Carp->import(qw(fatalsToBrowser)); 1 };
+    }
+}
+
+sub staging_upload_file {
+    my ($basename) = @_;
+    for my $dir ( '/run/shm', upload_dir() ) {
+        my $staging_dir = "$dir";
+        $staging_dir =~ s{/\z}{};
+        next unless -d $staging_dir && -w $staging_dir;
+        return "$staging_dir/$basename";
+    }
+    xhr_error('Upload directory is not writable on the server.');
+}
+
+init_error_handling('t02_app_cgi.log');
 
 my $query = new CGI;
 JCMBSoft_Config::enforce_access($query);
@@ -77,10 +106,11 @@ eval {
     xhr_error($err);
 };
 
-my $upload_file = "/run/shm/$safe_filename";
+my $upload_file = staging_upload_file($safe_filename);
 
-if ( $query->upload('file') ) {
+if ( $query->param('file') ) {
     my $upload_filehandle = $query->upload('file');
+    xhr_error('No GNSS file was uploaded.') unless $upload_filehandle;
     if ( !open my $fh, '>', $upload_file ) {
         xhr_error('Could not save uploaded file.');
     }
