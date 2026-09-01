@@ -9,6 +9,9 @@ TRACKING_HTML_DEST="${TRACKING_HTML_DEST:-$HTML_DEST/Tracking}"
 
 POSITION_HTML="$ROOT/HTML/T02_2_PNG.html"
 TRACKING_HTML="$ROOT/HTML/T02_2_TRACKING.html"
+T02_APP_HTML="$ROOT/HTML/T02_App.html"
+T02_ERROR_HTML="$ROOT/HTML/T02_Error.html"
+T02_INFO_HTML="$ROOT/HTML/T02_Info.html"
 
 DRY_RUN=0
 DELETE=0
@@ -18,9 +21,12 @@ usage() {
 Usage: sudo $0 [options]
 
 Deploy from this repository to the production web paths:
-  cgi-bin/                 -> ${CGI_DEST}/{PositionPlot,TrackingPlot,VoltagePlot}/
+  cgi-bin/                 -> ${CGI_DEST}/{PositionPlot,TrackingPlot,VoltagePlot,T02_App,T02_Error,T02_Info}/
   HTML/T02_2_PNG.html      -> ${HTML_DEST}/T02_2_PNG.html
   HTML/T02_2_TRACKING.html -> ${TRACKING_HTML_DEST}/T02_2_TRACKING.html
+  HTML/T02_App.html        -> ${HTML_DEST}/T02_App.html
+  HTML/T02_Error.html      -> ${HTML_DEST}/T02_Error.html
+  HTML/T02_Info.html       -> ${HTML_DEST}/T02_Info.html
 
 Options:
   -n, --dry-run   Show what would be copied, without changing the server
@@ -57,7 +63,8 @@ if [[ ! -d "$ROOT/cgi-bin" ]] || [[ ! -d "$ROOT/HTML" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$POSITION_HTML" ]] || [[ ! -f "$TRACKING_HTML" ]]; then
+if [[ ! -f "$POSITION_HTML" ]] || [[ ! -f "$TRACKING_HTML" ]] \
+   || [[ ! -f "$T02_APP_HTML" ]] || [[ ! -f "$T02_ERROR_HTML" ]] || [[ ! -f "$T02_INFO_HTML" ]]; then
   echo "Expected HTML upload forms under $ROOT/HTML/." >&2
   exit 1
 fi
@@ -99,6 +106,9 @@ echo "Source: $ROOT"
 echo "CGI destination:           $CGI_DEST/"
 echo "Position HTML destination: $HTML_DEST/T02_2_PNG.html"
 echo "Tracking HTML destination: $TRACKING_HTML_DEST/T02_2_TRACKING.html"
+echo "T02 App HTML destination:   $HTML_DEST/T02_App.html"
+echo "T02 Error HTML destination: $HTML_DEST/T02_Error.html"
+echo "T02 Info HTML destination:  $HTML_DEST/T02_Info.html"
 
 mkdir -p "$CGI_DEST" "$HTML_DEST" "$TRACKING_HTML_DEST"
 
@@ -110,6 +120,9 @@ echo
 echo "==> Syncing HTML upload forms"
 "${RSYNC[@]}" "$POSITION_HTML" "$HTML_DEST/"
 "${RSYNC[@]}" "$TRACKING_HTML" "$TRACKING_HTML_DEST/"
+"${RSYNC[@]}" "$T02_APP_HTML" "$HTML_DEST/"
+"${RSYNC[@]}" "$T02_ERROR_HTML" "$HTML_DEST/"
+"${RSYNC[@]}" "$T02_INFO_HTML" "$HTML_DEST/"
 
 if [[ $DRY_RUN -eq 0 ]]; then
   echo
@@ -124,5 +137,8 @@ echo "        $CGI_DEST/TrackingPlot/"
 echo "        $CGI_DEST/VoltagePlot/"
 echo "  HTML: $HTML_DEST/T02_2_PNG.html"
 echo "        $TRACKING_HTML_DEST/T02_2_TRACKING.html"
+echo "        $HTML_DEST/T02_App.html"
+echo "        $HTML_DEST/T02_Error.html"
+echo "        $HTML_DEST/T02_Info.html"
 echo
 echo "Reprocess existing reports to refresh result symlinks (index.shtml, JS)."
