@@ -13,6 +13,18 @@ use JCMBSoft_Config qw(enforce_access parse_session_filename download_to_file up
 
 my $xhr = ( $ENV{HTTP_X_REQUESTED_WITH} || '' ) eq 'XMLHttpRequest';
 
+if ($xhr) {
+    eval { require CGI::Carp; CGI::Carp->import(qw(carpout)); 1 } and do {
+        my $log_dir = ( -d '/run/shm' && -w '/run/shm' ) ? '/run/shm' : '/tmp';
+        if ( open T02_CGI_LOG, '>>', "$log_dir/t02_info_cgi.log" ) {
+            carpout( \*T02_CGI_LOG );
+        }
+    };
+}
+else {
+    eval { require CGI::Carp; CGI::Carp->import(qw(fatalsToBrowser)); 1 };
+}
+
 sub urldecode {
     my $s = shift;
     $s =~ tr/\+/ /;
@@ -45,30 +57,6 @@ sub xhr_error {
     exit;
 }
 
-sub init_error_handling {
-    my ($log_name) = @_;
-    my $log_dir = ( -d '/run/shm' && -w '/run/shm' ) ? '/run/shm' : '/tmp';
-
-    if ($xhr) {
-        eval { require CGI::Carp; CGI::Carp->import(qw(carpout)); 1 } and do {
-            if ( open my $cgi_log, '>>', "$log_dir/$log_name" ) {
-                carpout($cgi_log);
-            }
-        };
-        $SIG{__DIE__} = sub {
-            return if $^S;
-            my $msg = shift // 'Internal server error';
-            chomp $msg;
-            $msg =~ s/\s+at\s+\S+.*//s;
-            print_json( "{\"error\":\"" . json_string($msg) . "\"}" );
-            exit 1;
-        };
-    }
-    else {
-        eval { require CGI::Carp; CGI::Carp->import(qw(fatalsToBrowser)); 1 };
-    }
-}
-
 sub staging_upload_file {
     my ($basename) = @_;
     for my $dir ( '/run/shm', upload_dir() ) {
@@ -79,8 +67,6 @@ sub staging_upload_file {
     }
     xhr_error('Upload directory is not writable on the server.');
 }
-
-init_error_handling('t02_info_cgi.log');
 
 my $query = new CGI;
 JCMBSoft_Config::enforce_access($query);
@@ -110,14 +96,14 @@ my $upload_file = staging_upload_file($safe_filename);
 if ( $query->param('file') ) {
     my $upload_filehandle = $query->upload('file');
     xhr_error('No GNSS file was uploaded.') unless $upload_filehandle;
-    if ( !open my $fh, '>', $upload_file ) {
+    if ( !open UPLOADFILE, '>', $upload_file ) {
         xhr_error('Could not save uploaded file.');
     }
-    binmode $fh;
+    binmode UPLOADFILE;
     while (<$upload_filehandle>) {
-        print $fh $_;
+        print UPLOADFILE;
     }
-    close $fh;
+    close UPLOADFILE;
 }
 elsif ($file_link) {
     my ( $ok, $dl_err ) = download_to_file( $file_link, $upload_file );
