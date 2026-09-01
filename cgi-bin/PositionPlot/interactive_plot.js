@@ -3145,49 +3145,6 @@ function fetchTextFile(baseUrl, optional) {
     .catch(() => (optional ? "" : Promise.reject(new Error("Failed to load " + baseUrl))));
 }
 
-function constellationCsvReady(text) {
-  return Boolean(text && text.includes("unix_time") && text.includes("GPS_tracked"));
-}
-
-function pollConstellationSvData(initialLoaded) {
-  if (initialLoaded) return;
-
-  let attempts = 0;
-  const maxAttempts = 600;
-  const pollIntervalMs = 3000;
-
-  function poll() {
-    Promise.all([
-      fetchTextFile("constellation_processing.txt", true),
-      fetchTextFile("constellation_sv.csv", true)
-    ])
-      .then(([statusText, constellationText]) => {
-        const status = (statusText || "").trim();
-        if (status) {
-          setPlotStatus("Per-constellation SV data: " + status, "loading");
-        }
-        if (constellationCsvReady(constellationText)) {
-          allSolutionPoints = mergeConstellationSvData(allSolutionPoints, constellationText);
-          rerenderPositionPlots();
-          setPlotStatus("Interactive plots ready.", "ok");
-          return;
-        }
-        attempts += 1;
-        if (attempts < maxAttempts) {
-          window.setTimeout(poll, pollIntervalMs);
-        }
-      })
-      .catch(() => {
-        attempts += 1;
-        if (attempts < maxAttempts) {
-          window.setTimeout(poll, pollIntervalMs);
-        }
-      });
-  }
-
-  poll();
-}
-
 function loadInteractivePosition() {
   if (typeof Plotly === "undefined") {
     setPlotStatus(
@@ -3244,7 +3201,6 @@ function loadInteractivePosition() {
       attachPlotControlListeners();
       setPlotStatus("Rendering interactive plots...", "loading");
       rerenderPositionPlots();
-      pollConstellationSvData(constellationCsvReady(constellationText));
     })
     .catch((err) => {
       setPlotStatus("Interactive plot unavailable: " + err.message, "error");
