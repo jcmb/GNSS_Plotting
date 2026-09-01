@@ -153,7 +153,7 @@ else
 fi
 set_processing_status "Finished viewdat for $File"
 
-CONSTELLATION_UPLOAD_COPY="${TMP_DIR}constellation_${File}_$$.upload"
+CONSTELLATION_UPLOAD_COPY="$RESULT_DIR/.constellation_upload"
 if [ -f "$1" ]
 then
    cp -f "$1" "$CONSTELLATION_UPLOAD_COPY" 2>/dev/null || CONSTELLATION_UPLOAD_COPY=""
@@ -334,25 +334,61 @@ else
    mv $TMP_DIR$File.X29 $File.sol
 fi
 
+_log_constellation_bg() {
+   {
+      echo "$(date -Is 2>/dev/null || date) $*"
+   } >> "$RESULT_DIR/constellation_background.log" 2>/dev/null || true
+}
+
+_gnss_week_from_sol() {
+   awk -F, 'NF>=2 && $1+0>0 {gsub(/ /,"",$1); print int($1); exit}' "$1" 2>/dev/null
+}
+
 _start_constellation_background() {
    local _bg_script="$normalDir/constellation_sv_background.sh"
-   local _sol_copy="${CONSTELLATION_UPLOAD_COPY%.upload}.sol"
-   [ -n "$CONSTELLATION_UPLOAD_COPY" ] || return 0
-   [ -f "$CONSTELLATION_UPLOAD_COPY" ] || return 0
-   [ -f "$File.sol" ] || return 0
-   [ -x "$_bg_script" ] || return 0
-   cp -f "$File.sol" "$_sol_copy" 2>/dev/null || return 0
-   : >> constellation_background.log
+   local _upload_copy="$CONSTELLATION_UPLOAD_COPY"
+   local _sol_copy="$RESULT_DIR/.constellation_sol"
+   local _gps_week=""
+
+   if [ -z "$_upload_copy" ] || [ ! -f "$_upload_copy" ]
+   then
+      _log_constellation_bg "skip constellation background: upload copy missing"
+      return 0
+   fi
+   if [ ! -f "$File.sol" ]
+   then
+      _log_constellation_bg "skip constellation background: $File.sol missing"
+      return 0
+   fi
+   if [ ! -f "$_bg_script" ]
+   then
+      _log_constellation_bg "skip constellation background: script missing $_bg_script"
+      return 0
+   fi
+   if ! cp -f "$File.sol" "$_sol_copy" 2>/dev/null
+   then
+      _log_constellation_bg "skip constellation background: could not copy sol file"
+      return 0
+   fi
+
+   _gps_week="$(_gnss_week_from_sol "$_sol_copy")"
+   if [ -z "$_gps_week" ]
+   then
+      _gps_week="-1"
+   fi
+
    printf '%s\n' "Queued: per-constellation SV data from tracking records" > constellation_processing.txt
+   _log_constellation_bg "launching constellation background gps_week=$_gps_week upload=$_upload_copy"
+
    if command -v setsid >/dev/null 2>&1
    then
-      setsid nohup "$_bg_script" \
-         "$RESULT_DIR" "$CONSTELLATION_UPLOAD_COPY" "$_sol_copy" "$File" "$normalDir" "$Ext" \
-         "$SaveFile" "${GNSS_KEEP_X29:-}" >> constellation_background.log 2>&1 &
+      setsid nohup /bin/bash "$_bg_script" \
+         "$RESULT_DIR" "$_upload_copy" "$_sol_copy" "$File" "$normalDir" "$Ext" \
+         "$SaveFile" "${GNSS_KEEP_X29:-}" "$_gps_week" >> constellation_background.log 2>&1 &
    else
-      nohup "$_bg_script" \
-         "$RESULT_DIR" "$CONSTELLATION_UPLOAD_COPY" "$_sol_copy" "$File" "$normalDir" "$Ext" \
-         "$SaveFile" "${GNSS_KEEP_X29:-}" >> constellation_background.log 2>&1 &
+      nohup /bin/bash "$_bg_script" \
+         "$RESULT_DIR" "$_upload_copy" "$_sol_copy" "$File" "$normalDir" "$Ext" \
+         "$SaveFile" "${GNSS_KEEP_X29:-}" "$_gps_week" >> constellation_background.log 2>&1 &
    fi
    disown 2>/dev/null || true
    CONSTELLATION_UPLOAD_COPY=""

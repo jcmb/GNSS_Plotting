@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build constellation_sv.csv.gz from tracking viewdat in the background.
-# Args: RESULT_DIR UPLOAD_COPY SOL_COPY FILE NORMAL_DIR EXT SAVE_FILE KEEP_X29
+# Args: RESULT_DIR UPLOAD_COPY SOL_COPY FILE NORMAL_DIR EXT SAVE_FILE KEEP_X29 GPS_WEEK
 
 RESULT_DIR="$1"
 UPLOAD_COPY="$2"
@@ -10,10 +10,13 @@ NORMAL_DIR="$5"
 EXT="$6"
 SAVE_FILE="$7"
 KEEP_X29="$8"
+GPS_WEEK="${9:--1}"
 
 CONSTELLATION_CANDIDATES_DIR="/run/shm/constellation_${FILE}_$$"
 PROCESSING_MARKER="constellation_processing.txt"
 LOG_FILE="constellation_background.log"
+
+export PATH="${NORMAL_DIR}:${NORMAL_DIR}/../TrackingPlot:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
 log_msg() {
    {
@@ -36,7 +39,13 @@ trap cleanup EXIT
 cd "$RESULT_DIR" || exit 1
 mkdir -p "$CONSTELLATION_CANDIDATES_DIR"
 
-log_msg "start file=$FILE ext=$EXT upload=$UPLOAD_COPY sol=$SOL_COPY"
+log_msg "start file=$FILE ext=$EXT upload=$UPLOAD_COPY sol=$SOL_COPY gps_week=$GPS_WEEK path=$PATH"
+
+if ! command -v viewdat >/dev/null 2>&1
+then
+   log_msg "error viewdat not found in PATH"
+   exit 1
+fi
 
 if [ ! -f "$UPLOAD_COPY" ]
 then
@@ -50,12 +59,17 @@ then
    exit 1
 fi
 
-update_status "Reading GPS week from upload"
-WEEK="-1"
-WEEK_SCRIPT="$NORMAL_DIR/../TrackingPlot/Week_From_T19.pl"
-if [ -x "$WEEK_SCRIPT" ]
+WEEK="$GPS_WEEK"
+if [ -z "$WEEK" ] || [ "$WEEK" = "-1" ]
 then
-   WEEK="$(viewdat -d19 "$UPLOAD_COPY" 2>>"$RESULT_DIR/$LOG_FILE" | "$WEEK_SCRIPT" 2>>"$RESULT_DIR/$LOG_FILE" || echo "-1")"
+   update_status "Reading GPS week from upload"
+   WEEK_SCRIPT="$NORMAL_DIR/../TrackingPlot/Week_From_T19.pl"
+   if [ -x "$WEEK_SCRIPT" ]
+   then
+      WEEK="$(viewdat -d19 "$UPLOAD_COPY" 2>>"$RESULT_DIR/$LOG_FILE" | "$WEEK_SCRIPT" 2>>"$RESULT_DIR/$LOG_FILE" || echo "-1")"
+   else
+      WEEK="-1"
+   fi
 fi
 log_msg "gps_week=$WEEK"
 
@@ -87,6 +101,7 @@ fi
 if [ "$WEEK" != "-1" ]
 then
    update_status "Exporting tracking records (rec27) — large files can take several minutes"
+   log_msg "starting viewdat -d27"
    if viewdat -d27 --translate_rec35_sub19_to_rec27 -x "$UPLOAD_COPY" 2>>"$RESULT_DIR/$LOG_FILE" \
       | "$NORMAL_DIR/export_constellation_sv_from_x27.py" "$WEEK" \
          > "${CONSTELLATION_CANDIDATES_DIR}/from_x27.csv" 2>>"$RESULT_DIR/$LOG_FILE"
@@ -101,7 +116,7 @@ then
       viewdat -d27 --translate_rec35_sub19_to_rec27 -x -o"${FILE}.x27" "$UPLOAD_COPY" 2>>"$RESULT_DIR/$LOG_FILE" || true
    fi
 else
-   log_msg "warning skipping rec27 export (GPS week unavailable)"
+   log_msg "error skipping rec27 export (GPS week unavailable)"
 fi
 
 update_status "Writing per-constellation SV CSV"

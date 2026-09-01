@@ -225,14 +225,14 @@ if ($file_link){
     $file_uploaded = 0;
 }
 
-my ( $gnss_name, $extension, $filename ) = parse_session_filename($filename);
+my ( $gnss_name, $extension, $session_basename ) = parse_session_filename($filename);
 my $name = $gnss_name;
 
 print "<html><head><title>Plotting GNSS Data</title>";
 print "</head>";
-print "<body><h1>Processing $filename:</h1>\n";
+print "<body><h1>Processing $session_basename:</h1>\n";
 
-$upload_file = JCMBSoft_Config::upload_dir().$filename;
+$upload_file = JCMBSoft_Config::upload_dir().$session_basename;
 
 my $truth_upload = "";
 my $truth_upload_handle = $query->upload('truth_file');
@@ -276,7 +276,7 @@ if ($skip_gnss_upload || ( $testing_mode && $file_uploaded && -f $upload_file ) 
         exit;
     }
     drain_upload_handle($gnss_upload_handle) if $file_uploaded;
-    print "Using cached GNSS file on server (" . CGI::escapeHTML($filename) . ")<br>";
+    print "Using cached GNSS file on server (" . CGI::escapeHTML($session_basename) . ")<br>";
 }
 elsif ($file_uploaded) {
     print "Getting uploaded file<br>";
