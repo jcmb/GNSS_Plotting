@@ -52,6 +52,14 @@
 #upload-results.visible {
   display: block;
 }
+.results-toolbar {
+  margin: 0 0 8px 0;
+}
+#copy-results-status {
+  margin-left: 8px;
+  color: #0063a3;
+  font-size: 13px;
+}
 #upload-results pre {
   max-height: 480px;
   overflow: auto;
@@ -108,7 +116,13 @@ Output as App File:
 </div>
 <div id="upload-error"></div>
 <div id="upload-processing">Processing your file on the server. This may take a minute for large files.</div>
-<div id="upload-results"><pre id="results-pre"></pre></div>
+<div id="upload-results">
+  <div class="results-toolbar">
+    <button type="button" id="copy-results">Copy results</button>
+    <span id="copy-results-status" aria-live="polite"></span>
+  </div>
+  <pre id="results-pre"></pre>
+</div>
 </form>
 </div>
 </div>
@@ -126,6 +140,8 @@ Output as App File:
   var processingBox = document.getElementById("upload-processing");
   var resultsBox = document.getElementById("upload-results");
   var resultsPre = document.getElementById("results-pre");
+  var copyButton = document.getElementById("copy-results");
+  var copyStatus = document.getElementById("copy-results-status");
 
   function formatBytes(bytes) {
     if (bytes < 1024) return bytes + " B";
@@ -155,7 +171,46 @@ Output as App File:
     processingBox.className = "";
     resultsBox.className = "";
     resultsPre.textContent = "";
+    copyStatus.textContent = "";
   }
+
+  function copyResultsToClipboard() {
+    var text = resultsPre.textContent || "";
+    if (!text) {
+      copyStatus.textContent = "Nothing to copy.";
+      return;
+    }
+    function onSuccess() {
+      copyStatus.textContent = "Copied to clipboard.";
+      window.setTimeout(function () { copyStatus.textContent = ""; }, 2000);
+    }
+    function onFailure() {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        if (document.execCommand("copy")) {
+          onSuccess();
+        } else {
+          copyStatus.textContent = "Copy failed.";
+        }
+      } catch (ignore) {
+        copyStatus.textContent = "Copy failed.";
+      }
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(onSuccess).catch(onFailure);
+    } else {
+      onFailure();
+    }
+  }
+
+  copyButton.addEventListener("click", copyResultsToClipboard);
 
   function extractPreLog(html) {
     var parts = [];
