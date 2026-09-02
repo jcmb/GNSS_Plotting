@@ -53,12 +53,13 @@
   display: block;
 }
 .results-toolbar {
-  margin: 0 0 8px 0;
+  margin: 8px 0 0 0;
 }
 #copy-results-status {
   margin-left: 8px;
   color: #0063a3;
   font-size: 13px;
+  vertical-align: middle;
 }
 #upload-results pre {
   max-height: 480px;
@@ -117,11 +118,11 @@ Output as App File:
 <div id="upload-error"></div>
 <div id="upload-processing">Processing your file on the server. This may take a minute for large files.</div>
 <div id="upload-results">
+  <pre id="results-pre"></pre>
   <div class="results-toolbar">
-    <button type="button" id="copy-results">Copy results</button>
+    <input type="button" id="copy-results" value="Copy results" />
     <span id="copy-results-status" aria-live="polite"></span>
   </div>
-  <pre id="results-pre"></pre>
 </div>
 </form>
 </div>
