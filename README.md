@@ -9,7 +9,10 @@ TrimbleTools GNSS plotting suite: position, tracking, and voltage analysis from 
 | `cgi-bin/PositionPlot/` | Position/error plots, interactive Plotly reports, KML |
 | `cgi-bin/TrackingPlot/` | SNR, cycle slips, satellite tracking plots |
 | `cgi-bin/VoltagePlot/` | Power/voltage plots |
-| `HTML/` | Upload forms (`T02_2_PNG.html`, `T02_2_TRACKING.html`) |
+| `cgi-bin/T02_App/` | Configuration (cfg) extraction from T0x files |
+| `cgi-bin/T02_Error/` | Error log extraction from T0x files |
+| `cgi-bin/T02_Info/` | General information from T0x files |
+| `HTML/` | Upload forms (`T02_2_PNG.html`, `T02_2_TRACKING.html`, `T02_App.html`, `T02_Error.html`, `T02_Info.html`) |
 | `GNSS/` | Batch scripts for 24-hour processing pipelines |
 
 ## Requirements
@@ -34,9 +37,12 @@ This syncs:
 
 | Source | Destination |
 |---|---|
-| `cgi-bin/` | `/usr/lib/cgi-bin/` (`PositionPlot/`, `TrackingPlot/`, `VoltagePlot/`) |
+| `cgi-bin/` | `/usr/lib/cgi-bin/` (`PositionPlot/`, `TrackingPlot/`, `VoltagePlot/`, `T02_App/`, `T02_Error/`, `T02_Info/`) |
 | `HTML/T02_2_PNG.html` | `/var/www/html/T02_2_PNG.html` |
 | `HTML/T02_2_TRACKING.html` | `/var/www/html/Tracking/T02_2_TRACKING.html` |
+| `HTML/T02_App.html` | `/var/www/html/T02_App.html` |
+| `HTML/T02_Error.html` | `/var/www/html/T02_Error.html` |
+| `HTML/T02_Info.html` | `/var/www/html/T02_Info.html` |
 
 Override paths with `CGI_DEST`, `HTML_DEST`, or `TRACKING_HTML_DEST` if needed. After deploy, **reprocess** sessions so result directories pick up symlinked `index.shtml` and updated JS.
 
