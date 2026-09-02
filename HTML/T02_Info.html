@@ -55,11 +55,15 @@
 .results-toolbar {
   margin: 8px 0 0 0;
 }
-#copy-results-status {
+#copy-results-status,
+#results-action-status {
   margin-left: 8px;
   color: #0063a3;
   font-size: 13px;
   vertical-align: middle;
+}
+.results-toolbar input[type="button"] {
+  margin-right: 8px;
 }
 #upload-results pre {
   max-height: 480px;
@@ -110,7 +114,8 @@ GNSS File:
   <pre id="results-pre"></pre>
   <div class="results-toolbar">
     <input type="button" id="copy-results" value="Copy results" />
-    <span id="copy-results-status" aria-live="polite"></span>
+    <input type="button" id="download-results" value="Download results" />
+    <span id="results-action-status" aria-live="polite"></span>
   </div>
 </div>
 </form>
@@ -130,7 +135,8 @@ GNSS File:
   var resultsBox = document.getElementById("upload-results");
   var resultsPre = document.getElementById("results-pre");
   var copyButton = document.getElementById("copy-results");
-  var copyStatus = document.getElementById("copy-results-status");
+  var downloadButton = document.getElementById("download-results");
+  var actionStatus = document.getElementById("results-action-status");
 
   function formatBytes(bytes) {
     if (bytes < 1024) return bytes + " B";
@@ -160,18 +166,34 @@ GNSS File:
     processingBox.className = "";
     resultsBox.className = "";
     resultsPre.textContent = "";
-    copyStatus.textContent = "";
+    actionStatus.textContent = "";
+  }
+
+  function showActionStatus(message) {
+    actionStatus.textContent = message;
+    if (message) {
+      window.setTimeout(function () { actionStatus.textContent = ""; }, 2000);
+    }
+  }
+
+  function getResultsText() {
+    return resultsPre.textContent || "";
+  }
+
+  function resultsDownloadName() {
+    var uploaded = fileInput.files && fileInput.files[0] ? fileInput.files[0].name : "gnss";
+    var base = uploaded.replace(/\.[^.]+$/, "") || "gnss";
+    return base + "_info.txt";
   }
 
   function copyResultsToClipboard() {
-    var text = resultsPre.textContent || "";
+    var text = getResultsText();
     if (!text) {
-      copyStatus.textContent = "Nothing to copy.";
+      showActionStatus("Nothing to copy.");
       return;
     }
     function onSuccess() {
-      copyStatus.textContent = "Copied to clipboard.";
-      window.setTimeout(function () { copyStatus.textContent = ""; }, 2000);
+      showActionStatus("Copied to clipboard.");
     }
     function onFailure() {
       var ta = document.createElement("textarea");
@@ -185,10 +207,10 @@ GNSS File:
         if (document.execCommand("copy")) {
           onSuccess();
         } else {
-          copyStatus.textContent = "Copy failed.";
+          showActionStatus("Copy failed.");
         }
       } catch (ignore) {
-        copyStatus.textContent = "Copy failed.";
+        showActionStatus("Copy failed.");
       }
       document.body.removeChild(ta);
     }
@@ -199,7 +221,26 @@ GNSS File:
     }
   }
 
+  function downloadResults() {
+    var text = getResultsText();
+    if (!text) {
+      showActionStatus("Nothing to download.");
+      return;
+    }
+    var blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    link.href = url;
+    link.download = resultsDownloadName();
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showActionStatus("Download started.");
+  }
+
   copyButton.addEventListener("click", copyResultsToClipboard);
+  downloadButton.addEventListener("click", downloadResults);
 
   function parseJsonError(responseText) {
     if (!responseText) return null;
