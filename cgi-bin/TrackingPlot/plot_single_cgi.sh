@@ -5,12 +5,13 @@ echo "$1" " " "$2" " " "$3" " " "$4" "<br>"
 ViewDat=viewdat
 Ext="$2"
 FileFull="$(basename "$1")"
-File="$(basename "$1" "$2")"
 Dir="$(dirname "$0")"
 normalDir="$(cd "${Dir}" && pwd)"
-Decimate="$3"
-Project="$4"
+. "$normalDir/../PositionPlot/JCMBSoft_Config.sh"
+File="$(gnss_resolve_session_name "$FileFull" "$2")"
 PATH="${normalDir}:/usr/local/bin:~/bin:$PATH"
+Decimate="$3"
+Project="$(gnss_normalize_project_path "$4")"
 
 GNSS_CFG_DIR="$(cd "$normalDir/../../admin/GNSS" 2>/dev/null && pwd)"
 if [ -z "$GNSS_CFG_DIR" ] || [ ! -f "$GNSS_CFG_DIR/GNSS_Paths.cfg" ]; then
@@ -77,6 +78,7 @@ SNR_STATS.py
 echo "Linking interactive plot pages"
 ln -s "$normalDir"/SNR_Plot.shtml
 ln -s "$normalDir"/Tracking_Plot.shtml
+ln -s "$normalDir"/All_SVs_Tracking_Plot.shtml
 ln -s "$normalDir"/Slips_Plot.shtml
 ln -s "$normalDir"/SV_Tracking_Plot.shtml
 ln -s "$normalDir"/SV_SNR_Plot.shtml
@@ -85,6 +87,7 @@ ln -s "$normalDir"/Diff_Tracking_Plot.shtml
 ln -s "$normalDir"/Buttons.html
 ln -s "$normalDir"/Tracking_Buttons.html
 ln -s "$normalDir"/index.shtml
+ln -sf "$normalDir"/antenna_common.js
 
 echo "Plotting Singles"
 logger "Plotting Singles"

@@ -1,12 +1,13 @@
 const GPS_EPOCH_SEC = 315964800;
 const SECONDS_IN_WEEK = 604800;
+const GNSS_LEAP_SECONDS = 18;
 
 function gpsWeekSecondsToUnix(week, seconds) {
-  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds;
+  return GPS_EPOCH_SEC + week * SECONDS_IN_WEEK + seconds - GNSS_LEAP_SECONDS;
 }
 
-function unixToGpsWeekSeconds(unixSec) {
-  const gpsTotal = unixSec - GPS_EPOCH_SEC;
+function unixToGpsWeekSeconds(plotUnix) {
+  const gpsTotal = plotUnix + GNSS_LEAP_SECONDS - GPS_EPOCH_SEC;
   const gpsWeek = Math.floor(gpsTotal / SECONDS_IN_WEEK);
   const gpsSec = gpsTotal - gpsWeek * SECONDS_IN_WEEK;
   return { gpsWeek, gpsSec };
@@ -90,6 +91,21 @@ const DOP_COLORS = {
   VDOP: "#17becf"
 };
 
+const Y2_AXIS_RIGHT_MARGIN = 50;
+
+function reservedRightY2Axis(overrides) {
+  return {
+    overlaying: "y",
+    side: "right",
+    showgrid: false,
+    showticklabels: false,
+    showline: false,
+    title: "",
+    ticklen: 0,
+    ...(overrides || {})
+  };
+}
+
 const TRACE_NAME_TO_COLOR = {
   "North Error": "north",
   "East Error": "east",
@@ -98,6 +114,24 @@ const TRACE_NAME_TO_COLOR = {
   "H Error": "d2",
   "H Sigma": "d2",
   "V Sigma": "up",
+  "+1σ": "up",
+  "-1σ": "up",
+  "+2σ": "up",
+  "-2σ": "up",
+  "+3σ": "up",
+  "-3σ": "up",
+  "+1σ H": "d2",
+  "-1σ H": "d2",
+  "+2σ H": "d2",
+  "-2σ H": "d2",
+  "+3σ H": "d2",
+  "-3σ H": "d2",
+  "+1σ U": "up",
+  "-1σ U": "up",
+  "+2σ U": "up",
+  "-2σ U": "up",
+  "+3σ U": "up",
+  "-3σ U": "up",
   "North velocity": "north",
   "East velocity": "east",
   "Up velocity": "up",
@@ -109,6 +143,7 @@ const TRACE_NAME_TO_COLOR = {
   "North Cumulative": "north",
   "East Cumulative": "east",
   "Height Cumulative": "up",
+  "2D Cumulative": "d2",
   "1D Error/Sigma": "up",
   "2D Error/Sigma": "d2",
   "3D Error/Sigma": "d3",
@@ -117,7 +152,13 @@ const TRACE_NAME_TO_COLOR = {
   "3D Error": "d3",
   "1D Sigma (V)": "up",
   "2D Sigma (H)": "d2",
-  "3D Sigma": "d3"
+  "3D Sigma": "d3",
+  "2D Sigma Ratio": "d2",
+  "3D Sigma Ratio": "d3",
+  "1D Sigma Ratio": "up",
+  "GNSS error |Δ|": "up",
+  "1σ (V)": "up",
+  "Error/Sigma": "d2"
 };
 
 function resolveTraceColor(trace) {
@@ -175,14 +216,14 @@ function coloredLine(x, y, name, colorKey, opts = {}) {
   });
 }
 
-function latencyTrace(x, latency) {
+function latencyTrace(x, latency, yaxis) {
   return applyTraceColor({
     type: "scatter",
     x,
     y: latency,
     name: "Latency (s)",
     mode: "lines",
-    yaxis: "y2",
+    yaxis: yaxis || "y",
     line: { color: LATENCY_COLOR, width: 2 },
     marker: { color: LATENCY_COLOR }
   });
@@ -195,6 +236,18 @@ function latencyYAxis(overrides) {
     zeroline: true,
     ...(overrides || {})
   };
+}
+
+function latencyPrimaryYAxis(overrides) {
+  return latencyYAxis({ side: "right", ...(overrides || {}) });
+}
+
+function overlayLeftYAxis(config) {
+  return { overlaying: "y", side: "left", ...config };
+}
+
+function assignTraceYAxis(traces, yaxis) {
+  return traces.map((trace) => ({ ...trace, yaxis }));
 }
 
 function traceIsShownOnPlot(trace) {
@@ -210,10 +263,11 @@ function syncOverlayAxesFromTraces(elementId, axisConfig) {
     const anyVisible = el.data.some((trace) =>
       cfg.traces.includes(trace.name) && traceIsShownOnPlot(trace)
     );
-    update[axisKey + ".visible"] = anyVisible;
+    update[axisKey + ".visible"] = true;
     update[axisKey + ".showticklabels"] = anyVisible;
     update[axisKey + ".showline"] = anyVisible;
     update[axisKey + ".title"] = anyVisible ? cfg.title : "";
+    update[axisKey + ".ticklen"] = anyVisible ? 5 : 0;
   });
   Plotly.relayout(elementId, update);
 }
@@ -241,6 +295,297 @@ function mapSolutionType(raw) {
   return n;
 }
 
+const X29_MIN_FIELDS = 71;
+const X29_BASE_FIELDS = 29;
+const X29_PAIR_START = 29;
+const X29_PAIR_FIELD_COUNT = 12;
+const X29_EXTENDED_SV_START = 41;
+const X29_SV_BLOCK_START = 29;
+const X29_SV_BLOCK_END = 70;
+const X29_SV_USED_FLAG = 0x02;
+const X29_FLAGS_ONLY_VALUES = new Set([0, 34]);
+
+const CONSTELLATION_SV_PAIR_ORDERS = [
+  ["GPS", "GLONASS", "Galileo", "BeiDou", "QZSS", "SBAS"],
+  ["GPS", "GLONASS", "Galileo", "BeiDou", "QZSS", "SBAS", "NavIC"],
+  ["GPS", "SBAS", "GLONASS", "Galileo", "QZSS", "BeiDou"],
+  ["GPS", "SBAS", "GLONASS", "Galileo", "BeiDou", "QZSS"]
+];
+
+const CONSTELLATION_SV_TRIPLET_ORDERS = [
+  { idIdx: 0, typeIdx: 1, flagsIdx: 2 },
+  { idIdx: 1, typeIdx: 0, flagsIdx: 2 }
+];
+
+const CONSTELLATION_SV_SERIES = [
+  { key: "GPS", label: "GPS" },
+  { key: "GLONASS", label: "GLONASS" },
+  { key: "Galileo", label: "Galileo" },
+  { key: "BeiDou", label: "BeiDou" },
+  { key: "QZSS", label: "QZSS" },
+  { key: "SBAS", label: "SBAS" },
+  { key: "NavIC", label: "NavIC" }
+];
+
+const CONSTELLATION_SV_COLORS = {
+  GPS: "#1f77b4",
+  GLONASS: "#ff7f0e",
+  Galileo: "#9467bd",
+  BeiDou: "#d62728",
+  QZSS: "#8c564b",
+  SBAS: "#e377c2",
+  NavIC: "#17becf"
+};
+
+function emptyConstellationSvCounts() {
+  const counts = {};
+  CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+    counts[key] = { tracked: 0, used: 0 };
+  });
+  return counts;
+}
+
+function svTypeToConstellation(svType) {
+  switch (Math.trunc(Number(svType))) {
+    case 0: return "GPS";
+    case 1: return "SBAS";
+    case 2: return "GLONASS";
+    case 3: return "Galileo";
+    case 4: return "QZSS";
+    case 5:
+    case 7:
+    case 10: return "BeiDou";
+    case 9: return "NavIC";
+    default: return null;
+  }
+}
+
+function fieldInt(fields, index) {
+  if (!fields || index < 0 || index >= fields.length) return null;
+  const raw = String(fields[index] ?? "").trim();
+  if (!raw || raw.toLowerCase() === "nan") return null;
+  if (/^0x/i.test(raw)) {
+    const parsed = Number.parseInt(raw, 16);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? Math.trunc(parsed) : null;
+}
+
+function pairsPopulated(fields, start, pairFields) {
+  for (let i = 0; i < pairFields; i += 1) {
+    if (fieldInt(fields, start + i) != null) return true;
+  }
+  return false;
+}
+
+function normalizeSparseTriplet(vals) {
+  let svId = vals[0];
+  let svType = vals[1];
+  let flags = vals[2];
+  if (vals.every((v) => v == null)) return { svId: null, svType: null, flags: null };
+  if (vals.every((v) => v == null || X29_FLAGS_ONLY_VALUES.has(v))) {
+    flags = vals.find((v) => v != null) ?? null;
+    return { svId: null, svType: null, flags };
+  }
+  if (svId === svType && svType === flags && svId != null) {
+    return { svId: null, svType: null, flags: svId };
+  }
+  if (svType != null && X29_FLAGS_ONLY_VALUES.has(svType)) svType = null;
+  if (svId != null && svId <= 0) svId = null;
+  if (svId != null && X29_FLAGS_ONLY_VALUES.has(svId) && svType == null) svId = null;
+  return { svId, svType, flags };
+}
+
+function parseSparseSvTriplets(fields, start, end) {
+  const counts = emptyConstellationSvCounts();
+  for (let base = start; base + 2 < end && base + 2 < fields.length; base += 3) {
+    const vals = [fieldInt(fields, base), fieldInt(fields, base + 1), fieldInt(fields, base + 2)];
+    const { svId, svType, flags } = normalizeSparseTriplet(vals);
+    if (flags == null || svType == null) continue;
+    const key = svTypeToConstellation(svType);
+    if (!key || !counts[key]) continue;
+    counts[key].tracked += 1;
+    if (flags & X29_SV_USED_FLAG) counts[key].used += 1;
+  }
+  return counts;
+}
+
+function extendedSvEnd(fields) {
+  return Math.min(fields.length, X29_EXTENDED_SV_START + Math.max(0, fields.length - X29_EXTENDED_SV_START));
+}
+
+function cloneConstellationSvCounts(counts) {
+  const copy = emptyConstellationSvCounts();
+  CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+    copy[key] = {
+      tracked: counts[key].tracked,
+      used: counts[key].used
+    };
+  });
+  return copy;
+}
+
+function scoreConstellationSvCounts(counts, totalTracked, totalUsed) {
+  let trackedSum = 0;
+  let usedSum = 0;
+  let err = 0;
+  CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+    const entry = counts[key];
+    trackedSum += entry.tracked;
+    usedSum += entry.used;
+    if (entry.tracked > 80 || entry.used > 80) err += 200;
+    if (entry.used > entry.tracked) err += 50;
+  });
+  err += Math.abs(trackedSum - totalTracked) + Math.abs(usedSum - totalUsed);
+  return err;
+}
+
+function parseConstellationSvCountPairs(fields, start, names) {
+  const counts = emptyConstellationSvCounts();
+  names.forEach((key, index) => {
+    if (!counts[key]) return;
+    const tracked = fieldInt(fields, start + index * 2);
+    const used = fieldInt(fields, start + index * 2 + 1);
+    if (tracked == null) return;
+    counts[key].tracked = Math.max(0, tracked);
+    counts[key].used = Math.max(0, used ?? 0);
+  });
+  return counts;
+}
+
+function parseConstellationSvTriplets(fields, start, end, order) {
+  const counts = emptyConstellationSvCounts();
+  for (let i = start; i + 2 <= end && i + 2 < fields.length; i += 3) {
+    const svId = fieldInt(fields, i + order.idIdx);
+    const svType = fieldInt(fields, i + order.typeIdx);
+    const svFlags = fieldInt(fields, i + order.flagsIdx);
+    if (svId == null || svId <= 0 || svType == null) continue;
+    if (X29_FLAGS_ONLY_VALUES.has(svType)) continue;
+    const key = svTypeToConstellation(svType);
+    if (!key || !counts[key]) continue;
+    counts[key].tracked += 1;
+    if (svFlags != null && (svFlags & X29_SV_USED_FLAG)) {
+      counts[key].used += 1;
+    }
+  }
+  return counts;
+}
+
+function parseConstellationSvCounts(fields) {
+  const empty = emptyConstellationSvCounts();
+  if (!fields || fields.length < X29_MIN_FIELDS) {
+    return empty;
+  }
+  const totalTracked = fieldInt(fields, 3) || 0;
+  const totalUsed = fieldInt(fields, 4) || 0;
+  if (totalTracked <= 0 && totalUsed <= 0) {
+    return empty;
+  }
+
+  const candidates = [];
+  const extended = fields.length > X29_MIN_FIELDS;
+  const svEnd = extended ? extendedSvEnd(fields) : 71;
+
+  if (pairsPopulated(fields, X29_PAIR_START, X29_PAIR_FIELD_COUNT)) {
+    CONSTELLATION_SV_PAIR_ORDERS.forEach((names) => {
+      if (names.length * 2 > X29_PAIR_FIELD_COUNT) return;
+      candidates.push(parseConstellationSvCountPairs(fields, X29_PAIR_START, names));
+    });
+  }
+
+  candidates.push(parseSparseSvTriplets(fields, X29_EXTENDED_SV_START, svEnd));
+
+  CONSTELLATION_SV_TRIPLET_ORDERS.forEach((order) => {
+    candidates.push(parseConstellationSvTriplets(fields, X29_EXTENDED_SV_START, svEnd, order));
+    candidates.push(parseConstellationSvTriplets(fields, X29_SV_BLOCK_START, X29_SV_BLOCK_END, order));
+  });
+
+  let best = empty;
+  let bestScore = Number.POSITIVE_INFINITY;
+  candidates.forEach((counts) => {
+    const score = scoreConstellationSvCounts(counts, totalTracked, totalUsed);
+    if (score < bestScore) {
+      bestScore = score;
+      best = counts;
+    }
+  });
+  return bestScore <= 4 ? best : empty;
+}
+
+function parseConstellationSvCsv(text) {
+  const byTime = new Map();
+  const rows = String(text || "").trim().split(/\r?\n/);
+  if (rows.length < 2) return byTime;
+  const header = rows[0].split(",").map((part) => part.trim());
+  const timeIdx = header.indexOf("unix_time");
+  if (timeIdx < 0) return byTime;
+
+  for (let rowIndex = 1; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex];
+    if (!row) continue;
+    const parts = row.split(",");
+    const t = Number(parts[timeIdx]);
+    if (!Number.isFinite(t)) continue;
+    const counts = emptyConstellationSvCounts();
+    CONSTELLATION_SV_SERIES.forEach(({ key }) => {
+      const trackedIdx = header.indexOf(key + "_tracked");
+      const usedIdx = header.indexOf(key + "_used");
+      if (trackedIdx >= 0) counts[key].tracked = Number(parts[trackedIdx]) || 0;
+      if (usedIdx >= 0) counts[key].used = Number(parts[usedIdx]) || 0;
+    });
+    byTime.set(t, counts);
+    byTime.set(timeMatchKey(t), counts);
+  }
+  return byTime;
+}
+
+function mergeConstellationSvData(solutionPoints, constellationText) {
+  if (!constellationText || !solutionPoints.length) return solutionPoints;
+  const byTime = parseConstellationSvCsv(constellationText);
+  if (!byTime.size) return solutionPoints;
+  return solutionPoints.map((point) => {
+    const counts = byTime.get(point.t) ?? byTime.get(timeMatchKey(point.t));
+    if (!counts) return point;
+    return { ...point, constellation: cloneConstellationSvCounts(counts) };
+  });
+}
+
+function constellationSvTraces(x, points) {
+  const traces = [];
+  CONSTELLATION_SV_SERIES.forEach(({ key, label }) => {
+    const hasData = points.some((p) => {
+      const entry = p.constellation && p.constellation[key];
+      return entry && (entry.tracked > 0 || entry.used > 0);
+    });
+    if (!hasData) return;
+    const color = CONSTELLATION_SV_COLORS[key];
+    traces.push({
+      x,
+      y: points.map((p) => {
+        const entry = p.constellation && p.constellation[key];
+        return entry ? entry.tracked : null;
+      }),
+      name: label + " Tracked",
+      mode: "lines",
+      visible: "legendonly",
+      line: { color, width: 1.5, dash: "dot" }
+    });
+    traces.push({
+      x,
+      y: points.map((p) => {
+        const entry = p.constellation && p.constellation[key];
+        return entry ? entry.used : null;
+      }),
+      name: label + " Used",
+      mode: "lines",
+      visible: "legendonly",
+      line: { color, width: 1.5 }
+    });
+  });
+  return traces;
+}
+
 function parseX29Csv(text) {
   const rows = text.trim().split(/\r?\n/);
   const data = [];
@@ -256,7 +601,14 @@ function parseX29Csv(text) {
     if (!Number.isFinite(t) || solution == null) continue;
     const gps = parseGpsTimeFromFields(f, t);
     data.push({
-      t, solution, tracked, used, latency, gpsWeek: gps.gpsWeek, gpsSec: gps.gpsSec
+      t,
+      solution,
+      tracked,
+      used,
+      latency,
+      constellation: parseConstellationSvCounts(f),
+      gpsWeek: gps.gpsWeek,
+      gpsSec: gps.gpsSec
     });
   }
   return data;
@@ -306,6 +658,56 @@ function parsePositionCsv(text, isMoving) {
         gpsWeek: gps.gpsWeek, gpsSec: gps.gpsSec
       });
     }
+  }
+  return data;
+}
+
+function parseGnssHeightCsv(text) {
+  const rows = String(text || "").trim().split(/\r?\n/);
+  if (rows.length < 2) return [];
+  const data = [];
+  for (let i = 1; i < rows.length; i += 1) {
+    const row = rows[i];
+    if (!row) continue;
+    const parts = row.split(",");
+    if (parts.length < 2) continue;
+    const t = Number(parts[0]);
+    const height = Number(parts[1]);
+    if (!Number.isFinite(t) || !Number.isFinite(height)) continue;
+    const gps = unixToGpsWeekSeconds(t);
+    data.push({
+      t,
+      height,
+      gpsWeek: gps.gpsWeek,
+      gpsSec: gps.gpsSec
+    });
+  }
+  return data;
+}
+
+function parseAtsCsv(text) {
+  const rows = String(text || "").trim().split(/\r?\n/);
+  if (rows.length < 2) return [];
+  const data = [];
+  for (let i = 1; i < rows.length; i += 1) {
+    const row = rows[i];
+    if (!row) continue;
+    const parts = row.split(",");
+    if (parts.length < 4) continue;
+    const t = Number(parts[0]);
+    const n = Number(parts[1]);
+    const e = Number(parts[2]);
+    const ele = Number(parts[3]);
+    if (!Number.isFinite(t) || !Number.isFinite(ele)) continue;
+    const gps = unixToGpsWeekSeconds(t);
+    data.push({
+      t,
+      n,
+      e,
+      ele,
+      gpsWeek: gps.gpsWeek,
+      gpsSec: gps.gpsSec
+    });
   }
   return data;
 }
@@ -409,6 +811,8 @@ function buildSolutionTypeFilterUI(types) {
 
 let allPositionPoints = [];
 let allSolutionPoints = [];
+let allAtsPoints = [];
+let allGnssHeightPoints = [];
 let plotFilterInfo = {
   filter: "unknown",
   mean: "unknown",
@@ -416,7 +820,14 @@ let plotFilterInfo = {
   meanRequest: "",
   session: "static",
   sessionRequest: "-1",
-  driveWarning: false
+  driveWarning: false,
+  truth: false,
+  truthHeightOffset: null,
+  atsData: false,
+  atsProvided: false,
+  gnssHeight: false,
+  atsHeightOffset: null,
+  atsHeightMatched: null
 };
 let plotListenersAttached = false;
 
@@ -480,6 +891,86 @@ function plainNumericAxisFormat() {
   };
 }
 
+function meterAxisBase() {
+  return {
+    exponentformat: "none",
+    showexponent: "none"
+  };
+}
+
+function meterFormatFromSpan(span) {
+  if (!Number.isFinite(span) || span <= 0) {
+    return { tickformat: ".3f", hoverformat: ".3f" };
+  }
+  const decimals = Math.max(0, Math.min(3, Math.ceil(3 - Math.log10(Math.max(span, 1e-9)))));
+  const tickformat = decimals > 0 ? `.${decimals}f` : ".0f";
+  const hoverDecimals = Math.min(decimals + 1, 3);
+  const hoverformat = hoverDecimals > 0 ? `.${hoverDecimals}f` : ".1f";
+  return { tickformat, hoverformat };
+}
+
+function meterAxisFromValues(values) {
+  const finite = (values || []).filter(Number.isFinite);
+  if (!finite.length) {
+    return { ...meterAxisBase(), ...meterFormatFromSpan(1) };
+  }
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  const span = max - min || Math.max(Math.abs(max), Math.abs(min), 1);
+  return { ...meterAxisBase(), ...meterFormatFromSpan(span) };
+}
+
+function yValuesFromTraces(traces, yaxisId) {
+  const values = [];
+  (traces || []).forEach((trace) => {
+    const id = trace.yaxis || "y";
+    if (id !== yaxisId) return;
+    (trace.y || []).forEach((v) => {
+      if (Number.isFinite(v)) values.push(v);
+    });
+  });
+  return values;
+}
+
+function attachAdaptiveMeterAxis(plotId, yLayoutKey, yaxisId) {
+  const el = document.getElementById(plotId);
+  if (!el) return;
+
+  const apply = () => {
+    if (!el.layout || !el.data) return;
+    const axis = el.layout[yLayoutKey] || {};
+    let span;
+    if (Array.isArray(axis.range) && axis.range.length === 2) {
+      span = Math.abs(axis.range[1] - axis.range[0]);
+    } else {
+      const values = yValuesFromTraces(el.data, yaxisId);
+      if (!values.length) return;
+      span = Math.max(...values) - Math.min(...values);
+    }
+    const fmt = meterFormatFromSpan(span || 1);
+    Plotly.relayout(plotId, {
+      [yLayoutKey + ".tickformat"]: fmt.tickformat,
+      [yLayoutKey + ".hoverformat"]: fmt.hoverformat
+    });
+  };
+
+  el.on("plotly_relayout", (eventData) => {
+    if (!eventData) return;
+    const rangeKey = yLayoutKey + ".range";
+    const range0Key = yLayoutKey + ".range[0]";
+    if (
+      eventData[rangeKey] ||
+      eventData[range0Key] !== undefined ||
+      eventData[yLayoutKey + ".autorange"] === true ||
+      eventData["xaxis.range"] ||
+      eventData["xaxis.autorange"] === true
+    ) {
+      window.setTimeout(apply, 0);
+    }
+  });
+  apply();
+}
+
 function gpsAxisLayout(points, xValues) {
   const numericFormat = plainNumericAxisFormat();
   if (!points.length) {
@@ -514,20 +1005,20 @@ function gpsAxisLayout(points, xValues) {
   };
 }
 
-function formatLocalTime(unixSec) {
-  const d = new Date(unixSec * 1000);
+function formatLocalTime(plotUnix) {
+  const d = new Date(plotUnix * 1000);
   const pad = (n) => String(n).padStart(2, "0");
   return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
 }
 
-function formatUtcTime(unixSec) {
-  const d = new Date(unixSec * 1000);
+function formatUtcTime(plotUnix) {
+  const d = new Date(plotUnix * 1000);
   const pad = (n) => String(n).padStart(2, "0");
   return pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds());
 }
 
-function utcPlotDate(unixSec) {
-  const d = new Date(unixSec * 1000);
+function utcPlotDate(plotUnix) {
+  const d = new Date(plotUnix * 1000);
   return new Date(d.getTime() + d.getTimezoneOffset() * 60000);
 }
 
@@ -563,17 +1054,60 @@ function timePlotLayout(xaxisLayout, mode) {
   return {
     margin: {
       l: 60,
-      r: 30,
+      r: Y2_AXIS_RIGHT_MARGIN,
       t: usesDateTimeAxis(mode) ? 58 : 50,
       b: 45
     },
     xaxis: xaxisLayout,
+    yaxis2: reservedRightY2Axis(),
     legend: {
       orientation: "h",
       y: 1.02,
       x: 0,
       xanchor: "left",
       yanchor: "bottom"
+    }
+  };
+}
+
+function readAtsHeightSigmaOptions() {
+  const readLevel = (level) => {
+    const toggles = document.querySelectorAll(`.ats-height-sigma-toggle[data-level="${level}"]`);
+    if (!toggles.length) return level === "1";
+    return Array.from(toggles).some((el) => el.checked);
+  };
+  return {
+    show1Sigma: readLevel("1"),
+    show2Sigma: readLevel("2"),
+    show3Sigma: readLevel("3"),
+    sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
+  };
+}
+
+function syncAtsHeightSigmaToggles(source) {
+  const level = source?.dataset?.level;
+  if (!level) return;
+  document.querySelectorAll(`.ats-height-sigma-toggle[data-level="${level}"]`).forEach((el) => {
+    if (el !== source) el.checked = source.checked;
+  });
+}
+
+function atsSigmaPlotLayout(axisLayout, mode, options = {}) {
+  const base = timePlotLayout(axisLayout, mode);
+  return {
+    ...base,
+    margin: {
+      ...base.margin,
+      r: Y2_AXIS_RIGHT_MARGIN,
+      t: Math.max(base.margin.t, usesDateTimeAxis(mode) ? 78 : 70)
+    },
+    title: options.title,
+    yaxis: options.yaxis,
+    annotations: options.annotations || [],
+    legend: {
+      ...base.legend,
+      itemclick: "toggle",
+      itemdoubleclick: "toggleothers"
     }
   };
 }
@@ -626,6 +1160,140 @@ function horizontalSigma(points) {
 
 function verticalSigma(points) {
   return points.map((p) => (Number.isFinite(p.vprec) ? p.vprec : null));
+}
+
+function enrichGnssHeightsWithSigma(gnssHeights, positionPoints) {
+  if (!gnssHeights.length || !positionPoints.length) return gnssHeights;
+  const byTime = new Map();
+  const byRounded = new Map();
+  positionPoints.forEach((p) => {
+    if (!Number.isFinite(p.vprec)) return;
+    byTime.set(p.t, p.vprec);
+    byRounded.set(timeMatchKey(p.t), p.vprec);
+  });
+  return gnssHeights.map((p) => {
+    const vprec = byTime.get(p.t) ?? byRounded.get(timeMatchKey(p.t));
+    return vprec != null ? { ...p, vprec } : p;
+  });
+}
+
+function addSeries(a, b) {
+  return a.map((v, i) => {
+    const w = b[i];
+    if (!Number.isFinite(v) || !Number.isFinite(w)) return null;
+    return v + w;
+  });
+}
+
+function negateSeries(values) {
+  return values.map((v) => (Number.isFinite(v) ? -v : null));
+}
+
+function scaleSeries(values, factor) {
+  return values.map((v) => (Number.isFinite(v) ? factor * v : null));
+}
+
+function heightRelativeSigmaBandTraces(x, center, sigma, options = {}) {
+  const {
+    show1Sigma = true,
+    show2Sigma = false,
+    show3Sigma = false,
+    sigmaColorKeys = { 1: "up", 2: "d2", 3: "d3" }
+  } = options;
+  const suffix = " U";
+  const lineStyle = { dash: "dot", width: 1.5 };
+  const wideStyle = { dash: "dash", width: 1 };
+  const colorFor = (level) => sigmaColorKeys[level] || "up";
+  const traces = [];
+  if (show1Sigma) {
+    traces.push(
+      coloredLine(x, addSeries(center, sigma), `+1σ${suffix}`, colorFor(1), { line: lineStyle })
+    );
+    traces.push(
+      coloredLine(x, addSeries(center, negateSeries(sigma)), `-1σ${suffix}`, colorFor(1), { line: lineStyle })
+    );
+  }
+  if (show2Sigma) {
+    const sigma2 = scaleSeries(sigma, 2);
+    traces.push(
+      coloredLine(x, addSeries(center, sigma2), `+2σ${suffix}`, colorFor(2), { line: wideStyle })
+    );
+    traces.push(
+      coloredLine(x, addSeries(center, negateSeries(sigma2)), `-2σ${suffix}`, colorFor(2), { line: wideStyle })
+    );
+  }
+  if (show3Sigma) {
+    const sigma3 = scaleSeries(sigma, 3);
+    traces.push(
+      coloredLine(x, addSeries(center, sigma3), `+3σ${suffix}`, colorFor(3), { line: wideStyle })
+    );
+    traces.push(
+      coloredLine(x, addSeries(center, negateSeries(sigma3)), `-3σ${suffix}`, colorFor(3), { line: wideStyle })
+    );
+  }
+  return traces;
+}
+
+function sigmaBandTraces(x, sigma, options = {}) {
+  const {
+    show1Sigma = true,
+    show2Sigma = false,
+    show3Sigma = false,
+    labelSuffix = "",
+    colorKey = "up",
+    sigmaColorKeys = null,
+    positiveOnly = false
+  } = options;
+  const suffix = labelSuffix ? ` ${labelSuffix}` : "";
+  const lineStyle = { dash: "dot", width: 1.5 };
+  const wideStyle = { dash: "dash", width: 1 };
+  const colorFor = (level) => (sigmaColorKeys && sigmaColorKeys[level]) || colorKey;
+  const traces = [];
+  if (show1Sigma) {
+    traces.push(
+      coloredLine(x, sigma, `+1σ${suffix}`, colorFor(1), { line: lineStyle })
+    );
+    if (!positiveOnly) {
+      traces.push(
+        coloredLine(x, negateSeries(sigma), `-1σ${suffix}`, colorFor(1), { line: lineStyle })
+      );
+    }
+  }
+  if (show2Sigma) {
+    const sigma2 = scaleSeries(sigma, 2);
+    traces.push(
+      coloredLine(x, sigma2, `+2σ${suffix}`, colorFor(2), { line: wideStyle })
+    );
+    if (!positiveOnly) {
+      traces.push(
+        coloredLine(x, negateSeries(sigma2), `-2σ${suffix}`, colorFor(2), { line: wideStyle })
+      );
+    }
+  }
+  if (show3Sigma) {
+    const sigma3 = scaleSeries(sigma, 3);
+    traces.push(
+      coloredLine(x, sigma3, `+3σ${suffix}`, colorFor(3), { line: wideStyle })
+    );
+    if (!positiveOnly) {
+      traces.push(
+        coloredLine(x, negateSeries(sigma3), `-3σ${suffix}`, colorFor(3), { line: wideStyle })
+      );
+    }
+  }
+  return traces;
+}
+
+function verticalSigmaBandTraces(x, sigma, options = {}) {
+  return sigmaBandTraces(x, sigma, options);
+}
+
+function horizontalSigmaBandTraces(x, sigma, options = {}) {
+  return sigmaBandTraces(x, sigma, { ...options, labelSuffix: "H", colorKey: "d2" });
+}
+
+function verticalSigmaBandTracesForU(x, sigma, options = {}) {
+  return sigmaBandTraces(x, sigma, { ...options, labelSuffix: "U", colorKey: "up" });
 }
 
 function velocitySeries(points) {
@@ -707,7 +1375,7 @@ function sigmaPlotOverlayAxes(showDop, showSol, points) {
 function sigmaPlotRightMargin(showDop, showSol) {
   if (showDop && showSol) return 120;
   if (showDop || showSol) return 80;
-  return 30;
+  return Y2_AXIS_RIGHT_MARGIN;
 }
 
 function vdopTrace(x, points, yaxis) {
@@ -746,88 +1414,53 @@ const AGE_CORRECTION_PLOT_IDS = [
   "plot-age-corr-3d"
 ];
 
-function ageCorrectionSeries(points) {
-  const rows = points
-    .filter((p) => Number.isFinite(p.latency) && p.latency >= 0)
-    .map((p) => {
-      const e1 = Math.abs(p.u);
-      const e2 = Math.sqrt(p.n * p.n + p.e * p.e);
-      const e3 = Math.sqrt(p.n * p.n + p.e * p.e + p.u * p.u);
-      const hSigma = Number.isFinite(p.hprec)
-        ? Math.sqrt(2 * Math.abs(p.hprec) * Math.abs(p.hprec))
-        : null;
-      const vSigma = Number.isFinite(p.vprec) ? Math.abs(p.vprec) : null;
-      const d3Sigma = (hSigma != null && vSigma != null)
-        ? Math.sqrt(hSigma * hSigma + vSigma * vSigma)
-        : null;
-      return {
-        age: p.latency,
-        e1,
-        e2,
-        e3,
-        p1: vSigma,
-        p2: hSigma,
-        p3: d3Sigma
-      };
-    });
-
-  return { rows, count: rows.length };
-}
-
-function binAgeCorrectionRows(rows, decimals) {
-  const factor = Math.pow(10, decimals);
-  const bins = new Map();
-  const valueKeys = ["e1", "e2", "e3", "p1", "p2", "p3"];
-
-  rows.forEach((row) => {
-    const age = Math.round(row.age * factor) / factor;
-    if (!bins.has(age)) {
-      const entry = { age };
-      valueKeys.forEach((key) => {
-        entry[key + "Sum"] = 0;
-        entry[key + "Count"] = 0;
-      });
-      bins.set(age, entry);
-    }
-    const bin = bins.get(age);
-    valueKeys.forEach((key) => {
-      const value = row[key];
-      if (!Number.isFinite(value)) return;
-      bin[key + "Sum"] += value;
-      bin[key + "Count"] += 1;
-    });
-  });
-
-  return Array.from(bins.values()).map((bin) => {
-    const out = { age: bin.age };
-    valueKeys.forEach((key) => {
-      const count = bin[key + "Count"];
-      out[key] = count > 0 ? bin[key + "Sum"] / count : null;
-    });
-    return out;
-  }).sort((a, b) => a.age - b.age);
-}
-
-function plotAgeCorrectionChart(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey) {
-  const x = bins.map((b) => b.age);
+function plotErrorSigmaRatioChart(
+  elementId, title, x, errY, sigY, ratioY,
+  errName, sigName, ratioName, colorKey, layoutBase, options = {}
+) {
+  const { sigmaLegendOnly = true, ratioColorKey = colorKey } = options;
   const color = ERROR_COLORS[colorKey];
-  drawPlot(elementId, [
-    { type: "scatter", x, y: bins.map((b) => b[errKey]), name: errName, mode: "lines", line: { color, width: 2 }, marker: { color } },
+  const ratioColor = ERROR_COLORS[ratioColorKey] || color;
+  return drawPlot(elementId, [
+    coloredLine(x, errY, errName, colorKey),
     {
       type: "scatter",
       x,
-      y: bins.map((b) => b[sigKey]),
+      y: sigY,
       name: sigName,
       mode: "lines",
+      visible: sigmaLegendOnly ? "legendonly" : true,
       line: { color, width: 2, dash: "dot" },
       marker: { color }
+    },
+    {
+      type: "scatter",
+      x,
+      y: ratioY,
+      name: ratioName,
+      mode: "lines",
+      yaxis: "y2",
+      line: { color: ratioColor, width: 2 },
+      marker: { color: ratioColor }
     }
   ], {
-    margin: { l: 65, r: 30, t: 40, b: 45 },
+    ...layoutBase,
+    margin: { ...layoutBase.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title,
-    xaxis: { title: "Age of Corrections (s)", rangemode: "tozero", zeroline: true },
     yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
-    legend: { orientation: "h", itemclick: "toggle", itemdoubleclick: "toggleothers" }
+    yaxis2: {
+      title: ratioName,
+      overlaying: "y",
+      side: "right",
+      rangemode: "tozero",
+      zeroline: true,
+      showgrid: false
+    },
+    legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+  }).then(() => {
+    attachOverlayAxisLegendSync(elementId, {
+      yaxis2: { title: ratioName, traces: [ratioName] }
+    });
   });
 }
 
@@ -899,7 +1532,10 @@ const POSITION_TIME_PLOT_IDS = [
   "plot-enu-sigma",
   "plot-sigma-1d",
   "plot-sigma-2d",
-  "plot-sigma-3d"
+  "plot-sigma-3d",
+  "plot-age-corr-1d",
+  "plot-age-corr-2d",
+  "plot-age-corr-3d"
 ];
 
 const MOVING_POSITION_TIME_PLOT_IDS = [
@@ -912,16 +1548,27 @@ const MOVING_POSITION_TIME_PLOT_IDS = [
   "plot-sigma-3d"
 ];
 
-const TIME_LINKED_PLOT_IDS = [
-  ...SOLUTION_TIME_PLOT_IDS,
-  ...POSITION_TIME_PLOT_IDS
+const ATS_TIME_PLOT_IDS = [
+  "plot-ats-ne",
+  "plot-ats-height-delta",
+  "plot-ats-error-sigma"
 ];
 
-function activeTimePlotIds(isMoving) {
+const TIME_LINKED_PLOT_IDS = [
+  ...SOLUTION_TIME_PLOT_IDS,
+  ...POSITION_TIME_PLOT_IDS,
+  ...ATS_TIME_PLOT_IDS
+];
+
+function activeTimePlotIds(isMoving, hasTruth, hasAtsPlots) {
+  const movingPlotsOnly = isMoving && !hasTruth;
   const ids = [
     ...SOLUTION_TIME_PLOT_IDS,
-    ...(isMoving ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
+    ...(movingPlotsOnly ? MOVING_POSITION_TIME_PLOT_IDS : POSITION_TIME_PLOT_IDS)
   ];
+  if (hasAtsPlots) {
+    ids.push(...ATS_TIME_PLOT_IDS);
+  }
   return ids.filter((id) => {
     if (!shouldDrawPlot(id)) return false;
     const el = document.getElementById(id);
@@ -939,10 +1586,12 @@ const ALL_PLOT_IDS = [
 
 const DEFAULT_PLOT_CARD_ORDER = [
   "plot-solution-latency",
-  "plot-latency-dist",
   "plot-sv",
+  "plot-ats-ne",
   "plot-height-error",
   "plot-height-sigma",
+  "plot-ats-height-delta",
+  "plot-ats-error-sigma",
   "plot-velocity-neu",
   "plot-velocity-speed",
   "plot-enu",
@@ -1017,6 +1666,12 @@ function purgePlotElementsInCard(card) {
   });
 }
 
+function setPlotCardTitle(cardId, title) {
+  const card = plotCardElement(cardId);
+  const heading = card?.querySelector(".plot-card-header h3, :scope > h3");
+  if (heading) heading.textContent = title;
+}
+
 function plotCardTitle(cardId) {
   const card = plotCardElement(cardId);
   const heading = card?.querySelector(".plot-card-header h3, h3");
@@ -1024,7 +1679,7 @@ function plotCardTitle(cardId) {
 }
 
 function applyPlotCardClosedState() {
-  document.querySelectorAll("#interactive-plot-cards .plot-card[data-card-id]").forEach((card) => {
+  document.querySelectorAll(".plot-card[data-card-id]").forEach((card) => {
     card.classList.toggle("plot-card-closed", isPlotCardClosed(card.dataset.cardId));
   });
   updatePlotRestoreBar();
@@ -1092,7 +1747,11 @@ function closePlotCard(cardId) {
     purgePlotElementsInCard(card);
   }
   updatePlotRestoreBar();
-  linkTimePlotZoom(activeTimePlotIds(plotFilterInfo.session === "moving"));
+  linkTimePlotZoom(activeTimePlotIds(
+    plotFilterInfo.session === "moving" && !plotFilterInfo.truth,
+    plotFilterInfo.truth,
+    plotFilterInfo.atsProvided || (plotFilterInfo.atsData && allAtsPoints.length > 0)
+  ));
 }
 
 function restorePlotCard(cardId) {
@@ -1164,7 +1823,7 @@ function initPlotCardChrome() {
   const container = document.getElementById("interactive-plot-cards");
   if (!container) return;
 
-  container.querySelectorAll(".plot-card[data-card-id]").forEach(enhancePlotCard);
+  document.querySelectorAll(".plot-card[data-card-id]").forEach(enhancePlotCard);
 
   if (!plotCardChromeInitialized) {
     plotCardChromeInitialized = true;
@@ -1192,9 +1851,25 @@ function initPlotCardChrome() {
   applyPlotCardClosedState();
 }
 
+let plotDrawBatch = null;
+
+function beginPlotDrawBatch() {
+  plotDrawBatch = [];
+}
+
+function endPlotDrawBatch(done) {
+  const batch = plotDrawBatch || [];
+  plotDrawBatch = null;
+  Promise.all(batch).finally(() => {
+    if (typeof done === "function") done();
+  });
+}
+
 function drawPlotIfOpen(plotId, traces, layout, config) {
   if (!shouldDrawPlot(plotId)) return Promise.resolve();
-  return drawPlot(plotId, traces, layout, config);
+  const promise = drawPlot(plotId, traces, layout, config);
+  if (plotDrawBatch) plotDrawBatch.push(promise);
+  return promise;
 }
 
 function plotLatencyDistributionIfOpen(elementId, dist) {
@@ -1202,9 +1877,15 @@ function plotLatencyDistributionIfOpen(elementId, dist) {
   plotLatencyDistribution(elementId, dist);
 }
 
-function plotAgeCorrectionChartIfOpen(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey) {
+function plotErrorSigmaRatioChartIfOpen(
+  elementId, title, x, errY, sigY, ratioY,
+  errName, sigName, ratioName, colorKey, layoutBase, options
+) {
   if (!shouldDrawPlot(elementId)) return;
-  plotAgeCorrectionChart(elementId, title, bins, errKey, sigKey, errName, sigName, colorKey);
+  plotErrorSigmaRatioChart(
+    elementId, title, x, errY, sigY, ratioY,
+    errName, sigName, ratioName, colorKey, layoutBase, options
+  );
 }
 
 function removeLegacy2d3dPlot() {
@@ -1283,7 +1964,22 @@ function shouldRescaleYForPlot(plotId) {
   if (plotId === "plot-solution-latency") return false;
   const el = document.getElementById(plotId);
   if (!el || !el.layout) return true;
-  return !isCategoricalYAxis(plotId, "yaxis");
+  if (isCategoricalYAxis(plotId, "yaxis")) return false;
+  if (
+    plotId === "plot-height-error"
+    || plotId === "plot-height-sigma"
+    || plotId === "plot-ats-height-delta"
+  ) {
+    const names = new Set((el.data || []).map((trace) => trace.name));
+    if (
+      names.has("GNSS Height")
+      || names.has("GNSS error")
+      || [...names].some((name) => name.startsWith("ATS Height"))
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function yRangeUsesToZero(plotId, axisKey) {
@@ -1466,6 +2162,13 @@ function parsePlotFilter(text) {
   let session = "static";
   let sessionRequest = "-1";
   let driveWarning = false;
+  let truth = false;
+  let truthHeightOffset = null;
+  let atsData = false;
+  let atsProvided = false;
+  let gnssHeight = false;
+  let atsHeightOffset = null;
+  let atsHeightMatched = null;
   for (const line of lines) {
     if (!line) continue;
     if (line.startsWith("mean_name:")) {
@@ -1480,29 +2183,69 @@ function parsePlotFilter(text) {
       session = line.slice(8);
     } else if (line.startsWith("drive_warning:")) {
       driveWarning = line.slice(14).trim() === "yes";
+    } else if (line.startsWith("truth:")) {
+      truth = line.slice(6).trim() === "yes";
+    } else if (line.startsWith("truth_height_offset:")) {
+      const value = Number(line.slice(20).trim());
+      truthHeightOffset = Number.isFinite(value) ? value : null;
+    } else if (line.startsWith("ats_data:")) {
+      atsData = line.slice(9).trim() === "yes";
+    } else if (line.startsWith("ats_provided:")) {
+      atsProvided = line.slice(13).trim() === "yes";
+    } else if (line.startsWith("gnss_height:")) {
+      gnssHeight = line.slice(12).trim() === "yes";
+    } else if (line.startsWith("ats_height_offset:")) {
+      const value = Number(line.slice(18).trim());
+      atsHeightOffset = Number.isFinite(value) ? value : null;
+    } else if (line.startsWith("ats_height_matched:")) {
+      const value = Number(line.slice(19).trim());
+      atsHeightMatched = Number.isFinite(value) ? value : null;
     } else {
       filter = line;
     }
   }
-  return { filter, mean, meanName, meanRequest, session, sessionRequest, driveWarning };
+  return {
+    filter,
+    mean,
+    meanName,
+    meanRequest,
+    session,
+    sessionRequest,
+    driveWarning,
+    truth,
+    truthHeightOffset,
+    atsData,
+    atsProvided,
+    gnssHeight,
+    atsHeightOffset,
+    atsHeightMatched
+  };
 }
 
-function applySessionPlotVisibility(isMoving) {
+function applySessionPlotVisibility(isMoving, hasTruth, showAtsPlots) {
+  const hideStatic = isMoving && !hasTruth;
   document.querySelectorAll(".plot-static-only").forEach((el) => {
-    el.style.display = isMoving ? "none" : "";
+    el.style.display = hideStatic ? "none" : "";
   });
   document.querySelectorAll(".plot-moving-only").forEach((el) => {
-    el.style.display = isMoving ? "" : "none";
+    el.style.display = hideStatic ? "" : "none";
   });
-  const heightCard = document.getElementById("plot-height-error");
-  if (heightCard) {
-    const heading = heightCard.closest(".plot-card")?.querySelector("h3");
-    if (heading) heading.textContent = isMoving ? "Height" : "Height Error";
-  }
-  const heightSigmaCard = document.getElementById("plot-height-sigma");
-  if (heightSigmaCard) {
-    const heading = heightSigmaCard.closest(".plot-card")?.querySelector("h3");
-    if (heading) heading.textContent = isMoving ? "Height and Sigma" : "Height Error and Sigma";
+  document.querySelectorAll(".plot-ats-only").forEach((el) => {
+    el.style.display = showAtsPlots ? "" : "none";
+  });
+
+  const hasAtsHeightData = showAtsPlots && allAtsPoints.length > 0;
+  if (hasAtsHeightData) {
+    setPlotCardTitle("plot-height-error", "GNSS / ATS Height");
+    setPlotCardTitle("plot-height-sigma", "GNSS / ATS Height and Sigma");
+    setPlotCardTitle("plot-ats-height-delta", "GNSS / ATS Delta and Sigma");
+    setPlotCardTitle("plot-ats-error-sigma", "GNSS / ATS Error/Sigma");
+  } else if (isMoving) {
+    setPlotCardTitle("plot-height-error", "Height");
+    setPlotCardTitle("plot-height-sigma", "Height and Sigma");
+  } else {
+    setPlotCardTitle("plot-height-error", "Height Error");
+    setPlotCardTitle("plot-height-sigma", "Height Error and Sigma");
   }
 }
 
@@ -1531,16 +2274,391 @@ function pdopMarkerStyle(points, usedSv, maxUsedSv) {
   };
 }
 
-function meanTypeLabel(info) {
-  if (info.mean === "all") return "all solution types";
-  if (info.mean === "unknown") return "unknown";
-  const used = info.meanName
-    ? info.meanName + " (type " + info.mean + ")"
-    : "type " + info.mean;
-  if (info.meanRequest === "-1" || info.meanRequest === "") {
-    return "automatic → " + used;
+function gnssHeightPointsForPlot(isMoving, points, atsMode) {
+  if (allGnssHeightPoints.length) return allGnssHeightPoints;
+  if (isMoving || atsMode) {
+    return points
+      .filter((p) => Number.isFinite(p.absHeight))
+      .map((p) => ({
+        t: p.t,
+        height: p.absHeight,
+        vprec: Number.isFinite(p.vprec) ? p.vprec : null,
+        gpsWeek: p.gpsWeek,
+        gpsSec: p.gpsSec
+      }));
   }
-  return used;
+  return [];
+}
+
+function gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback) {
+  if (!gnssHeights.length || !atsPoints.length) return [];
+  const tMin = Math.min(...atsPoints.map((p) => p.t));
+  const tMax = Math.max(...atsPoints.map((p) => p.t));
+  const inWindow = gnssHeights.filter((p) => p.t >= tMin && p.t <= tMax);
+  if (inWindow.length || !allowFullGnssFallback) return inWindow;
+  return gnssHeights;
+}
+
+function adjustedAtsHeight(ele, heightOffset) {
+  if (!Number.isFinite(ele)) return null;
+  if (!Number.isFinite(heightOffset)) return ele;
+  return ele + heightOffset;
+}
+
+function interpolateAtsAtTime(atsPoints, tQuery) {
+  if (!atsPoints.length || tQuery < atsPoints[0].t || tQuery > atsPoints[atsPoints.length - 1].t) {
+    return null;
+  }
+  if (tQuery === atsPoints[atsPoints.length - 1].t) {
+    const last = atsPoints[atsPoints.length - 1];
+    return { n: last.n, e: last.e, ele: last.ele };
+  }
+
+  let lo = 0;
+  let hi = atsPoints.length - 1;
+  while (lo + 1 < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (atsPoints[mid].t <= tQuery) lo = mid;
+    else hi = mid;
+  }
+
+  const p0 = atsPoints[lo];
+  const p1 = atsPoints[hi];
+  const frac = p1.t === p0.t ? 0 : (tQuery - p0.t) / (p1.t - p0.t);
+  return {
+    n: p0.n + frac * (p1.n - p0.n),
+    e: p0.e + frac * (p1.e - p0.e),
+    ele: p0.ele + frac * (p1.ele - p0.ele)
+  };
+}
+
+function gnssAtsHeightDeltaPoints(gnssHeights, atsPoints, allowFullGnssFallback, heightOffset) {
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
+  const raw = [];
+  gnssForPlot.forEach((p) => {
+    const sample = interpolateAtsAtTime(atsPoints, p.t);
+    if (!sample || !Number.isFinite(p.height) || !Number.isFinite(sample.ele)) return;
+    raw.push({
+      t: p.t,
+      rawDelta: p.height - sample.ele,
+      vprec: p.vprec,
+      gpsWeek: p.gpsWeek,
+      gpsSec: p.gpsSec
+    });
+  });
+  if (!raw.length) return [];
+
+  const meanOffset = Number.isFinite(heightOffset)
+    ? heightOffset
+    : raw.reduce((sum, p) => sum + p.rawDelta, 0) / raw.length;
+
+  return raw.map((p) => ({
+    t: p.t,
+    delta: p.rawDelta - meanOffset,
+    vprec: p.vprec,
+    gpsWeek: p.gpsWeek,
+    gpsSec: p.gpsSec
+  }));
+}
+
+function buildAtsHeightDeltaSigmaTraces(
+  mode,
+  gnssHeights,
+  atsPoints,
+  timeOrigin,
+  allowFullGnssFallback,
+  heightOffset,
+  sigmaOptions
+) {
+  const deltaPoints = gnssAtsHeightDeltaPoints(
+    gnssHeights,
+    atsPoints,
+    allowFullGnssFallback,
+    heightOffset
+  );
+  if (!deltaPoints.length) return [];
+
+  const axis = axisData(deltaPoints, mode, timeOrigin);
+  const x = axis.x;
+  const deltas = deltaPoints.map((p) => p.delta);
+  const sigmas = deltaPoints.map((p) => p.vprec);
+  const traces = [];
+  if (sigmas.some(Number.isFinite)) {
+    traces.push(...verticalSigmaBandTraces(x, sigmas, sigmaOptions));
+  }
+  traces.push(coloredLine(
+    x,
+    deltas,
+    "GNSS error",
+    "up",
+    { line: { width: 2.5 } }
+  ));
+  return traces;
+}
+
+function renderAtsHeightErrorSigmaRatio(mode, deltaPoints, timeOrigin, annotations) {
+  if (!deltaPoints.length || !shouldDrawPlot("plot-ats-error-sigma")) return;
+
+  const axis = axisData(deltaPoints, mode, timeOrigin);
+  const x = axis.x;
+  const errY = deltaPoints.map((p) => (
+    Number.isFinite(p.delta) ? Math.abs(p.delta) : null
+  ));
+  const sigY = deltaPoints.map((p) => p.vprec);
+  const ratioY = deltaPoints.map((p, i) => {
+    const sigma = sigY[i];
+    const err = errY[i];
+    return Number.isFinite(err) && Number.isFinite(sigma) && sigma > 0 ? err / sigma : null;
+  });
+
+  const layoutBase = timePlotLayout(axis.layout, mode);
+  plotErrorSigmaRatioChart(
+    "plot-ats-error-sigma",
+    "GNSS / ATS Error/Sigma",
+    x,
+    errY,
+    sigY,
+    ratioY,
+    "GNSS error |Δ|",
+    "1σ (V)",
+    "Error/Sigma",
+    "up",
+    {
+      ...layoutBase,
+      margin: {
+        ...layoutBase.margin,
+        t: Math.max(layoutBase.margin.t, usesDateTimeAxis(mode) ? 78 : 70)
+      },
+      annotations: annotations || []
+    },
+    { sigmaLegendOnly: true, ratioColorKey: "d2" }
+  );
+}
+
+function buildAtsHeightSigmaTraces(
+  mode,
+  gnssHeights,
+  atsPoints,
+  timeOrigin,
+  allowFullGnssFallback,
+  heightOffset,
+  sigmaOptions
+) {
+  if (!atsPoints.length) return [];
+
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
+  const traces = [];
+  const hasOffset = Number.isFinite(heightOffset);
+
+  if (gnssForPlot.length) {
+    const gnssAxis = axisData(gnssForPlot, mode, timeOrigin);
+    const x = gnssAxis.x;
+    const heights = gnssForPlot.map((p) => p.height);
+    const sigmas = gnssForPlot.map((p) => p.vprec);
+    if (sigmas.some(Number.isFinite)) {
+      traces.push(...heightRelativeSigmaBandTraces(x, heights, sigmas, sigmaOptions));
+    }
+    traces.push(coloredLine(
+      x,
+      heights,
+      "GNSS Height",
+      "d2",
+      { line: { width: 2.5 } }
+    ));
+  }
+
+  const atsAxis = axisData(atsPoints, mode, timeOrigin);
+  traces.push(coloredLine(
+    atsAxis.x,
+    atsPoints.map((p) => adjustedAtsHeight(p.ele, heightOffset)),
+    hasOffset ? "ATS Height (Ele + offset)" : "ATS Height (Ele)",
+    "north",
+    { line: { width: 2.5, dash: "dash" } }
+  ));
+  return traces;
+}
+
+function buildAtsHeightTraces(mode, gnssHeights, atsPoints, timeOrigin, allowFullGnssFallback, heightOffset) {
+  if (!atsPoints.length) return [];
+
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeights, atsPoints, allowFullGnssFallback);
+  const traces = [];
+  const hasOffset = Number.isFinite(heightOffset);
+
+  if (gnssForPlot.length) {
+    const gnssAxis = axisData(gnssForPlot, mode, timeOrigin);
+    traces.push(coloredLine(
+      gnssAxis.x,
+      gnssForPlot.map((p) => p.height),
+      "GNSS Height",
+      "d2",
+      { line: { width: 2.5 } }
+    ));
+  }
+
+  const atsAxis = axisData(atsPoints, mode, timeOrigin);
+  traces.push(coloredLine(
+    atsAxis.x,
+    atsPoints.map((p) => adjustedAtsHeight(p.ele, heightOffset)),
+    hasOffset ? "ATS Height (Ele + offset)" : "ATS Height (Ele)",
+    "north",
+    { line: { width: 2.5, dash: "dash" } }
+  ));
+  return traces;
+}
+
+function renderAtsHeightPlots(
+  mode,
+  gnssHeights,
+  atsPoints,
+  timeOrigin,
+  filterInfo,
+  allowFullGnssFallback,
+  positionPoints
+) {
+  if (!atsPoints.length) return false;
+
+  const gnssHeightsWithSigma = enrichGnssHeightsWithSigma(gnssHeights, positionPoints);
+  const traces = buildAtsHeightTraces(
+    mode,
+    gnssHeightsWithSigma,
+    atsPoints,
+    timeOrigin,
+    allowFullGnssFallback,
+    filterInfo.atsHeightOffset
+  );
+  if (!traces.length) return false;
+
+  const sigmaOptions = readAtsHeightSigmaOptions();
+  const sigmaTraces = buildAtsHeightSigmaTraces(
+    mode,
+    gnssHeightsWithSigma,
+    atsPoints,
+    timeOrigin,
+    allowFullGnssFallback,
+    filterInfo.atsHeightOffset,
+    sigmaOptions
+  );
+
+  const gnssForPlot = gnssHeightsInAtsWindow(gnssHeightsWithSigma, atsPoints, allowFullGnssFallback);
+  const axisPoints = gnssForPlot.length ? [...gnssForPlot, ...atsPoints] : atsPoints;
+  const axis = axisData(axisPoints, mode, timeOrigin);
+  const heightValues = yValuesFromTraces(sigmaTraces.length ? sigmaTraces : traces, "y");
+  const heightOffsetNotes = heightOffsetAnnotation(filterInfo.atsHeightOffset);
+  const heightSigmaLayout = atsSigmaPlotLayout(axis.layout, mode, {
+    title: "GNSS / ATS Height and Sigma",
+    yaxis: {
+      title: "Height (m)",
+      autorange: true,
+      ...meterAxisFromValues(heightValues)
+    },
+    annotations: heightOffsetNotes
+  });
+
+  drawPlotIfOpen("plot-height-error", traces, {
+    ...heightSigmaLayout,
+    title: "GNSS / ATS Height"
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-height-error", "yaxis", "y");
+  });
+
+  drawPlotIfOpen("plot-height-sigma", sigmaTraces, {
+    ...heightSigmaLayout,
+    title: "GNSS / ATS Height and Sigma"
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
+  });
+
+  const deltaTraces = buildAtsHeightDeltaSigmaTraces(
+    mode,
+    gnssHeightsWithSigma,
+    atsPoints,
+    timeOrigin,
+    allowFullGnssFallback,
+    filterInfo.atsHeightOffset,
+    sigmaOptions
+  );
+  const deltaPoints = gnssAtsHeightDeltaPoints(
+    gnssHeightsWithSigma,
+    atsPoints,
+    allowFullGnssFallback,
+    filterInfo.atsHeightOffset
+  );
+  if (deltaTraces.length) {
+    const deltaAxis = axisData(deltaPoints, mode, timeOrigin);
+    const deltaValues = yValuesFromTraces(deltaTraces, "y");
+    drawPlotIfOpen("plot-ats-height-delta", deltaTraces, atsSigmaPlotLayout(deltaAxis.layout, mode, {
+      title: "GNSS / ATS Delta and Sigma",
+      yaxis: {
+        title: "GNSS error (m)",
+        zeroline: true,
+        autorange: true,
+        ...meterAxisFromValues(deltaValues)
+      },
+      annotations: heightOffsetNotes
+    })).then(() => {
+      attachAdaptiveMeterAxis("plot-ats-height-delta", "yaxis", "y");
+    });
+  }
+  if (deltaPoints.length) {
+    renderAtsHeightErrorSigmaRatio(mode, deltaPoints, timeOrigin, heightOffsetNotes);
+  }
+
+  return true;
+}
+
+function heightOffsetAnnotation(offset) {
+  if (!Number.isFinite(offset)) return [];
+  return [{
+    text: "Mean GNSS − ATS height: " + offset.toFixed(4) + " m (applied to ATS Ele)",
+    showarrow: false,
+    xref: "paper",
+    yref: "paper",
+    x: 0,
+    y: 1.12,
+    xanchor: "left",
+    yanchor: "bottom",
+    font: { size: 12, color: "#333" }
+  }];
+}
+
+function renderAtsNePlot(atsPoints, mode, showWhenEmpty, timeOrigin) {
+  const emptyLayout = {
+    margin: { l: 60, r: 30, t: 50, b: 45 },
+    title: "ATS data unavailable",
+    xaxis: { visible: false },
+    yaxis: { visible: false },
+    annotations: [{
+      text: "An ATS file was provided but no ATS plot points were exported.",
+      showarrow: false,
+      xref: "paper",
+      yref: "paper",
+      x: 0.5,
+      y: 0.5,
+      font: { size: 14, color: "#666" }
+    }]
+  };
+
+  if (!atsPoints.length) {
+    if (!showWhenEmpty) return;
+    drawPlotIfOpen("plot-ats-ne", [], emptyLayout);
+    return;
+  }
+
+  const atsAxis = axisData(atsPoints, mode, timeOrigin ?? sharedTimeOrigin(atsPoints));
+  const atsX = atsAxis.x;
+  const neTraces = [
+    coloredLine(atsX, atsPoints.map((p) => p.n), "Northing", "north"),
+    coloredLine(atsX, atsPoints.map((p) => p.e), "Easting", "east")
+  ];
+  const neValues = yValuesFromTraces(neTraces, "y");
+  drawPlotIfOpen("plot-ats-ne", neTraces, {
+    ...timePlotLayout(atsAxis.layout, mode),
+    title: "ATS Northing and Easting",
+    yaxis: { title: "Meters", ...meterAxisFromValues(neValues) }
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-ats-ne", "yaxis", "y");
+  });
 }
 
 function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
@@ -1550,11 +2668,17 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     return;
   }
 
-  const isMoving = filterInfo.session === "moving";
-  applySessionPlotVisibility(isMoving);
+  const isMovingSession = filterInfo.session === "moving";
+  const hasTruth = !!filterInfo.truth;
+  const hasAtsProvided = !!filterInfo.atsProvided;
+  const hasAtsData = allAtsPoints.length > 0;
+  const showAtsPlots = hasAtsProvided || hasAtsData;
+  const isMoving = isMovingSession && !hasTruth;
   initPlotCardChrome();
+  applySessionPlotVisibility(isMovingSession, hasTruth, showAtsPlots);
 
   purgeAllPlots();
+  beginPlotDrawBatch();
 
   const solPoints = solutionPoints.length ? solutionPoints : points;
   const timeOrigin = sharedTimeOrigin(points, solPoints);
@@ -1581,27 +2705,30 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   drawPlotIfOpen("plot-solution-latency", [
     {
       x: solX,
-      y: solPoints.map((p) => p.solution),
-      name: "Solution Type",
-      mode: "lines",
-      line: { color: SOLUTION_TYPE_LINE_COLOR, width: 2.5 },
-      marker: { color: SOLUTION_TYPE_LINE_COLOR }
-    },
-    {
-      x: solX,
       y: solPoints.map((p) => p.latency),
       name: "Latency (s)",
       mode: "lines",
-      yaxis: "y2",
       line: { color: LATENCY_COMBINED_COLOR, width: 2, dash: "dot" },
       marker: { color: LATENCY_COMBINED_COLOR }
+    },
+    {
+      x: solX,
+      y: solPoints.map((p) => p.solution),
+      name: "Solution Type",
+      mode: "lines",
+      yaxis: "y2",
+      line: { color: SOLUTION_TYPE_LINE_COLOR, width: 2.5 },
+      marker: { color: SOLUTION_TYPE_LINE_COLOR }
     }
   ], {
     ...timePlotLayout(solAxis.layout, mode),
     margin: { l: 100, r: 60, t: usesDateTimeAxis(mode) ? 58 : 50, b: 45 },
     title: "Solution and Latency Combined",
-    yaxis: solutionYAxis(solPoints),
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right", automargin: true })
+    yaxis: latencyPrimaryYAxis({ automargin: true }),
+    yaxis2: overlayLeftYAxis({
+      ...solutionYAxis(solPoints),
+      automargin: true
+    })
   });
 
   plotLatencyDistributionIfOpen("plot-latency-dist", latencyDistribution(solPoints));
@@ -1609,6 +2736,7 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   drawPlotIfOpen("plot-sv", [
     { x: solX, y: solPoints.map((p) => p.tracked), name: "Tracked", mode: "lines" },
     { x: solX, y: solPoints.map((p) => p.used), name: "Used", mode: "lines" },
+    ...constellationSvTraces(solX, solPoints),
     {
       x: solX,
       y: solPoints.map((p) => p.solution),
@@ -1632,98 +2760,174 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     }
   });
 
-  const heightTraces = [
-    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up"),
-    latencyTrace(x, latency),
-    { ...vdopTrace(x, points, "y3"), visible: "legendonly" }
-  ];
-  const heightLayout = {
-    ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
-    title: isMoving ? "Height" : "Height Error",
-    yaxis: { title: isMoving ? "Height (m)" : "Height Error (m)", zeroline: !isMoving },
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right" }),
-    yaxis3: {
-      title: "VDOP",
-      overlaying: "y",
-      side: "right",
-      anchor: "free",
-      position: 1.0,
-      showgrid: false
-    },
-    legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
-  };
-  drawPlotIfOpen("plot-height-error", heightTraces, heightLayout).then(() => {
-    attachOverlayAxisLegendSync("plot-height-error", {
-      yaxis2: { title: "Latency (s)", traces: ["Latency (s)"] },
-      yaxis3: { title: "VDOP", traces: ["VDOP"] }
-    });
-  });
+  if (showAtsPlots) {
+    renderAtsNePlot(allAtsPoints, mode, hasAtsProvided && !allAtsPoints.length, timeOrigin);
+  }
 
-  drawPlotIfOpen("plot-height-sigma", [
-    coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up"),
-    coloredLine(x, vSigma, "V Sigma", "up", { yaxis: "y2", line: { dash: "dot" } })
-  ], {
-    ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
-    title: isMoving ? "Height and Sigma" : "Height Error and Sigma",
-    yaxis: { title: isMoving ? "Height (m)" : "Height Error (m)", zeroline: !isMoving },
-    yaxis2: {
-      title: "V Sigma (m)",
-      overlaying: "y",
-      side: "right",
-      rangemode: "tozero",
-      showgrid: false
+  const gnssHeights = gnssHeightPointsForPlot(isMoving, points, showAtsPlots);
+  const hasAtsHeightMatch = Number.isFinite(filterInfo.atsHeightMatched) && filterInfo.atsHeightMatched > 0;
+  const showAtsHeightMode = showAtsPlots && allAtsPoints.length > 0;
+  const allowFullGnssFallback = hasAtsHeightMatch && gnssHeights.length > 0;
+  const renderedAtsHeights = showAtsHeightMode && renderAtsHeightPlots(
+    mode,
+    gnssHeights,
+    allAtsPoints,
+    timeOrigin,
+    filterInfo,
+    allowFullGnssFallback,
+    points
+  );
+  const heightPlotTitle = showAtsHeightMode
+    ? "GNSS / ATS Height"
+    : (isMoving ? "Height" : "Height Error");
+  const heightY2Title = isMoving ? "Height (m)" : "Height Error (m)";
+
+  if (!renderedAtsHeights) {
+    const heightTraces = [
+      latencyTrace(x, latency),
+      { ...vdopTrace(x, points, "y3"), visible: "legendonly" },
+      coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up", {
+        yaxis: "y2",
+        line: { width: 2.5 }
+      })
+    ];
+    const heightLayout = {
+      ...commonLayout,
+      margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
+      title: heightPlotTitle,
+      yaxis: latencyPrimaryYAxis(),
+      yaxis2: overlayLeftYAxis({
+        title: heightY2Title,
+        zeroline: !isMoving,
+        ...meterAxisFromValues(signedHeight.filter(Number.isFinite))
+      }),
+      yaxis3: {
+        title: "VDOP",
+        overlaying: "y",
+        side: "right",
+        anchor: "free",
+        position: 1.0,
+        showgrid: false
+      },
+      legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+    };
+    drawPlotIfOpen("plot-height-error", heightTraces, heightLayout).then(() => {
+      attachOverlayAxisLegendSync("plot-height-error", {
+        yaxis: { title: "Latency (s)", traces: ["Latency (s)"] },
+        yaxis2: {
+          title: heightY2Title,
+          traces: ["Height", "Height Error"]
+        },
+        yaxis3: { title: "VDOP", traces: ["VDOP"] }
+      });
+      attachAdaptiveMeterAxis("plot-height-error", "yaxis2", "y2");
+    });
+  }
+
+  if (!renderedAtsHeights) {
+    const showHeightSigma1 = document.getElementById("show-height-sigma-1")?.checked;
+    const showHeightSigma2 = document.getElementById("show-height-sigma-2")?.checked;
+    const showHeightSigma3 = document.getElementById("show-height-sigma-3")?.checked;
+    const heightSigmaTraces = verticalSigmaBandTraces(x, vSigma, {
+      show1Sigma: showHeightSigma1,
+      show2Sigma: showHeightSigma2,
+      show3Sigma: showHeightSigma3,
+      sigmaColorKeys: { 1: "up", 2: "d2", 3: "d3" }
+    });
+    const heightSigmaLayout = {
+      ...commonLayout,
+      margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
+      title: isMoving ? "Height and Sigma" : "Height Error and Sigma",
+      yaxis: {
+        title: heightY2Title,
+        zeroline: true,
+        ...meterAxisFromValues(signedHeight.filter(Number.isFinite))
+      },
+      legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+    };
+    if (isMoving) {
+      heightSigmaLayout.yaxis2 = {
+        title: "V Sigma (m)",
+        overlaying: "y",
+        side: "right",
+        zeroline: true,
+        showgrid: false
+      };
     }
-  });
+    drawPlotIfOpen("plot-height-sigma", [
+      ...heightSigmaTraces.map((trace) => (isMoving ? { ...trace, yaxis: "y2" } : trace)),
+      coloredLine(x, signedHeight, isMoving ? "Height" : "Height Error", "up")
+    ], heightSigmaLayout).then(() => {
+      attachAdaptiveMeterAxis("plot-height-sigma", "yaxis", "y");
+    });
+  }
 
   if (isMoving) {
     const vel = velocitySeries(points);
+    const showSolVelNeu = document.getElementById("show-sol-velocity-neu")?.checked;
+    const showSolSpeed = document.getElementById("show-sol-velocity-speed")?.checked;
+
     drawPlotIfOpen("plot-velocity-neu", [
       coloredLine(x, vel.vn, "vLat", "north"),
       coloredLine(x, vel.ve, "vLon", "east"),
-      coloredLine(x, vel.vu, "vHgt", "up")
+      coloredLine(x, vel.vu, "vHgt", "up"),
+      ...withSolutionTypeTrace(showSolVelNeu, x, points)
     ], {
       ...commonLayout,
+      margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(false, showSolVelNeu) },
       title: "Velocity (NEU)",
-      yaxis: { title: "Velocity (m/s)" }
+      yaxis: { title: "Velocity (m/s)" },
+      ...sigmaPlotOverlayAxes(false, showSolVelNeu, points)
     });
     drawPlotIfOpen("plot-velocity-speed", [
       coloredLine(x, vel.speedH, "Horizontal speed", "d2"),
-      coloredLine(x, vel.speed3d, "3D speed", "d3", { line: { dash: "dot" } })
+      coloredLine(x, vel.speed3d, "3D speed", "d3", { line: { dash: "dot" } }),
+      ...withSolutionTypeTrace(showSolSpeed, x, points)
     ], {
       ...commonLayout,
+      margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(false, showSolSpeed) },
       title: "Speed",
-      yaxis: { title: "Speed (m/s)", rangemode: "tozero" }
+      yaxis: { title: "Speed (m/s)", rangemode: "tozero" },
+      ...sigmaPlotOverlayAxes(false, showSolSpeed, points)
     });
   }
 
   if (!isMoving) {
   drawPlotIfOpen("plot-enu", [
-    coloredLine(x, north, "North Error", "north"),
-    coloredLine(x, east, "East Error", "east"),
-    coloredLine(x, up, "Height Error", "up"),
-    latencyTrace(x, latency)
+    latencyTrace(x, latency),
+    coloredLine(x, north, "North Error", "north", { yaxis: "y2" }),
+    coloredLine(x, east, "East Error", "east", { yaxis: "y2" }),
+    coloredLine(x, up, "Height Error", "up", { yaxis: "y2" })
   ], {
     ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
+    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: "NEU Error",
-    yaxis: { title: "Error (m)" },
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right" })
+    yaxis: latencyPrimaryYAxis(),
+    yaxis2: overlayLeftYAxis({ title: "Error (m)" })
   });
 
   drawPlotIfOpen("plot-enu-sigma", [
-    coloredLine(x, err2d, "H Error", "d2"),
-    coloredLine(x, up, "U Error", "up"),
-    coloredLine(x, horizontalSigma(points), "H Sigma", "d2", { line: { dash: "dot" } }),
-    coloredLine(x, verticalSigma(points), "V Sigma", "up", { line: { dash: "dot" } }),
-    latencyTrace(x, latency)
+    latencyTrace(x, latency),
+    ...assignTraceYAxis([
+      ...horizontalSigmaBandTraces(x, hSigma, {
+        show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
+        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked,
+        positiveOnly: true
+      }),
+      ...verticalSigmaBandTracesForU(x, vSigma, {
+        show2Sigma: document.getElementById("show-enu-sigma-2")?.checked,
+        show3Sigma: document.getElementById("show-enu-sigma-3")?.checked,
+        positiveOnly: true
+      }),
+      coloredLine(x, err2d, "H Error", "d2"),
+      coloredLine(x, up, "U Error", "up")
+    ], "y2")
   ], {
     ...commonLayout,
-    margin: { ...commonLayout.margin, r: 50 },
+    margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: "H/U Error and Sigma",
-    yaxis: { title: "Meters", rangemode: "tozero" },
-    yaxis2: latencyYAxis({ overlaying: "y", side: "right" }),
+    yaxis: latencyPrimaryYAxis(),
+    yaxis2: overlayLeftYAxis({ title: "Meters", rangemode: "tozero", zeroline: true }),
     legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   });
 
@@ -1749,10 +2953,12 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const cN = cumulativePercent(north);
   const cE = cumulativePercent(east);
+  const c2d = cumulativePercent(err2d);
   const cU = cumulativePercent(up);
   drawPlotIfOpen("plot-cumulative", [
-    coloredLine(cN.x, cN.y, "North Cumulative", "north"),
-    coloredLine(cE.x, cE.y, "East Cumulative", "east"),
+    coloredLine(cN.x, cN.y, "North Cumulative", "north", { visible: "legendonly" }),
+    coloredLine(cE.x, cE.y, "East Cumulative", "east", { visible: "legendonly" }),
+    coloredLine(c2d.x, c2d.y, "2D Cumulative", "d2"),
     coloredLine(cU.x, cU.y, "Height Cumulative", "up")
   ], {
     margin: { l: 60, r: 30, t: 40, b: 40 },
@@ -1807,62 +3013,49 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   });
 
   if (!isMoving) {
-  const age = ageCorrectionSeries(points);
-  const ageBins = binAgeCorrectionRows(age.rows, 1);
-  plotAgeCorrectionChartIfOpen(
+  const ratios = sigmaRatios(points);
+  const err3d = d3(points);
+  plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-1d",
-    "1D Error and Sigma vs Age of Corrections",
-    ageBins,
-    "e1", "p1",
-    "1D Error |U|", "1D Sigma (V)",
-    "up"
+    "1D Error and Sigma",
+    x, up, vSigma, ratios.r1d,
+    "1D Error |U|", "1D Sigma (V)", "1D Sigma Ratio",
+    "up", commonLayout,
+    { sigmaLegendOnly: false }
   );
-  plotAgeCorrectionChartIfOpen(
+  plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-2d",
-    "2D Error and Sigma vs Age of Corrections",
-    ageBins,
-    "e2", "p2",
-    "2D Error (H)", "2D Sigma (H)",
-    "d2"
+    "2D Error and Sigma",
+    x, err2d, hSigma, ratios.r2d,
+    "2D Error (H)", "2D Sigma (H)", "2D Sigma Ratio",
+    "d2", commonLayout
   );
-  plotAgeCorrectionChartIfOpen(
+  plotErrorSigmaRatioChartIfOpen(
     "plot-age-corr-3d",
-    "3D Error and Sigma vs Age of Corrections",
-    ageBins,
-    "e3", "p3",
-    "3D Error", "3D Sigma",
-    "d3"
+    "3D Error and Sigma",
+    x, err3d, s3d, ratios.r3d,
+    "3D Error", "3D Sigma", "3D Sigma Ratio",
+    "d3", commonLayout
   );
   }
 
-  linkTimePlotZoom(activeTimePlotIds(isMoving));
-  applyPlotCardClosedState();
+  endPlotDrawBatch(() => {
+    linkTimePlotZoom(activeTimePlotIds(isMovingSession, hasTruth, showAtsPlots));
+    applyPlotCardClosedState();
+  });
 
-  const filterMode = filterInfo.filter;
-  const typesShown = solutionTypesInData(points, solPoints);
-  const filterNote = filterMode === "all"
-    ? "Plot filter: all solution types."
-    : filterMode.startsWith("type:")
-      ? "Plot filter: solution type " + filterMode.split(":")[1] + "."
-      : "Plot filter: unfiltered by solution type.";
-  const viewFilterNote = typesShown.length > 1
-    ? " View filter: " + typesShown.map(solutionTypeName).join(", ") + "."
-    : "";
-  let statusNote = filterNote + viewFilterNote;
-  if (isMoving) {
-    statusNote += " Moving session — velocity, height, and precision plots.";
-  } else {
-    statusNote += " Mean computed from: " + meanTypeLabel(filterInfo) + ".";
-    statusNote += solutionPoints.length
-      ? " Error points: " + points.length + "; solution points: " + solutionPoints.length + "."
-      : " Error points: " + points.length + ".";
-  }
+  const statusEl = document.getElementById("plot-status");
   if (filterInfo.driveWarning) {
-    statusNote += " Warning: static mode on data that looks like a drive test.";
+    statusEl.textContent = "Warning: static mode on data that looks like a drive test.";
+    statusEl.className = "error";
+  } else if (showAtsPlots && !allAtsPoints.length && hasAtsHeightMatch) {
+    statusEl.textContent =
+      "ATS height offset was computed on the server, but ATS plot data failed to load in the browser.";
+    statusEl.className = "error";
+  } else {
+    statusEl.textContent = "";
+    statusEl.className = "";
   }
-  statusNote += " Zoom/pan on any time-based plot syncs time and rescales Y to the visible window.";
-  document.getElementById("plot-status").textContent = statusNote;
-  document.getElementById("plot-status").className = filterInfo.driveWarning ? "error" : "";
 }
 
 function attachPlotControlListeners() {
@@ -1876,6 +3069,28 @@ function attachPlotControlListeners() {
   document.getElementById("show-sol-1d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-2d").addEventListener("change", rerenderPositionPlots);
   document.getElementById("show-sol-3d").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-sol-velocity-neu").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-sol-velocity-speed").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-height-sigma-1").addEventListener("change", (event) => {
+    syncAtsHeightSigmaToggles(event.target);
+    rerenderPositionPlots();
+  });
+  document.getElementById("show-height-sigma-2").addEventListener("change", (event) => {
+    syncAtsHeightSigmaToggles(event.target);
+    rerenderPositionPlots();
+  });
+  document.getElementById("show-height-sigma-3").addEventListener("change", (event) => {
+    syncAtsHeightSigmaToggles(event.target);
+    rerenderPositionPlots();
+  });
+  document.querySelectorAll(".ats-height-sigma-toggle:not([id])").forEach((el) => {
+    el.addEventListener("change", (event) => {
+      syncAtsHeightSigmaToggles(event.target);
+      rerenderPositionPlots();
+    });
+  });
+  document.getElementById("show-enu-sigma-2").addEventListener("change", rerenderPositionPlots);
+  document.getElementById("show-enu-sigma-3").addEventListener("change", rerenderPositionPlots);
 }
 
 function setPlotStatus(message, state) {
@@ -1893,6 +3108,19 @@ function gunzipToText(buffer) {
   return new Response(stream).text();
 }
 
+function decodeFetchedText(resp, buffer) {
+  const encoding = (resp.headers.get("Content-Encoding") || "").toLowerCase();
+  if (encoding.includes("gzip")) {
+    return resp.text();
+  }
+  if (!buffer) return resp.text();
+  return gunzipToText(buffer).catch(() => {
+    const text = new TextDecoder().decode(buffer);
+    if (/unix_time|,/.test(text)) return text;
+    return Promise.reject(new Error("gzip decode failed"));
+  });
+}
+
 function fetchTextFile(baseUrl, optional) {
   const loadPlain = () =>
     fetch(baseUrl, { cache: "no-store" }).then((resp) => {
@@ -1906,10 +3134,15 @@ function fetchTextFile(baseUrl, optional) {
   return fetch(baseUrl + ".gz", { cache: "no-store" })
     .then((resp) => {
       if (!resp.ok) return loadPlain();
+      const encoding = (resp.headers.get("Content-Encoding") || "").toLowerCase();
+      if (encoding.includes("gzip")) {
+        return resp.text();
+      }
       return resp.arrayBuffer().then((buf) =>
-        gunzipToText(buf).catch(() => loadPlain())
+        decodeFetchedText(resp, buf).catch(() => loadPlain())
       );
-    });
+    })
+    .catch(() => (optional ? "" : Promise.reject(new Error("Failed to load " + baseUrl))));
 }
 
 function loadInteractivePosition() {
@@ -1932,16 +3165,37 @@ function loadInteractivePosition() {
   fetchStep("Loading plot filter metadata...", "plot_filter.txt", true)
     .then((filterText) => {
       plotFilterInfo = parsePlotFilter(filterText);
-      const isMoving = plotFilterInfo.session === "moving";
-      return fetchStep("Loading position data...", "position_data.csv")
-        .then((posText) => fetchStep("Loading solution data...", "position_solution.csv", true)
-          .then((solText) => ({ posText, solText, isMoving })));
+      const isMoving = plotFilterInfo.session === "moving" && !plotFilterInfo.truth;
+      const shouldLoadAts = plotFilterInfo.atsProvided || plotFilterInfo.atsData;
+      const shouldLoadGnssHeight = plotFilterInfo.atsProvided || plotFilterInfo.gnssHeight;
+      const atsPromise = shouldLoadAts
+        ? fetchStep("Loading ATS data...", "ats_data.csv", true)
+        : Promise.resolve("");
+      const gnssHeightPromise = shouldLoadGnssHeight
+        ? fetchStep("Loading GNSS height data...", "gnss_height.csv", true)
+        : Promise.resolve("");
+      return Promise.all([atsPromise, gnssHeightPromise])
+        .then(([atsText, gnssHeightText]) => fetchStep("Loading position data...", "position_data.csv")
+          .then((posText) => Promise.all([
+            fetchStep("Loading solution data...", "position_solution.csv", true),
+            fetchStep("Loading constellation SV data...", "constellation_sv.csv", true)
+          ]).then(([solText, constellationText]) => ({
+            posText,
+            solText,
+            constellationText,
+            atsText,
+            gnssHeightText,
+            isMoving
+          }))));
     })
-    .then(({ posText, solText, isMoving }) => {
+    .then(({ posText, solText, constellationText, atsText, gnssHeightText, isMoving }) => {
       setPlotStatus("Parsing plot data...", "loading");
-      const solutionPoints = solText ? parseX29Csv(solText) : [];
+      let solutionPoints = solText ? parseX29Csv(solText) : [];
+      solutionPoints = mergeConstellationSvData(solutionPoints, constellationText);
       allPositionPoints = attachSolutionTypes(parsePositionCsv(posText, isMoving), solutionPoints);
       allSolutionPoints = solutionPoints;
+      allAtsPoints = atsText ? parseAtsCsv(atsText) : [];
+      allGnssHeightPoints = gnssHeightText ? parseGnssHeightCsv(gnssHeightText) : [];
       const types = solutionTypesInData(allPositionPoints, allSolutionPoints);
       buildSolutionTypeFilterUI(types);
       attachPlotControlListeners();

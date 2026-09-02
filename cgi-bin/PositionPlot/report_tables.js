@@ -26,8 +26,9 @@ function tableHtml(headers, rows, className) {
   return html;
 }
 
-function sectionHtml(title, bodyHtml) {
-  return '<section class="report-section"><h3>' + escapeHtml(title) + "</h3>" + bodyHtml + "</section>";
+function sectionHtml(title, bodyHtml, sectionId) {
+  const idAttr = sectionId ? ' id="' + escapeHtml(sectionId) + '"' : "";
+  return "<section" + idAttr + ' class="report-section"><h3>' + escapeHtml(title) + "</h3>" + bodyHtml + "</section>";
 }
 
 function parseKeyValueLines(text) {
@@ -55,6 +56,16 @@ function renderMeanInfo(text) {
   return sectionHtml("Mean / Reference", tableHtml(["Setting", "Value"], rows, "report-table"));
 }
 
+function localTimeColumnHeader(text) {
+  const match = String(text || "").match(/^Local TZ offset:\s*([+-])(\d+):(\d{2})\s*$/m)
+    || String(text || "").match(/^Display TZ offset:\s*([+-])(\d+):(\d{2})\s*$/m);
+  if (!match) return "Local Time";
+  const sign = match[1];
+  const hours = match[2].padStart(2, "0");
+  const minutes = match[3];
+  return "Local Time (UTC" + sign + hours + ":" + minutes + ")";
+}
+
 function renderTimeRange(text) {
   const kv = {};
   parseKeyValueLines(text).forEach(([key, value]) => {
@@ -62,13 +73,43 @@ function renderTimeRange(text) {
   });
   if (!kv["Start GPS"] && !kv["End GPS"]) return "";
 
+  const hasAts = !!(kv["ATS Start UTC"] || kv["ATS End UTC"]);
+  const gnssStartLabel = hasAts ? "Start (GNSS)" : "Start";
+  const gnssEndLabel = hasAts ? "End (GNSS)" : "End";
+
   const rows = [
-    ["Start", kv["Start GPS"] || "—", kv["Start Local"] || "—"],
-    ["End", kv["End GPS"] || "—", kv["End Local"] || "—"]
+    [
+      gnssStartLabel,
+      kv["Start GPS"] || "—",
+      kv["Start UTC"] || "—",
+      kv["Start Local"] || "—"
+    ],
+    [
+      gnssEndLabel,
+      kv["End GPS"] || "—",
+      kv["End UTC"] || "—",
+      kv["End Local"] || "—"
+    ]
   ];
+
+  if (hasAts) {
+    rows.push([
+      "Start (ATS)",
+      kv["ATS Start GPS"] || "—",
+      kv["ATS Start UTC"] || "—",
+      kv["ATS Start Local"] || "—"
+    ]);
+    rows.push([
+      "End (ATS)",
+      kv["ATS End GPS"] || "—",
+      kv["ATS End UTC"] || "—",
+      kv["ATS End Local"] || "—"
+    ]);
+  }
+
   return sectionHtml(
     "Session Time Range",
-    tableHtml(["", "GPS", "Local Time"], rows, "report-table")
+    tableHtml(["", "GPS", "UTC", localTimeColumnHeader(text)], rows, "report-table")
   );
 }
 
@@ -210,6 +251,17 @@ function gpsJamUrl(lat, lon) {
   return "https://gpsjam.org/?lat=" + lat.toFixed(5) + "&lon=" + lon.toFixed(5) + "&z=8.0";
 }
 
+function parsePlotFilterFlags(text) {
+  const flags = { truth: false };
+  text.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("truth:")) {
+      flags.truth = trimmed.slice(6).trim() === "yes";
+    }
+  });
+  return flags;
+}
+
 function parseSessionType(text) {
   const kv = {};
   parseKeyValueLines(text).forEach(([key, value]) => {
@@ -235,6 +287,42 @@ function sessionRequestLabel(value) {
   return value || "Automatic";
 }
 
+function parseAtsFilename(line) {
+  const match = String(line || "").match(/\(([^)]+)\)/);
+  return match ? match[1].trim() : "";
+}
+
+function parseAtsTruthStatus(sessionKv, plotFilterText) {
+  const line = sessionKv["ATS truth file"] || sessionKv["Truth file"];
+  const filename = sessionKv["ATS filename"] || parseAtsFilename(line);
+  if (line) {
+    if (/not used|not applied/i.test(line)) {
+      const dash = line.indexOf("—");
+      const detail = dash >= 0
+        ? line.slice(dash + 1).trim()
+        : "not used (processed as normal)";
+      return filename
+        ? `Provided (${filename}) — ${detail}`
+        : `Provided — ${detail}`;
+    }
+    if (/applied/i.test(line)) {
+      return filename
+        ? `Yes — ${filename} applied (error plots vs interpolated ATS truth)`
+        : "Yes — applied (error plots vs interpolated ATS truth)";
+    }
+    if (/^yes\b/i.test(line)) {
+      const detail = line.replace(/^yes\b/i, "").trim().replace(/^\(/, "").replace(/\)$/, "");
+      return detail
+        ? "Yes — " + detail + " (error plots vs interpolated ATS truth)"
+        : "Yes — error plots vs interpolated ATS truth";
+    }
+    if (/^no\b/i.test(line)) return "No";
+  }
+  return parsePlotFilterFlags(plotFilterText).truth
+    ? "Yes — error plots vs interpolated ATS truth"
+    : "No";
+}
+
 function renderSessionType(text, plotFilterText) {
   const kv = parseSessionType(text);
   const sessionUsed = kv["Session used"] || parsePlotFilterSession(plotFilterText);
@@ -246,6 +334,17 @@ function renderSessionType(text, plotFilterText) {
     rows.push(["Session requested", sessionRequestLabel(kv["Session requested"])]);
   }
   rows.push(["Session used", isMoving ? "Moving" : "Static"]);
+  const atsFilename = kv["ATS filename"] || parseAtsFilename(kv["ATS truth file"]);
+  if (atsFilename) {
+    rows.push(["ATS file", atsFilename]);
+  }
+  rows.push(["ATS truth", parseAtsTruthStatus(kv, plotFilterText)]);
+  if (kv["ATS height offset (mean GNSS - ATS Ele)"]) {
+    rows.push(["ATS height offset", kv["ATS height offset (mean GNSS - ATS Ele)"]]);
+  }
+  if (kv["ATS height matched epochs"]) {
+    rows.push(["ATS height matched epochs", kv["ATS height matched epochs"]]);
+  }
   if (kv["Detection ran"] === "yes") {
     rows.push(["Motion detection", "Ran (2D, >10σ threshold)"]);
     if (kv["Outlier fraction"]) {
@@ -294,8 +393,49 @@ function parseTrajectoryCoords(text) {
   };
 }
 
+function renderAtsHeightOffsetSummary(text) {
+  if (!/ATS_HEIGHT_OFFSET/m.test(text)) return "";
+  const rows = parseKeyValueLines(
+    text.split(/\r?\n/).filter((line) => !/^ATS_HEIGHT_OFFSET$/i.test(line.trim())).join("\n")
+  ).filter(([key]) => key !== "ats_height_offset" && key !== "ats_height_matched");
+  if (!rows.length) return "";
+  return sectionHtml("ATS / GNSS Height", tableHtml(["Metric", "Value"], rows, "report-table"));
+}
+
+function isAtsTruthSession(text) {
+  return /Source:\s*ATS truth file/m.test(text);
+}
+
+function renderAtsTruthSummary(text, sessionKv) {
+  if (!text.trim() || !isAtsTruthSession(text)) return "";
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const intro = lines.filter((line) => /^Moving session with ATS truth/i.test(line));
+  const rows = parseKeyValueLines(
+    lines.filter((line) =>
+      !/^TRAJECTORY_SESSION$/i.test(line) &&
+      !/^TRUTH_SESSION$/i.test(line) &&
+      !/^Moving session with ATS truth/i.test(line)
+    ).join("\n")
+  ).filter(([key]) => key !== "truth_height_offset");
+
+  const atsFilename = sessionKv?.["ATS filename"] || parseAtsFilename(sessionKv?.["ATS truth file"]);
+  if (atsFilename && !rows.some(([key]) => key === "ATS file")) {
+    rows.unshift(["ATS file", atsFilename]);
+  }
+
+  let body = "";
+  if (intro.length) {
+    body += '<div class="report-meta">' + intro.map(escapeHtml).join("<br>") + "</div>";
+  }
+  if (rows.length) {
+    body += tableHtml(["Metric", "Value"], rows, "report-table");
+  }
+  return sectionHtml("ATS Truth", body);
+}
+
 function renderTrajectorySummary(text) {
-  if (!text.trim() || !isTrajectorySession(text)) return "";
+  if (!text.trim() || !isTrajectorySession(text) || isAtsTruthSession(text)) return "";
 
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const intro = lines.filter((line) =>
@@ -343,8 +483,8 @@ function renderLocationMap(coords, isMoving) {
   html += '<iframe class="report-location-map" title="Position map" loading="lazy"';
   html += ' src="' + escapeHtml(osmUrl) + '"></iframe>';
   html += '<div class="report-location-map-shield" role="button" tabindex="0"';
-  html += ' aria-label="Click to interact with map. Page scroll works until the map is activated.">';
-  html += "<span>Click map to zoom and pan · scroll page normally otherwise</span>";
+  html += ' aria-label="Click to interact with map.">';
+  html += "<span>Click map to zoom and pan</span>";
   html += "</div></div>";
   html += "</section>";
   return html;
@@ -661,12 +801,6 @@ function renderSumTxt(text) {
   if (data.counts.length) {
     html += sectionHtml("Record Counts", tableHtml(["Metric", "Count"], data.counts, "report-table"));
   }
-  if (data.latency.length) {
-    html += sectionHtml(
-      "Solution Age (Latency)",
-      tableHtml(["Latency", "Records", "Percent"], data.latency, "report-table")
-    );
-  }
   if (data.positionTypes.length) {
     html += sectionHtml(
       "Position Types",
@@ -678,6 +812,12 @@ function renderSumTxt(text) {
     html += sectionHtml(
       title,
       tableHtml(["Category", "Records", "Percent"], data.unusedSv, "report-table")
+    );
+  }
+  if (data.latency.length) {
+    html += sectionHtml(
+      "Solution Age (Latency)",
+      tableHtml(["Latency", "Records", "Percent"], data.latency, "report-table")
     );
   }
   return html;
@@ -796,19 +936,21 @@ async function buildReportTables() {
   const root = document.getElementById("report-summary-root");
   if (!root) return;
 
-  const [meanInfo, timeRange, llhMean, sumTxt, neeMean, sessionType, plotFilter] = await Promise.all([
+  const [meanInfo, timeRange, llhMean, sumTxt, neeMean, sessionType, plotFilter, atsHeightOffset] = await Promise.all([
     loadText("raw-mean-info", "mean.info"),
     loadText("raw-time-range", "time_range.txt"),
     loadText("raw-llh-mean", "llh.mean"),
     loadText("raw-sum-txt", "sum.txt"),
     loadText("raw-nee-mean", "nee.mean"),
     loadText("raw-session-type", "session_type.txt"),
-    loadText("raw-plot-filter", "plot_filter.txt")
+    loadText("raw-plot-filter", "plot_filter.txt"),
+    loadText("raw-ats-height-offset", "ats_height_offset.txt")
   ]);
 
   const sessionKv = parseSessionType(sessionType);
   const sessionUsed = sessionKv["Session used"] || parsePlotFilterSession(plotFilter);
-  const isMoving = sessionUsed === "moving";
+  const plotFilterFlags = parsePlotFilterFlags(plotFilter);
+  const isMoving = sessionUsed === "moving" && !plotFilterFlags.truth;
 
   document.querySelectorAll(".plot-static-only").forEach((el) => {
     el.style.display = isMoving ? "none" : "";
@@ -826,8 +968,15 @@ async function buildReportTables() {
   let html = "";
   html += renderTimeRange(timeRange);
   html += renderSessionType(sessionType, plotFilter);
+  if (atsHeightOffset && !plotFilterFlags.truth) {
+    html += renderAtsHeightOffsetSummary(atsHeightOffset);
+  }
   if (isMoving) {
     html += renderTrajectorySummary(llhMean);
+  } else if (plotFilterFlags.truth) {
+    html += renderAtsTruthSummary(llhMean, sessionKv);
+    html += renderMeanInfo(meanInfo);
+    html += renderNeeMean(neeMean);
   } else {
     html += renderMeanInfo(meanInfo);
     html += renderLlhMean(llhMean);

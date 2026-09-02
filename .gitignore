@@ -11,3 +11,5 @@ cgi-bin/TrackingPlot/Low_SNRs*.html
 cgi-bin/TrackingPlot/PNGs*.html
 cgi-bin/TrackingPlot/snr_files.txt
 cgi-bin/TrackingPlot/.processing
+*.pyc
+/test-data

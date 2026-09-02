@@ -35,16 +35,22 @@ fi
 TYPE=$1
 shift
 
-PROJ=$1
+PROJ=${1:-General}
 shift
 
-STATION=$1
+STATION=${1:--1}
 shift
 
 Local_TZ=$1
 shift
 
 INPUT_FILE=$1
+
+. "$normalDir/../PositionPlot/JCMBSoft_Config.sh"
+PROJ="$(gnss_normalize_project_path "$PROJ")"
+PROJ="${PROJ#/}"
+STATION="$(gnss_sanitize_path_segment "$STATION")"
+STATION="${STATION:-.}"
 
 if [ ! -f "$INPUT_FILE" ]
 then
@@ -54,7 +60,7 @@ then
 fi
 
 FileFull=`basename "$INPUT_FILE"`
-File=`basename "$INPUT_FILE" "$TYPE"`
+File="$(gnss_resolve_session_name "$FileFull" "$TYPE")"
 RESULT_DIR="$GNSS_RESULTS_DIR/Voltage/$PROJ/$STATION/$File"
 
 mkdir -p "$RESULT_DIR"

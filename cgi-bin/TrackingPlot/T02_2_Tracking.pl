@@ -6,7 +6,7 @@ use File::Basename;
 use FindBin;
 
 use lib "$FindBin::Bin/../PositionPlot";
-use JCMBSoft_Config;
+use JCMBSoft_Config qw(enforce_access sanitize_path_segment normalize_project_path parse_session_filename);
 
 if (($ENV{HTTP_X_REQUESTED_WITH} || '') eq 'XMLHttpRequest') {
     eval { require CGI::Carp; CGI::Carp->import(qw(carpout)); 1 } and do {
@@ -22,13 +22,6 @@ else {
 $CGI::POST_MAX = 1024 * 190000; # 190mb file max
 
 my $xhr = ($ENV{HTTP_X_REQUESTED_WITH} || '') eq 'XMLHttpRequest';
-
-sub sanitize_path_segment {
-    my ($s) = @_;
-    return '' unless defined $s && $s ne '';
-    $s =~ s/[^a-zA-Z0-9_.-]//g;
-    return $s;
-}
 
 sub json_string {
     my ($s) = @_;
@@ -91,8 +84,8 @@ my $safe_filename_characters = "a-zA-Z0-9_.-";
 
 my $filename = scalar $query->param('file');
 my $file_link = scalar $query->param('file_link');
-my $project = sanitize_path_segment(scalar $query->param('project'));
-my $Point = sanitize_path_segment(scalar $query->param('Point'));
+my $project = normalize_project_path( scalar $query->param('project') );
+my $Point = sanitize_path_segment( scalar $query->param('Point') );
 my $Decimate = scalar $query->param('Decimate');
 
 if (defined $Decimate && $Decimate ne '' && $Decimate !~ /^-?\d+(\.\d+)?$/) {
@@ -100,15 +93,8 @@ if (defined $Decimate && $Decimate ne '' && $Decimate !~ /^-?\d+(\.\d+)?$/) {
 }
 $Decimate = '-1' unless defined $Decimate && $Decimate ne '';
 
-if ($project) {
-    $project = "/" . $project;
-}
-else {
-    $project = "/General";
-}
-
 if ($Point) {
-    $project = $project . "/" . $Point;
+    $project = normalize_project_path( $project . '/' . $Point );
 }
 
 unless ($filename || $file_link) {
@@ -122,30 +108,18 @@ unless ($filename || $file_link) {
     exit;
 }
 
-if ($file_link) {
-    $filename = urldecode($file_link);
-    if ($filename =~ m/^.*(\\|\/)(.*)/) {
-        $filename = $2;
-        if ($filename =~ m/^(.*)\?.*/) {
-            $filename = $1;
-        }
+my ( $name, $extension );
+eval {
+    if ($file_link) {
+        $filename = urldecode($file_link);
     }
-}
-
-if ($filename =~ m/^.*(\\|\/)(.*)/) {
-    $filename = $2;
-}
-
-my ($name, $path, $extension) = fileparse($filename, '\..*');
-$filename = $name . $extension;
-
-$filename =~ tr/ /_/;
-$filename =~ s/[^$safe_filename_characters]//g;
-
-unless ($filename =~ /^([$safe_filename_characters]+)$/) {
-    xhr_error("Filename contains invalid characters");
-}
-$filename = $1;
+    ( $name, $extension, $filename ) = parse_session_filename($filename);
+    1;
+} or do {
+    my $err = $@ || 'Invalid filename';
+    $err =~ s/\s at .*//s;
+    xhr_error($err);
+};
 
 my $upload_file = "/run/shm/" . $filename;
 

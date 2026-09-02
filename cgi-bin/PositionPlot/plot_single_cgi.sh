@@ -21,33 +21,46 @@ case "$SOL_REQUEST" in
     Sol="$SOL_REQUEST"
     ;;
 esac
-FileFull=`basename $1`;
-File=`basename $1 $2`;
-Dir=`dirname $0`;
-normalDir=`cd "${Dir}";pwd`
-#echo $PATH
-PATH=${normalDir}:/usr/local/bin:~/bin:$PATH
+FileFull="$(basename "$1")"
+Dir="$(dirname "$0")"
+normalDir="$(cd "${Dir}" && pwd)"
+. "$normalDir/JCMBSoft_Config.sh"
+if [ -n "${GNSS_SESSION_NAME:-}" ]; then
+   File="$(gnss_sanitize_path_segment "$GNSS_SESSION_NAME")"
+else
+   File="$(gnss_resolve_session_name "$FileFull" "$2")"
+fi
+PATH="${normalDir}:/usr/local/bin:~/bin:$PATH"
 Point=$4
 Ant=$5
-#TrimbleTools=$6
 Decimate=$6
 Fixed_Range=$7
-Project=$8
+Project="$(gnss_normalize_project_path "$8")"
 SaveFile=$9
 MeanSol=${10:-${GNSS_MEAN_SOL:--1}}
 MEAN_SOL_REQUEST="$MeanSol"
 ReportUrl=${11:-${GNSS_REPORT_URL:-/results/Position${Project}/${File}/}}
 SESSION_REQUEST=${12:--1}
+TRUTH_FILE=${13:-${GNSS_TRUTH_ATS:-}}
+TRUTH_MODE=no
+TRUTH_APPLIED=no
+TRUTH_ATTEMPTED=no
+if [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+then
+   TRUTH_MODE=yes
+   TRUTH_ATTEMPTED=yes
+fi
 logger "Mean solution type request: $MEAN_SOL_REQUEST"
+logger "Truth file: ${TRUTH_FILE:-none} (mode=$TRUTH_MODE)"
 logger "Report URL: $ReportUrl"
 logger "Session type request: $SESSION_REQUEST"
 
 echo "Point $Point"
 echo "Project $Project"
 
-if [ ! $Point = -1 ]
+if [ ! "$Point" = -1 ]
 then
-   Project=$Project/$Point
+   Project="$(gnss_normalize_project_path "${Project#/}/$Point")"
 fi
 echo "Project $Project"
 logger "Project $Project"
@@ -56,7 +69,6 @@ logger "Project $Project"
 #echo "$FileFull<br>$File<br>"
 #ls -l $1
 
-. $normalDir/JCMBSoft_Config.sh
 GNSS_CFG_DIR=`cd "$normalDir/../../admin/GNSS" 2>/dev/null && pwd`
 if [ -z "$GNSS_CFG_DIR" ] || [ ! -f "$GNSS_CFG_DIR/GNSS_Paths.cfg" ]
 then
@@ -71,31 +83,155 @@ then
    GNSS_RESULTS_DIR=/mnt/Data/results
 fi
 
-RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
+if command -v TZ.py >/dev/null 2>&1 && [ -z "${GNSS_LOCAL_TZ_HOURS:-}" ]
+then
+   export GNSS_LOCAL_TZ_HOURS=$(TZ.py 2>/dev/null || echo 0)
+fi
+
+time_range_report_cmd() {
+   local args=()
+   if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+   then
+      args+=(--ats "$TRUTH_FILE")
+   fi
+   "$normalDir/time_range_report.py" "${args[@]}"
+}
+
+PROCESSING_MARKER=processing.txt
+PROCESSING_OUTPUT=processing_output.txt
+
+if [ -n "${GNSS_RESULT_DIR:-}" ]
+then
+   RESULT_DIR="$GNSS_RESULT_DIR"
+else
+   RESULT_DIR="$GNSS_RESULTS_DIR/Position$Project/$File"
+fi
 logger "$RESULT_DIR"
-mkdir -p "$RESULT_DIR"
-cd "$RESULT_DIR" && rm * 2> /dev/null
+
+set_processing_status() {
+   printf '%s\n' "$1" > "$RESULT_DIR/$PROCESSING_MARKER" 2>/dev/null || true
+   echo "$1"
+}
+
+mkdir -p "$RESULT_DIR" || {
+   logger "Could not create result dir: $RESULT_DIR"
+   rm -f "$RESULT_DIR/$PROCESSING_MARKER"
+   exit 1
+}
+
+if [ ! -f "$1" ]; then
+   logger "Input file not found: $1"
+   echo "Input file not found: $1" > "$RESULT_DIR/processing_error.txt"
+   rm -f "$RESULT_DIR/$PROCESSING_MARKER"
+   exit 1
+fi
+
+cd "$RESULT_DIR" || {
+   logger "Could not cd to result dir: $RESULT_DIR"
+   rm -f "$RESULT_DIR/$PROCESSING_MARKER"
+   exit 1
+}
+rm -f processing_error.txt
+find . -mindepth 1 -maxdepth 1 \
+   ! -name "$PROCESSING_MARKER" \
+   ! -name "$PROCESSING_OUTPUT" \
+   ! -name "processing_error.txt" \
+   -exec rm -rf {} + 2>/dev/null
+set_processing_status "Processing started $(date)"
 TMP_DIR=/run/shm/
 
 logger `pwd`
 
-echo Creating X29 file for $File
+set_processing_status "Creating X29 with viewdat for $File — large files can take several minutes"
 logger "Creating X29 file for $File"
 
-viewdat -d29 --translate_rec35_sub2_to_rec29 -x -o$TMP_DIR$$.x29 $1
+if command -v stdbuf >/dev/null 2>&1
+then
+   stdbuf -oL viewdat -d29 --translate_rec35_sub2_to_rec29 -x -o$TMP_DIR$$.x29 $1
+else
+   viewdat -d29 --translate_rec35_sub2_to_rec29 -x -o$TMP_DIR$$.x29 $1
+fi
+set_processing_status "Finished viewdat for $File"
+
+CONSTELLATION_CANDIDATES_DIR="${TMP_DIR}$$.constellation"
+mkdir -p "$CONSTELLATION_CANDIDATES_DIR"
+
+_run_constellation_viewdat_passes() {
+   local _upload="$1"
+   local _week=""
+   local _week_script="$normalDir/../TrackingPlot/Week_From_T19.pl"
+   local _ext_lower="$(echo "$Ext" | tr '[:upper:]' '[:lower:]')"
+
+   [ -f "$_upload" ] || return 0
+   set_processing_status "Running viewdat passes for per-constellation SV data"
+
+   if [ -x "$_week_script" ]
+   then
+      _week="$(viewdat -d19 "$_upload" 2>/dev/null | "$_week_script" 2>/dev/null || echo "-1")"
+   else
+      _week="-1"
+   fi
+   if [ "$_week" = "-1" ] && [ -f "$TMP_DIR$$.x29" ]
+   then
+      _week="$(tail -n +5 "$TMP_DIR$$.x29" | awk -F, 'NF>=2 && $1+0>0 {gsub(/ /,"",$1); print int($1); exit}' 2>/dev/null)"
+   fi
+   [ -n "$_week" ] || _week="-1"
+
+   if [ "$_ext_lower" = "t02" ]
+   then
+      if viewdat -d29 -x -o"${TMP_DIR}$$.x29_native" "$_upload" 2>/dev/null
+      then
+         if tail -n +5 "${TMP_DIR}$$.x29_native" > "${CONSTELLATION_CANDIDATES_DIR}/native.x29" 2>/dev/null \
+            && $normalDir/export_constellation_sv_csv.py "${CONSTELLATION_CANDIDATES_DIR}/native.x29" \
+               > "${CONSTELLATION_CANDIDATES_DIR}/from_native.csv" 2>/dev/null
+         then
+            :
+         else
+            rm -f "${CONSTELLATION_CANDIDATES_DIR}/from_native.csv"
+         fi
+         if [ "${GNSS_KEEP_X29:-}" = "1" ] || [ "$SaveFile" = 1 ]
+         then
+            cp "${TMP_DIR}$$.x29_native" "${File}.x29_native" 2>/dev/null || true
+         fi
+         rm -f "${TMP_DIR}$$.x29_native" "${CONSTELLATION_CANDIDATES_DIR}/native.x29"
+      fi
+   fi
+
+   if [ "$_week" != "-1" ]
+   then
+      set_processing_status "Exporting tracking records (rec27) for per-constellation SV data"
+      if viewdat -d27 --translate_rec35_sub19_to_rec27 -x "$_upload" 2>/dev/null \
+         | $normalDir/export_constellation_sv_from_x27.py "$_week" \
+            > "${CONSTELLATION_CANDIDATES_DIR}/from_x27.csv" 2>/dev/null
+      then
+         :
+      else
+         rm -f "${CONSTELLATION_CANDIDATES_DIR}/from_x27.csv"
+      fi
+      if [ "${GNSS_KEEP_X29:-}" = "1" ]
+      then
+         viewdat -d27 --translate_rec35_sub19_to_rec27 -x -o"${File}.x27" "$_upload" 2>/dev/null || true
+      fi
+   fi
+}
+
+_run_constellation_viewdat_passes "$1"
 
 #viewdat -i -ofile.sum $1
 
 #wait
 
-rm $1
+if [ "${GNSS_KEEP_UPLOADS:-}" != "1" ]
+then
+   rm -f "$1"
+fi
 
 # Skipping creating the file
 #   echo "Decimation interval: " $Decimate
 
 if [ "$Decimate" = -1 ]
 then
-   echo "Computing decimation interval"
+   set_processing_status "Computing decimation interval"
    eval $(compute_decimate.py $TMP_DIR$$.x29)
 fi
 
@@ -108,16 +244,31 @@ else
    echo "Decimation interval: " $Decimate
    echo "Orginal interval: " $interval
    echo "Every: $Decimate (s), orginal ($interval)">Decimation
-   echo Creating Decimated file for $File
+   set_processing_status "Creating decimated file for $File"
    decimate.py $Decimate <$TMP_DIR$$.x29 > $TMP_DIR$File.X29
 #   cp $1 $FileFull
 
 fi
 
-if [ "$SaveFile" = 1 ]
+if [ "$SaveFile" = 1 ] || [ "${GNSS_KEEP_X29:-}" = "1" ]
 then
     mv $TMP_DIR$$.x29 $File.x29
-    echo "<a href=\"$File.x29\">$File.x29<a/>">SaveFile.html
+    head -n 4 "$File.x29" > x29_header.txt 2>/dev/null || true
+    {
+       echo "<a href=\"$File.x29\">$File.x29</a> (rec29 via rec35 sub2 translate)"
+       if [ -f "${File}.x29_native" ]
+       then
+          echo " <a href=\"${File}.x29_native\">${File}.x29_native</a> (native rec29, T02 only)"
+       fi
+       if [ -f "${File}.x27" ]
+       then
+          echo " <a href=\"${File}.x27\">${File}.x27</a> (tracking rec27)"
+       fi
+       if [ -f x29_header.txt ]
+       then
+          echo " <a href=\"x29_header.txt\">x29_header.txt</a>"
+       fi
+    } > SaveFile.html
 
 else
     rm $TMP_DIR$$.x29
@@ -129,11 +280,12 @@ echo "$File" >file.html
 
 #echo "Solution Type $Sol";
 
-echo "Checking database for $Point"
+set_processing_status "Checking database for $Point"
 
-#$normalDir/GNSS_TRUTH.py $Point
-
-eval $($normalDir/GNSS_TRUTH.py $Point)
+if [ "$Point" != "-1" ] && [ -n "$Point" ]
+then
+   eval $($normalDir/GNSS_TRUTH.py $Point)
+fi
 
 # Truth DB may return Solution — use it only when a specific type was requested
 PLOT_FILTER_SOL=""
@@ -230,11 +382,8 @@ echo "Records $Records"
 
 $normalDir/kml_point.py $File $Lat $Long $Height
 
-echo "</pre>"
 echo "<a href=\"$File.kml\">$File.kml</a>"
 echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
-echo "<pre>"
-
 
 if [ -n "$PLOT_FILTER_SOL" ]
 then
@@ -251,6 +400,29 @@ else
    mv $TMP_DIR$File.X29 $File.sol
 fi
 
+_export_constellation_sv() {
+   local _src="$1"
+   local _from_sol="${CONSTELLATION_CANDIDATES_DIR}/from_sol.csv"
+   if [ -f "$_src" ]
+   then
+      $normalDir/export_constellation_sv_csv.py "$_src" > "$_from_sol" 2>/dev/null \
+         || rm -f "$_from_sol"
+   fi
+   if $normalDir/export_constellation_sv_best.py --sol "$_src" \
+      "$_from_sol" \
+      "${CONSTELLATION_CANDIDATES_DIR}/from_native.csv" \
+      "${CONSTELLATION_CANDIDATES_DIR}/from_x27.csv" \
+      > constellation_sv.csv 2>/dev/null
+   then
+      gzip -9 -f constellation_sv.csv
+   else
+      rm -f constellation_sv.csv constellation_sv.csv.gz
+   fi
+   rm -rf "$CONSTELLATION_CANDIDATES_DIR"
+}
+
+_export_constellation_sv "$File.sol"
+
 POINT_FROM_DB=0
 if [ "$Point" != "-1" ] && [ -n "$Lat" ]
 then
@@ -266,9 +438,6 @@ enu_filter_stream() {
   fi
 }
 
-echo "Computing provisional ENU for session detection"
-original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height >$File.enu.provisional
-
 SESSION_USED="static"
 SESSION_DETECTED="static"
 DETECTION_RAN="no"
@@ -280,6 +449,10 @@ DRIVE_WARNING="no"
 _run_motion_detect() {
   enu_filter_stream "$File.enu.provisional" | $normalDir/detect_motion.py
 }
+
+detect_session_type() {
+set_processing_status "Detecting session type"
+original-awk -f $normalDir/x29_enu.awk $File.sol $Lat $Long $Height >$File.enu.provisional
 
 case "$SESSION_REQUEST" in
   1|moving)
@@ -323,7 +496,9 @@ case "$SESSION_REQUEST" in
     fi
     ;;
 esac
+}
 
+write_session_type_txt() {
 case "$SESSION_REQUEST" in
   -1|""|auto)
     SESSION_REQUEST_LABEL="Automatic"
@@ -342,13 +517,114 @@ esac
 {
 echo "Session requested: $SESSION_REQUEST_LABEL"
 echo "Session used: $SESSION_USED"
+if [ "$TRUTH_APPLIED" = "yes" ]
+then
+   echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — applied"
+elif [ "$TRUTH_ATTEMPTED" = "yes" ]
+then
+   if [ -n "${ATS_HEIGHT_MATCHED:-}" ] && [ "${ATS_HEIGHT_MATCHED:-0}" -gt 0 ]
+   then
+      echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — ENU alignment not applied (${ATS_HEIGHT_MATCHED} GNSS/ATS height epochs overlap; processed as normal)"
+   else
+      echo "ATS truth file: yes ($(basename "$TRUTH_FILE")) — not used (no GNSS time overlap; processed as normal)"
+   fi
+else
+   echo "ATS truth file: no"
+fi
+if [ "$TRUTH_ATTEMPTED" = "yes" ]
+then
+   echo "ATS filename: $(basename "$TRUTH_FILE")"
+fi
+if [ -n "${ATS_HEIGHT_OFFSET:-}" ]
+then
+   echo "ATS height offset (mean GNSS - ATS Ele): ${ATS_HEIGHT_OFFSET} m"
+   echo "ATS height matched epochs: ${ATS_HEIGHT_MATCHED:-0}"
+fi
 echo "Detection ran: $DETECTION_RAN"
 echo "Outlier fraction: ${OUTLIER_FRACTION}% (>10 sigma, 2D)"
 echo "Outlier epochs: $OUTLIER_COUNT / $VALID_COUNT"
 echo "Drive test warning: $DRIVE_WARNING"
 } > session_type.txt
+}
 
-if [ "$SESSION_USED" = "moving" ]
+if [ "$TRUTH_MODE" = "yes" ]
+then
+   set_processing_status "Aligning ATS truth file"
+   logger "Attempting ATS truth alignment for $FileFull"
+
+   if $normalDir/truth_gnss_enu.py --ats "$TRUTH_FILE" --sol "$File.sol" \
+        --out "$File.enu" --report truth_report.txt
+   then
+      TRUTH_APPLIED=yes
+      SESSION_USED="moving"
+      SESSION_DETECTED="moving"
+   else
+      _truth_exit=$?
+      echo "WARNING: ATS truth alignment failed (exit $_truth_exit) — processing as normal"
+      logger "ATS truth fallback to normal processing for $FileFull (exit $_truth_exit)"
+      TRUTH_MODE=no
+      TRUTH_APPLIED=no
+      detect_session_type
+   fi
+else
+   detect_session_type
+fi
+
+ATS_HEIGHT_OFFSET=""
+ATS_HEIGHT_MATCHED=""
+if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -f "$File.sol" ] && [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+then
+   if $normalDir/ats_height_offset.py --sol "$File.sol" --ats "$TRUTH_FILE" --report ats_height_offset.txt
+   then
+      ATS_HEIGHT_OFFSET=$(grep '^ats_height_offset:' ats_height_offset.txt | head -1 | awk '{print $2}')
+      ATS_HEIGHT_MATCHED=$(grep '^ats_height_matched:' ats_height_offset.txt | head -1 | awk '{print $2}')
+   else
+      rm -f ats_height_offset.txt
+   fi
+fi
+
+write_session_type_txt
+
+if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -f "$File.sol" ]
+then
+   if $normalDir/export_gnss_height_csv.py "$File.sol" > gnss_height.csv
+   then
+      gzip -9 -f gnss_height.csv
+   else
+      echo "WARNING: Could not export GNSS height data from $File.sol"
+      rm -f gnss_height.csv gnss_height.csv.gz
+   fi
+fi
+
+if [ "$TRUTH_APPLIED" = "yes" ]
+then
+   echo "ATS truth session — ENU errors vs interpolated truth"
+   logger "ATS truth session for $FileFull"
+
+   $normalDir/kml_point.py $File $Lat $Long $Height
+   echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
+
+   {
+   echo "ATS file: $(basename "$TRUTH_FILE")"
+   cat truth_report.txt
+   } > truth_report.tmp && mv truth_report.tmp truth_report.txt
+
+   {
+   echo "TRAJECTORY_SESSION"
+   echo "Moving session with ATS truth reference."
+   cat truth_report.txt
+   } > llh.mean
+
+   echo ""
+   echo "Computing session time range"
+   time_range_report_cmd <$File.enu >time_range.txt
+
+   echo ""
+   echo "Computing NEE Mean"
+   eval $(original-awk -f $normalDir/x29_mean2_enu.awk $MEAN_SOL $Sol_HRange $Sol_VRange $Fixed_Range <$File.enu)
+
+   rm -f $File.enu.provisional $File.sol
+elif [ "$SESSION_USED" = "moving" ]
 then
    echo "Moving session — using trajectory (LLH) data"
    logger "Moving session for $FileFull"
@@ -361,12 +637,17 @@ then
    cat trajectory_summary.txt
    } > llh.mean
 
-   $normalDir/kml_trajectory.py $File $File.sol
+   if [ "$TRUTH_ATTEMPTED" = "yes" ]
+   then
+      $normalDir/kml_point.py $File $Lat $Long $Height
+   else
+      $normalDir/kml_trajectory.py $File $File.sol
+   fi
    echo "<a href=\"$File.kml\">$File.kml</a>">kml.html
 
    echo ""
    echo "Computing session time range"
-   $normalDir/time_range_report.py <$File.sol >time_range.txt
+   time_range_report_cmd <$File.sol >time_range.txt
 
    echo "Session: moving" | tee nee.mean
    cat trajectory_summary.txt | tee -a nee.mean
@@ -381,7 +662,7 @@ else
 
    echo ""
    echo "Computing session time range"
-   $normalDir/time_range_report.py <$File.enu >time_range.txt
+   time_range_report_cmd <$File.enu >time_range.txt
 
    echo ""
    echo "Computing NEE Mean"
@@ -393,7 +674,10 @@ fi
 {
 echo "Mean / reference computation"
 echo "=========================="
-if grep -q "From Database" llh.mean 2>/dev/null
+if grep -q "ATS truth" llh.mean 2>/dev/null
+then
+   echo "Reference LLH: ATS truth trajectory"
+elif grep -q "From Database" llh.mean 2>/dev/null
 then
    echo "Reference LLH: Point database"
 else
@@ -420,7 +704,7 @@ echo "Records in mean: $Records"
 echo "Session used: $SESSION_USED"
 } > mean.info
 
-if [ "$SESSION_USED" != "moving" ]
+if [ "$SESSION_USED" != "moving" ] || [ "$TRUTH_APPLIED" = "yes" ]
 then
 enu_cdf_stream() {
   if [ "$MEAN_SOL" = "all" ]; then
@@ -521,7 +805,25 @@ fi
 echo Generating interactive plot data for $FileFull
 logger "Generating interactive plot data for $FileFull"
 
+if [ "$TRUTH_ATTEMPTED" = "yes" ] && [ -n "$TRUTH_FILE" ] && [ -f "$TRUTH_FILE" ]
+then
+   if $normalDir/export_ats_csv.py "$TRUTH_FILE" > ats_data.csv
+   then
+      gzip -9 -f ats_data.csv
+   else
+      echo "WARNING: Could not export ATS plot data from $(basename "$TRUTH_FILE")"
+      rm -f ats_data.csv ats_data.csv.gz
+   fi
+fi
+
 echo "$FileFull" >file.html
+
+write_empty_range_summaries() {
+   for summary in range1cm.sum range2cm.sum range2sig.sum range3sig.sum
+   do
+      printf '%s\n' "Not applicable (moving session)" > "$summary"
+   done
+}
 
 _write_plot_filter() {
    if [ "$ALL_SOL_TYPES" = "1" ]; then
@@ -537,15 +839,77 @@ _write_plot_filter() {
    echo "session:$SESSION_USED" >> plot_filter.txt
    echo "session_request:$SESSION_REQUEST" >> plot_filter.txt
    echo "drive_warning:$DRIVE_WARNING" >> plot_filter.txt
+   if [ "$TRUTH_APPLIED" = "yes" ]
+   then
+      echo "truth:yes" >> plot_filter.txt
+      if [ -f truth_report.txt ]
+      then
+         grep '^truth_height_offset:' truth_report.txt >> plot_filter.txt || true
+      fi
+   else
+      echo "truth:no" >> plot_filter.txt
+   fi
+   if [ -f ats_data.csv.gz ] || [ -f ats_data.csv ]
+   then
+      echo "ats_data:yes" >> plot_filter.txt
+   else
+      echo "ats_data:no" >> plot_filter.txt
+   fi
+   if [ "$TRUTH_ATTEMPTED" = "yes" ]
+   then
+      echo "ats_provided:yes" >> plot_filter.txt
+   else
+      echo "ats_provided:no" >> plot_filter.txt
+   fi
+   if [ -f gnss_height.csv.gz ] || [ -f gnss_height.csv ]
+   then
+      echo "gnss_height:yes" >> plot_filter.txt
+   else
+      echo "gnss_height:no" >> plot_filter.txt
+   fi
+   if [ -f ats_height_offset.txt ]
+   then
+      grep '^ats_height_offset:' ats_height_offset.txt >> plot_filter.txt || true
+      grep '^ats_height_matched:' ats_height_offset.txt >> plot_filter.txt || true
+   fi
 }
 
-if [ "$SESSION_USED" = "moving" ]
+if [ "$TRUTH_APPLIED" = "yes" ]
+then
+   cp $File.enu file
+   cp file position_solution.csv
+   $normalDir/x29_secs.py < file > position_data.csv
+   _write_plot_filter
+   gzip -9 -f position_data.csv position_solution.csv
+
+   $normalDir/out_range.py -R 0.0105 < file --OUTAGE outage1cm.csv --DETAIL /dev/null --SUMMARY range1cm.sum
+   $normalDir/out_range.py -R 0.0205 < file --OUTAGE outage2cm.csv --DETAIL /dev/null --SUMMARY range2cm.sum
+   $normalDir/out_range.py -R 0.0305 < file --OUTAGE outage2sig.csv --DETAIL range2sig.csv --SUMMARY range2sig.sum
+   $normalDir/out_range.py -R 0.0455 < file --OUTAGE outage3sig.csv --DETAIL range3sig.csv --SUMMARY range3sig.sum
+
+   range_1cm=`$normalDir/range_summary.pl <range1cm.sum`
+   range_2cm=`$normalDir/range_summary.pl <range2cm.sum`
+   range_2_sigma=`$normalDir/range_summary.pl <range2sig.sum`
+   range_3_sigma=`$normalDir/range_summary.pl <range3sig.sum`
+   echo -n "$File," > $File.sum.csv
+   echo -n "$Elev_Range," >> $File.sum.csv
+   echo -n "$cdf_68," >> $File.sum.csv
+   echo -n "$cdf_95," >> $File.sum.csv
+   echo -n "$sigma_cdf_68," >> $File.sum.csv
+   echo -n "$sigma_cdf_95," >> $File.sum.csv
+   echo -n "$range_1cm," >> $File.sum.csv
+   echo -n "$range_2cm," >> $File.sum.csv
+   echo -n "$range_2_sigma," >> $File.sum.csv
+   echo  "$range_3_sigma" >> $File.sum.csv
+   rm file
+elif [ "$SESSION_USED" = "moving" ]
 then
    $normalDir/x29_secs.py <$File.trajectory > position_data.csv
    cp $File.trajectory position_solution.csv
    rm -f $File.trajectory
    _write_plot_filter
    gzip -9 -f position_data.csv position_solution.csv
+   write_empty_range_summaries
    echo -n "$File,moving" > $File.sum.csv
 else
 #cp $normalDir/plot_index.html index.shtml
@@ -585,17 +949,16 @@ echo '</pre>'
 #echo -n '<base href="http://trimbletools.com/results/Position/'
 #echo -n $File
 #echo '/" />'
-cp $normalDir/index.shtml .
+set_processing_status "Writing report files"
+ln -sf $normalDir/index.shtml .
 ln -sf $normalDir/interactive_plot.js
 ln -sf $normalDir/report_tables.js
-rm outage1cm.csv
-rm outage2cm.csv
-rm outage2sig.csv
-rm outage3sig.csv
+rm -f outage1cm.csv outage2cm.csv outage2sig.csv outage3sig.csv
 #rm range1cm.csv
 #rm range2cm.csv
 rm -f range2sig.csv range3sig.csv
 wait
+rm -f "$PROCESSING_MARKER"
 echo Processing completed
 echo "<p><strong>Processing complete.</strong></p>"
 echo "<p><a href=\"${ReportUrl}\">Open report</a> (redirecting&hellip;)</p>"

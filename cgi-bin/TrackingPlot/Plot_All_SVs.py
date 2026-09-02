@@ -160,17 +160,26 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                     if Tracked=="BPSK2_B1":
                         output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown BDS L1 Tracked: " + Tracked)
-                elif Band=="E5B":
-                    if Tracked=="BPSK2_B2":
+                        sys.exit("Internal Error, Unknown BDS B1 Tracked: " + Tracked)
+                elif Band=="L5":
+                    if Tracked=="IQ":
                         output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown BDS L5 Tracked: " + Tracked)
+                        sys.exit("Internal Error, Unknown BDS B2a Tracked: " + Tracked)
+                elif Band=="E5B":
+                    if Tracked=="BPSK_D":
+                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("BDS", antenna),HTML_File,Plot_Name)
+                    elif Tracked=="BPSK2_B2":
+                        output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("BDS", antenna),HTML_File,Plot_Name)
+                    else:
+                        sys.exit("Internal Error, Unknown BDS E5B Tracked: " + Tracked)
                 elif Band=="B3":
                     if Tracked=="BPSK2_B3":
-                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("BDS", antenna),HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown BDS B3 Tracked: " + Tracked)
+                else:
+                    sys.exit("Internal Error, Unknown BDS Band: " + Band)
             elif Sys=="QZSS":
                 if Band=="L1":
                     if Tracked=="CA":

@@ -6,7 +6,7 @@
 <!--#include virtual="file.html" -->
 </title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<script src="interactive_plot.js?v=20250828d"></script>
+<script src="interactive_plot.js?v=20250901a"></script>
 <style>
   .plot-card {
     border: 1px solid #999;
@@ -106,6 +106,9 @@
   }
   #plot-status.error {
     color: #a00;
+  }
+  #plot-status:empty {
+    display: none;
   }
   .report-section {
     margin: 1.25em 0;
@@ -244,9 +247,12 @@
     display: none;
   }
 </style>
-<script src="report_tables.js?v=20250828a"></script>
+<script src="report_tables.js?v=20250829r"></script>
 </head>
-<body onload="loadReportTables(); loadInteractivePosition();">
+<body onload="loadReportTables(); loadInteractivePosition(); checkProcessingStatus();">
+<div id="processing-banner" style="display:none; padding:0.75em; margin:0.75em 0; background:#eef6ff; border:1px solid #0063a3;">
+Processing is still running. Summary tables and interactive plots will fill in when complete.
+</div>
 <h1>Results for: 
 <!--#include virtual="file.html" -->
 </h1>
@@ -301,33 +307,51 @@ Location: <!--#include virtual="kml.html" -->
   <div id="plot-solution-latency" style="width: 100%; height: 420px;"></div>
 </div>
 
-<div class="plot-card" data-card-id="plot-latency-dist">
-  <h3>Latency Distribution</h3>
-  <div id="plot-latency-dist" style="width: 100%; height: 420px;"></div>
-</div>
-
 <div class="plot-card" data-card-id="plot-sv">
   <h3>SVs Used and Tracked</h3>
   <div id="plot-sv" style="width: 100%; height: 420px;"></div>
 </div>
 
+<div class="plot-card plot-ats-only" data-card-id="plot-ats-ne">
+  <h3>ATS Northing and Easting</h3>
+  <div id="plot-ats-ne" style="width: 100%; height: 420px;"></div>
+</div>
+
 <div class="plot-card" data-card-id="plot-height-error">
-  <h3>Height Error</h3>
+  <h3>Height</h3>
   <div id="plot-height-error" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card" data-card-id="plot-height-sigma">
-  <h3>Height Error and Sigma</h3>
+  <h3>Height and Sigma</h3>
+  <label><input type="checkbox" id="show-height-sigma-1" class="ats-height-sigma-toggle" data-level="1" checked> Show 1σ</label>
+  <label><input type="checkbox" id="show-height-sigma-2" class="ats-height-sigma-toggle" data-level="2"> Show 2σ</label>
+  <label><input type="checkbox" id="show-height-sigma-3" class="ats-height-sigma-toggle" data-level="3"> Show 3σ</label>
   <div id="plot-height-sigma" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-ats-only" data-card-id="plot-ats-height-delta">
+  <h3>GNSS / ATS Delta and Sigma</h3>
+  <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="1" checked> Show 1σ</label>
+  <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="2"> Show 2σ</label>
+  <label><input type="checkbox" class="ats-height-sigma-toggle" data-level="3"> Show 3σ</label>
+  <div id="plot-ats-height-delta" style="width: 100%; height: 420px;"></div>
+</div>
+
+<div class="plot-card plot-ats-only" data-card-id="plot-ats-error-sigma">
+  <h3>GNSS / ATS Error/Sigma</h3>
+  <div id="plot-ats-error-sigma" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card plot-moving-only" data-card-id="plot-velocity-neu">
   <h3>Velocity (NEU)</h3>
+  <label><input type="checkbox" id="show-sol-velocity-neu"> Show position type</label>
   <div id="plot-velocity-neu" style="width: 100%; height: 420px;"></div>
 </div>
 
 <div class="plot-card plot-moving-only" data-card-id="plot-velocity-speed">
   <h3>Speed</h3>
+  <label><input type="checkbox" id="show-sol-velocity-speed"> Show position type</label>
   <div id="plot-velocity-speed" style="width: 100%; height: 420px;"></div>
 </div>
 
@@ -338,6 +362,8 @@ Location: <!--#include virtual="kml.html" -->
 
 <div class="plot-card plot-static-only" data-card-id="plot-enu-sigma">
   <h3>H/U Error and Sigma</h3>
+  <label><input type="checkbox" id="show-enu-sigma-2"> Show 2σ</label>
+  <label><input type="checkbox" id="show-enu-sigma-3"> Show 3σ</label>
   <div id="plot-enu-sigma" style="width: 100%; height: 420px;"></div>
 </div>
 
@@ -373,7 +399,7 @@ Location: <!--#include virtual="kml.html" -->
 </div>
 
 <div class="plot-card plot-static-only" data-card-id="plot-age-corr">
-  <h3>Error and Precision vs Age of Corrections</h3>
+  <h3>Error and Sigma</h3>
   <h4>1D (Vertical)</h4>
   <div id="plot-age-corr-1d" style="width: 100%; height: 380px;"></div>
   <h4>2D (Horizontal)</h4>
@@ -394,5 +420,37 @@ Location: <!--#include virtual="kml.html" -->
   <script type="text/plain" id="raw-range2sig"><!--#include virtual="range2sig.sum" --></script>
   <script type="text/plain" id="raw-range3sig"><!--#include virtual="range3sig.sum" --></script>
 </div>
+
+<div class="plot-card" data-card-id="plot-latency-dist">
+  <h3>Latency Distribution</h3>
+  <div id="plot-latency-dist" style="width: 100%; height: 420px;"></div>
+</div>
+
+<script>
+function checkProcessingStatus() {
+  var banner = document.getElementById("processing-banner");
+  if (!banner) {
+    return;
+  }
+  var check = new XMLHttpRequest();
+  check.open("GET", "processing.txt?_=" + Date.now(), true);
+  check.onload = function () {
+    if (check.status === 200) {
+      banner.style.display = "block";
+      var status = (check.responseText || "").replace(/^\s+|\s+$/g, "");
+      banner.textContent = status
+        ? ("Processing is still running: " + status)
+        : "Processing is still running. Summary tables and interactive plots will fill in when complete.";
+      window.setTimeout(checkProcessingStatus, 3000);
+      return;
+    }
+    banner.style.display = "none";
+  };
+  check.onerror = function () {
+    banner.style.display = "none";
+  };
+  check.send();
+}
+</script>
 
 </body></html>

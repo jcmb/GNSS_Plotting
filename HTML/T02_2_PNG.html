@@ -2,6 +2,8 @@
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
 <link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
 <title>Plot postions for a GNSS file</title>
 <style type="text/css">
@@ -19,6 +21,17 @@
   #status-phase {
     font-weight: bold;
     margin: 0 0 8px 0;
+  }
+  .upload-progress-block {
+    margin: 0 0 12px 0;
+  }
+  .upload-progress-block:last-of-type {
+    margin-bottom: 0;
+  }
+  .upload-progress-label {
+    margin: 0 0 4px 0;
+    font-size: 13px;
+    color: #333;
   }
   .progress-track {
     width: 100%;
@@ -67,6 +80,13 @@
     opacity: 0.55;
     pointer-events: none;
   }
+  .tz-offset-label {
+    margin-left: 8px;
+    font-weight: bold;
+  }
+  .testing-mode-label {
+    font-weight: bold;
+  }
 </style>
 </head>
 <body class="page">
@@ -93,6 +113,43 @@ GNSS File:
 <input type="file" name="file" id="gnss-file" size="80" accept=".T00,.T01,.T02,.T04"/>
 </td>
 </tr>
+<tr>
+<td>
+Truth file (ATS, optional):
+</td>
+<td>
+<input type="file" name="truth_file" id="truth-file" size="80" accept=".txt,.ats"/>
+</td>
+</tr>
+<tr>
+<td>
+Timezone:
+</td>
+<td>
+UTC :
+<label for="tz-hours">Hours:</label>
+<input type="number" name="tz_hours" id="tz-hours" min="-14" max="14" step="1" value="0">
+<label for="tz-minutes">Minutes</label>
+<input type="number" name="tz_minutes" id="tz-minutes" min="0" max="59" step="1" value="0">
+<span id="tz-offset-label" class="tz-offset-label" aria-live="polite"></span>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<label class="testing-mode-label" for="testing-mode">
+  <input type="checkbox" name="testing_mode" id="testing-mode" value="1">
+  Testing (keep uploads on server; skip re-upload when the filename matches a cached copy)
+</label>
+</td>
+</tr>
+<tr>
+<td colspan="2">
+<label class="testing-mode-label" for="keep-x29">
+  <input type="checkbox" name="keep_x29" id="keep-x29" value="1">
+  Debug: keep viewdat X29 file (includes column header lines)
+</label>
+</td>
+</tr>
 </table>
 <br/>
 <table border="1" width="100%">
@@ -105,8 +162,8 @@ Solution Type:
 </td>
 <td>
 <select name="Sol">
-   <option value="-2">All (no filter)</option>
-   <option value="" selected>Automatic</option>
+   <option value="-2" selected>All (no filter)</option>
+   <option value="">Automatic</option>
    <option value="0">Autonomous</option>
    <option value="1">RTCM</option>
    <option value="2">SBAS</option>
@@ -219,8 +276,19 @@ Point Name (Optional):
 
 <div id="submit-status" aria-live="polite">
   <p id="status-phase">Uploading file...</p>
-  <div class="progress-track" aria-hidden="true">
-    <div class="progress-fill" id="progress-fill"></div>
+  <div class="upload-progress-block" id="gnss-upload-progress">
+    <p class="upload-progress-label">GNSS file</p>
+    <div class="progress-track" aria-hidden="true">
+      <div class="progress-fill" id="gnss-progress-fill"></div>
+    </div>
+    <p class="upload-progress-label" id="gnss-upload-detail"></p>
+  </div>
+  <div class="upload-progress-block" id="ats-upload-progress" hidden>
+    <p class="upload-progress-label">ATS truth file</p>
+    <div class="progress-track" aria-hidden="true">
+      <div class="progress-fill" id="ats-progress-fill"></div>
+    </div>
+    <p class="upload-progress-label" id="ats-upload-detail"></p>
   </div>
   <p id="status-detail"></p>
   <pre id="processing-log"></pre>
@@ -232,11 +300,117 @@ Point Name (Optional):
 
 <script type="text/javascript">
 (function () {
+  function clampMinutes(value) {
+    var n = Math.trunc(Number(value));
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(0, Math.min(59, Math.abs(n)));
+  }
+
+  function clampHours(value) {
+    var n = Math.trunc(Number(value));
+    if (!Number.isFinite(n)) return 0;
+    return Math.max(-14, Math.min(14, n));
+  }
+
+  function toOffsetMinutes(hours, minutes) {
+    var h = clampHours(hours);
+    var m = clampMinutes(minutes);
+    if (h === 0) {
+      return m;
+    }
+    return h * 60 + (h < 0 ? -m : m);
+  }
+
+  function formatOffsetLabel(totalMinutes) {
+    if (totalMinutes === 0) {
+      return "UTC+00:00";
+    }
+    var sign = totalMinutes < 0 ? -1 : 1;
+    var abs = Math.abs(Math.trunc(totalMinutes));
+    var hours = sign * Math.floor(abs / 60);
+    var minutes = abs % 60;
+    var labelSign = totalMinutes < 0 ? "-" : "+";
+    return "UTC" + labelSign + String(Math.abs(hours)).padStart(2, "0") + ":"
+      + String(minutes).padStart(2, "0");
+  }
+
+  function browserOffsetParts() {
+    var offsetMin = -new Date().getTimezoneOffset();
+    var sign = offsetMin < 0 ? -1 : 1;
+    var abs = Math.abs(offsetMin);
+    return {
+      hours: sign * Math.floor(abs / 60),
+      minutes: abs % 60
+    };
+  }
+
+  function syncUploadTzLabel() {
+    var hoursInput = document.getElementById("tz-hours");
+    var minutesInput = document.getElementById("tz-minutes");
+    var label = document.getElementById("tz-offset-label");
+    if (!hoursInput || !minutesInput || !label) return;
+    label.textContent = formatOffsetLabel(toOffsetMinutes(hoursInput.value, minutesInput.value));
+  }
+
+  function initUploadTimezone() {
+    var parts = browserOffsetParts();
+    var hoursInput = document.getElementById("tz-hours");
+    var minutesInput = document.getElementById("tz-minutes");
+    if (!hoursInput || !minutesInput) return;
+    hoursInput.value = String(parts.hours);
+    minutesInput.value = String(parts.minutes);
+    hoursInput.addEventListener("input", syncUploadTzLabel);
+    minutesInput.addEventListener("input", syncUploadTzLabel);
+    hoursInput.addEventListener("change", syncUploadTzLabel);
+    minutesInput.addEventListener("change", syncUploadTzLabel);
+    syncUploadTzLabel();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initUploadTimezone);
+  } else {
+    initUploadTimezone();
+  }
+
+  function initTestingMode() {
+    var testingMode = document.getElementById("testing-mode");
+    if (!testingMode) return;
+    if (window.localStorage.getItem("gnssPlotTestingMode") === "1") {
+      testingMode.checked = true;
+    }
+    testingMode.addEventListener("change", function () {
+      window.localStorage.setItem("gnssPlotTestingMode", testingMode.checked ? "1" : "0");
+    });
+  }
+
+  function initKeepX29() {
+    var keepX29 = document.getElementById("keep-x29");
+    if (!keepX29) return;
+    if (window.localStorage.getItem("gnssPlotKeepX29") === "1") {
+      keepX29.checked = true;
+    }
+    keepX29.addEventListener("change", function () {
+      window.localStorage.setItem("gnssPlotKeepX29", keepX29.checked ? "1" : "0");
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initTestingMode);
+    document.addEventListener("DOMContentLoaded", initKeepX29);
+  } else {
+    initTestingMode();
+    initKeepX29();
+  }
+
   var form = document.getElementById("gnss-plot-form");
   var statusPanel = document.getElementById("submit-status");
   var statusPhase = document.getElementById("status-phase");
   var statusDetail = document.getElementById("status-detail");
-  var progressFill = document.getElementById("progress-fill");
+  var gnssProgressFill = document.getElementById("gnss-progress-fill");
+  var atsProgressFill = document.getElementById("ats-progress-fill");
+  var atsProgressBlock = document.getElementById("ats-upload-progress");
+  var gnssUploadDetail = document.getElementById("gnss-upload-detail");
+  var atsUploadDetail = document.getElementById("ats-upload-detail");
   var processingLog = document.getElementById("processing-log");
   var submitBtn = document.getElementById("gnss-submit");
   var activeXhr = null;
@@ -261,20 +435,92 @@ Point Name (Optional):
     statusDetail.textContent = text || "";
   }
 
-  function setUploadPercent(percent) {
-    progressFill.className = "progress-fill";
-    progressFill.style.width = Math.min(100, Math.max(0, percent)) + "%";
+  function setProgressFill(fillEl, percent, indeterminate) {
+    if (indeterminate) {
+      fillEl.className = "progress-fill indeterminate";
+      fillEl.style.width = "";
+      return;
+    }
+    fillEl.className = "progress-fill";
+    fillEl.style.width = Math.min(100, Math.max(0, percent)) + "%";
   }
 
-  function setIndeterminateProgress() {
-    progressFill.className = "progress-fill indeterminate";
-    progressFill.style.width = "";
+  function setGnssUploadPercent(percent, indeterminate) {
+    setProgressFill(gnssProgressFill, percent, indeterminate);
+  }
+
+  function setAtsUploadPercent(percent, indeterminate) {
+    setProgressFill(atsProgressFill, percent, indeterminate);
+  }
+
+  function resetUploadProgress() {
+    setGnssUploadPercent(0, false);
+    setAtsUploadPercent(0, false);
+    gnssUploadDetail.textContent = "";
+    atsUploadDetail.textContent = "";
+    atsProgressBlock.hidden = true;
+  }
+
+  function formatBytes(bytes) {
+    if (!Number.isFinite(bytes) || bytes < 0) return "0 B";
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    return (bytes / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+  }
+
+  function updateUploadProgress(event, gnssFile, atsFile) {
+    var gnssSize = gnssFile.size;
+    var hasAts = !!atsFile;
+    var atsSize = hasAts ? atsFile.size : 0;
+    var totalSize = gnssSize + atsSize;
+
+    if (!event.lengthComputable || totalSize <= 0) {
+      setGnssUploadPercent(0, true);
+      if (hasAts) {
+        setAtsUploadPercent(0, true);
+      }
+      setDetail("Uploading to the server...");
+      return;
+    }
+
+    var loaded = event.loaded;
+    var gnssLoaded = Math.min(loaded, gnssSize);
+    var atsLoaded = hasAts ? Math.max(0, loaded - gnssSize) : 0;
+    var gnssPct = Math.round((gnssLoaded / gnssSize) * 100);
+    var atsPct = hasAts && atsSize > 0 ? Math.round((atsLoaded / atsSize) * 100) : 0;
+    var overallPct = Math.round((loaded / totalSize) * 100);
+
+    setGnssUploadPercent(gnssPct, false);
+    gnssUploadDetail.textContent =
+      gnssFile.name + ": " + gnssPct + "% (" + formatBytes(gnssLoaded) + " / " + formatBytes(gnssSize) + ")";
+
+    if (hasAts) {
+      setAtsUploadPercent(atsPct, false);
+      atsUploadDetail.textContent =
+        atsFile.name + ": " + atsPct + "% (" + formatBytes(atsLoaded) + " / " + formatBytes(atsSize) + ")";
+      if (gnssPct >= 100 && atsPct < 100) {
+        setPhase("Uploading ATS truth file...");
+      } else if (overallPct < 100) {
+        setPhase("Uploading files...");
+      } else {
+        setPhase("Upload complete. Processing on server...");
+        setGnssUploadPercent(100, false);
+        setAtsUploadPercent(100, false);
+      }
+      setDetail("Overall upload " + overallPct + "% complete.");
+    } else {
+      setPhase(gnssPct >= 100 ? "Upload complete. Processing on server..." : "Uploading GNSS file...");
+      setDetail("Uploaded " + gnssPct + "% of " + gnssFile.name + ".");
+      if (gnssPct >= 100) {
+        setGnssUploadPercent(100, false);
+      }
+    }
   }
 
   function isProcessingComplete(html) {
     return /Processing complete/i.test(html) ||
       /Plotting completed/i.test(html) ||
-      /content="0;url=/i.test(html) ||
       /<a href="[^"]+">Open report<\/a>/i.test(html);
   }
 
@@ -296,12 +542,29 @@ Point Name (Optional):
   }
 
   function extractPreLog(html) {
-    var start = html.indexOf("<pre>");
-    if (start === -1) return "";
-    start += 5;
-    var end = html.indexOf("</pre>", start);
-    var chunk = end === -1 ? html.slice(start) : html.slice(start, end);
-    return chunk.replace(/<[^>]+>/g, "");
+    var parts = [];
+    var searchFrom = 0;
+    while (true) {
+      var start = html.indexOf("<pre>", searchFrom);
+      if (start === -1) {
+        break;
+      }
+      start += 5;
+      var end = html.indexOf("</pre>", start);
+      if (end === -1) {
+        parts.push(html.slice(start));
+        break;
+      }
+      parts.push(html.slice(start, end));
+      searchFrom = end + 6;
+    }
+    return parts.join("\n").replace(/<[^>]+>/g, "");
+  }
+
+  function showProcessingLog(text) {
+    processingLog.className = "visible";
+    processingLog.textContent = text || "";
+    processingLog.scrollTop = processingLog.scrollHeight;
   }
 
   function extractStatusMessages(html) {
@@ -333,19 +596,18 @@ Point Name (Optional):
     }
 
     if (logText) {
-      processingLog.className = "visible";
-      processingLog.textContent = logText;
-      processingLog.scrollTop = processingLog.scrollHeight;
+      showProcessingLog(logText);
     }
 
     if (finished && complete && reportUrl) {
       if (!redirectScheduled) {
         redirectScheduled = true;
         setPhase("Processing complete. Opening report...");
-        setUploadPercent(100);
+        setGnssUploadPercent(100, false);
+        setAtsUploadPercent(100, false);
         window.setTimeout(function () {
           window.location.href = reportUrl;
-        }, 800);
+        }, 5000);
       }
     }
   }
@@ -355,8 +617,7 @@ Point Name (Optional):
     processingLog.className = "";
     processingLog.textContent = "";
     setDetail("");
-    setUploadPercent(0);
-    progressFill.className = "progress-fill";
+    resetUploadProgress();
     form.className = "";
     submitBtn.disabled = false;
     redirectScheduled = false;
@@ -364,12 +625,22 @@ Point Name (Optional):
 
   function beginSubmit() {
     var fileInput = document.getElementById("gnss-file");
+    var truthInput = document.getElementById("truth-file");
+    var testingModeEl = document.getElementById("testing-mode");
+    var testingMode = testingModeEl && testingModeEl.checked;
     var hasFile = fileInput.files && fileInput.files.length > 0;
+    var gnssFile = hasFile ? fileInput.files[0] : null;
+    var atsFile = truthInput.files && truthInput.files.length > 0 ? truthInput.files[0] : null;
 
     if (!hasFile) {
       window.alert("Select a GNSS file to upload.");
       return;
     }
+
+    var cachedGnss = window.localStorage.getItem("gnssPlotCachedGnss");
+    var cachedTruth = window.localStorage.getItem("gnssPlotCachedTruth");
+    var skipGnssUpload = testingMode && cachedGnss && gnssFile.name === cachedGnss;
+    var skipTruthUpload = testingMode && atsFile && cachedTruth && atsFile.name === cachedTruth;
 
     if (activeXhr) {
       activeXhr.abort();
@@ -380,28 +651,68 @@ Point Name (Optional):
     form.className = "form-disabled";
     submitBtn.disabled = true;
     statusPanel.className = "active";
+    atsProgressBlock.hidden = !atsFile || skipTruthUpload;
 
-    setPhase("Uploading file...");
-    setDetail("Sending " + fileInput.files[0].name + " to the server.");
-    setUploadPercent(0);
+    if (skipGnssUpload && (!atsFile || skipTruthUpload)) {
+      setPhase("Processing on server...");
+      setDetail("Using cached GNSS" + (skipTruthUpload ? " and ATS" : "") + " files on the server.");
+      setGnssUploadPercent(100, false);
+      if (skipTruthUpload) {
+        setAtsUploadPercent(100, false);
+      }
+    } else if (skipGnssUpload) {
+      setPhase("Uploading ATS truth file...");
+      setDetail("Using cached GNSS; uploading " + atsFile.name + " only.");
+      setGnssUploadPercent(100, false);
+    } else if (skipTruthUpload) {
+      setPhase("Uploading GNSS file...");
+      setDetail("Uploading " + gnssFile.name + "; using cached ATS truth on the server.");
+      setGnssUploadPercent(0, false);
+      setAtsUploadPercent(100, false);
+    } else {
+      setPhase(atsFile ? "Uploading files..." : "Uploading GNSS file...");
+      setDetail(
+        atsFile
+          ? "Sending " + gnssFile.name + " and " + atsFile.name + " to the server."
+          : "Sending " + gnssFile.name + " to the server."
+      );
+      setGnssUploadPercent(0, false);
+      if (atsFile) {
+        setAtsUploadPercent(0, false);
+      }
+    }
 
     var xhr = new XMLHttpRequest();
     activeXhr = xhr;
     var formData = new FormData(form);
+    formData.set("gnss_basename", gnssFile.name);
+    formData.set("truth_basename", atsFile ? atsFile.name : "");
+    if (skipGnssUpload) {
+      formData.delete("file");
+      formData.set("skip_gnss_upload", "1");
+    }
+    if (skipTruthUpload) {
+      formData.delete("truth_file");
+      formData.set("skip_truth_upload", "1");
+    }
 
     xhr.open("POST", form.action, true);
     xhr.withCredentials = true;
 
     xhr.upload.addEventListener("progress", function (event) {
+      var progressGnssFile = skipGnssUpload ? { size: 0, name: gnssFile.name } : gnssFile;
+      var progressAtsFile = skipTruthUpload ? null : atsFile;
+      updateUploadProgress(event, progressGnssFile, progressAtsFile);
       if (event.lengthComputable) {
-        var pct = Math.round((event.loaded / event.total) * 100);
-        setUploadPercent(pct);
-        setDetail("Uploaded " + pct + "% of " + fileInput.files[0].name + ".");
-        if (pct >= 100) {
+        var gnssSize = progressGnssFile ? progressGnssFile.size : 0;
+        var totalSize = gnssSize + (progressAtsFile ? progressAtsFile.size : 0);
+        if (totalSize === 0 || event.loaded >= totalSize) {
           setPhase("Upload complete. Processing on server...");
+          setGnssUploadPercent(100, false);
+          if (progressAtsFile) {
+            setAtsUploadPercent(100, false);
+          }
         }
-      } else {
-        setIndeterminateProgress();
       }
     });
 
@@ -409,7 +720,14 @@ Point Name (Optional):
       if (xhr.readyState === XMLHttpRequest.LOADING || xhr.readyState === XMLHttpRequest.DONE) {
         if (xhr.readyState === XMLHttpRequest.LOADING) {
           setPhase("Processing on server...");
-          setUploadPercent(100);
+          setGnssUploadPercent(100, false);
+          if (atsFile && !skipTruthUpload) {
+            setAtsUploadPercent(100, false);
+          }
+          var streamLog = extractPreLog(xhr.responseText);
+          if (streamLog) {
+            showProcessingLog(streamLog);
+          }
         }
         updateFromResponse(xhr.responseText, xhr.readyState === XMLHttpRequest.DONE);
       }
@@ -439,8 +757,23 @@ Point Name (Optional):
         return;
       }
       updateFromResponse(xhr.responseText, true);
-      if (!isProcessingComplete(xhr.responseText) || !extractReportUrl(xhr.responseText, true)) {
+      if (testingMode && isProcessingComplete(xhr.responseText)) {
+        window.localStorage.setItem("gnssPlotCachedGnss", gnssFile.name);
+        if (atsFile) {
+          window.localStorage.setItem("gnssPlotCachedTruth", atsFile.name);
+        }
+      }
+      if (!redirectScheduled && !isProcessingComplete(xhr.responseText)) {
+        var finalLog = extractPreLog(xhr.responseText);
+        if (finalLog) {
+          showProcessingLog(finalLog);
+        }
         setPhase("Processing finished.");
+        setDetail(
+          finalLog
+            ? "Processing ended without a completion marker. Check the log above or open the report link if one was shown."
+            : "No processing output received. Deploy the latest HTML and CGI, then try again."
+        );
         form.className = "";
         submitBtn.disabled = false;
       }
@@ -464,6 +797,17 @@ Point Name (Optional):
   form.addEventListener("submit", function (event) {
     event.preventDefault();
     beginSubmit();
+  });
+
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted && !form.classList.contains("form-disabled")) {
+      return;
+    }
+    if (activeXhr) {
+      activeXhr.abort();
+      activeXhr = null;
+    }
+    resetUi();
   });
 })();
 </script>

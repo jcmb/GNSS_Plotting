@@ -47,6 +47,14 @@ function create_plot(System,SV,Mode) {
         Max_Bands=2;
         }
 
+    if (System == "BDS") {
+        Max_Bands=5;
+        }
+
+    if (System == "GAL") {
+        Max_Bands=2;
+        }
+
     var options = interactiveChartOptions({
         chart: {
             renderTo: 'container',
@@ -167,6 +175,14 @@ function create_plot(System,SV,Mode) {
         options.series[3] = {name:  "L5 IQ"}
         }
 
+    if (System == "BDS") {
+        options.series[0] = {name:  "B1"}
+        options.series[1] = {name:  "B2a"}
+        options.series[2] = {name:  "B2b"}
+        options.series[3] = {name:  "B2I"}
+        options.series[4] = {name:  "B3"}
+        }
+
     File_Name=antennaFilePrefix(plotAntennas, plotAntenna) + System + "-" + SV +".SNR-SV";
     console.log(File_Name)
 
@@ -280,6 +296,8 @@ function create_compare_plot(System, SV, Mode) {
         Max_Bands = 3;
     } else if (System == "SBAS") {
         Max_Bands = 2;
+    } else if (System == "BDS") {
+        Max_Bands = 5;
     } else {
         Max_Bands = 2;
     }

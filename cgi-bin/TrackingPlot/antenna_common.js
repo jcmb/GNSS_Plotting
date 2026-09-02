@@ -504,7 +504,7 @@ function bandNamesForSystem(System, maxBands) {
         return ["E1 C/A", "E5 AltBoc"].slice(0, maxBands);
     }
     if (System === "BDS") {
-        return ["B1", "B2"].slice(0, maxBands);
+        return ["B1", "B2a", "B2b", "B2I", "B3"].slice(0, maxBands);
     }
     if (System === "SBAS") {
         return ["L1 C/A", "L5 IQ"].slice(0, maxBands);
@@ -523,7 +523,10 @@ function maxBandsForSystem(System) {
     if (System === "GLONASS") {
         return 4;
     }
-    if (System === "GAL" || System === "BDS" || System === "SBAS") {
+    if (System === "BDS") {
+        return 5;
+    }
+    if (System === "GAL" || System === "SBAS") {
         return 2;
     }
     return 2;
@@ -541,6 +544,108 @@ function trackingLimits(System) {
     } else if (System === "SBAS") {
         Min_SVs = 120;
         Max_SVs = 158;
+    } else if (System === "BDS") {
+        Max_SVs = 63;
     }
     return { min: Min_SVs, max: Max_SVs };
+}
+
+var ALL_SV_TRACKING_LAYOUT = [
+    { system: "GPS", yOffset: 0, svMax: 32, color: "#1f77b4" },
+    { system: "GLONASS", yOffset: 40, svMax: 24, color: "#ff7f0e" },
+    { system: "GAL", yOffset: 70, svMax: 30, color: "#9467bd" },
+    { system: "BDS", yOffset: 110, svMax: 63, color: "#d62728" },
+    { system: "SBAS", yOffset: 200, svMax: 158, svDisplayOffset: 120, color: "#e377c2" },
+    { system: "QZSS", yOffset: 250, svMax: 10, color: "#8c564b" }
+];
+
+function allSvTrackingBlock(system) {
+    for (var i = 0; i < ALL_SV_TRACKING_LAYOUT.length; i++) {
+        if (ALL_SV_TRACKING_LAYOUT[i].system === system) {
+            return ALL_SV_TRACKING_LAYOUT[i];
+        }
+    }
+    return null;
+}
+
+function allSvTrackingY(system, sv) {
+    var block = allSvTrackingBlock(system);
+    if (!block) {
+        return sv;
+    }
+    if (block.svDisplayOffset) {
+        return block.yOffset + (sv - block.svDisplayOffset);
+    }
+    return block.yOffset + sv;
+}
+
+function allSvTrackingYRange() {
+    return { min: 0, max: 270 };
+}
+
+function parseTrackedBandLine(line, antennas, antenna) {
+    if (!trackedLineMatchesAntenna(line, antennas, antenna)) {
+        return null;
+    }
+    var base = bandBaseName(line, antennaFilePrefix(antennas, antenna));
+    var match = base.match(/^([^-]+)-([^-]+)-(.+)$/);
+    if (!match) {
+        return null;
+    }
+    return {
+        system: match[1],
+        freq: match[2],
+        signal: match[3],
+        label: match[1] + " " + match[2] + "-" + match[3]
+    };
+}
+
+function loadTrackedBands(antennas, antenna) {
+    return loadTextFile("Tracked.Bands").then(function(data) {
+        var bands = [];
+        parseAntennaList(data).forEach(function(line) {
+            var band = parseTrackedBandLine(line, antennas, antenna);
+            if (band) {
+                bands.push(band);
+            }
+        });
+        return bands;
+    });
+}
+
+function allSvTrackingSeriesIndex(system) {
+    for (var i = 0; i < ALL_SV_TRACKING_LAYOUT.length; i++) {
+        if (ALL_SV_TRACKING_LAYOUT[i].system === system) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+function appendAllSvTrackingPoint(seriesBySystem, row, bandLabel, lastSlipState) {
+    var index = allSvTrackingSeriesIndex(row.system);
+    if (index < 0) {
+        return;
+    }
+    var slipKey = row.system + "-" + row.sv;
+    var currentSlip = row.slip;
+    var point = {
+        x: row.epoch,
+        y: allSvTrackingY(row.system, row.sv),
+        system: row.system,
+        sv: row.sv,
+        elev: row.elev,
+        az: row.az,
+        snr: row.snr,
+        band: bandLabel
+    };
+    if (lastSlipState[slipKey] !== undefined && lastSlipState[slipKey] !== -1 &&
+        lastSlipState[slipKey] !== currentSlip &&
+        Math.abs(lastSlipState[slipKey] - currentSlip) <= 5) {
+        point.marker = {
+            symbol: "url(http://trimbletools.com/Sign-Alert-icon.png)"
+        };
+    }
+    seriesBySystem[index].data.push(point);
+    lastSlipState[slipKey] = currentSlip;
 }
