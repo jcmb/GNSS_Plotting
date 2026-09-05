@@ -84,9 +84,6 @@
     margin-left: 8px;
     font-weight: bold;
   }
-  .testing-mode-label {
-    font-weight: bold;
-  }
 </style>
 </head>
 <body class="page">
@@ -132,22 +129,6 @@ UTC :
 <label for="tz-minutes">Minutes</label>
 <input type="number" name="tz_minutes" id="tz-minutes" min="0" max="59" step="1" value="0">
 <span id="tz-offset-label" class="tz-offset-label" aria-live="polite"></span>
-</td>
-</tr>
-<tr>
-<td colspan="2">
-<label class="testing-mode-label" for="testing-mode">
-  <input type="checkbox" name="testing_mode" id="testing-mode" value="1">
-  Testing (keep uploads on server; skip re-upload when the filename matches a cached copy)
-</label>
-</td>
-</tr>
-<tr>
-<td colspan="2">
-<label class="testing-mode-label" for="keep-x29">
-  <input type="checkbox" name="keep_x29" id="keep-x29" value="1">
-  Debug: keep viewdat X29 file (includes column header lines)
-</label>
 </td>
 </tr>
 </table>
@@ -370,36 +351,6 @@ Point Name (Optional):
     document.addEventListener("DOMContentLoaded", initUploadTimezone);
   } else {
     initUploadTimezone();
-  }
-
-  function initTestingMode() {
-    var testingMode = document.getElementById("testing-mode");
-    if (!testingMode) return;
-    if (window.localStorage.getItem("gnssPlotTestingMode") === "1") {
-      testingMode.checked = true;
-    }
-    testingMode.addEventListener("change", function () {
-      window.localStorage.setItem("gnssPlotTestingMode", testingMode.checked ? "1" : "0");
-    });
-  }
-
-  function initKeepX29() {
-    var keepX29 = document.getElementById("keep-x29");
-    if (!keepX29) return;
-    if (window.localStorage.getItem("gnssPlotKeepX29") === "1") {
-      keepX29.checked = true;
-    }
-    keepX29.addEventListener("change", function () {
-      window.localStorage.setItem("gnssPlotKeepX29", keepX29.checked ? "1" : "0");
-    });
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initTestingMode);
-    document.addEventListener("DOMContentLoaded", initKeepX29);
-  } else {
-    initTestingMode();
-    initKeepX29();
   }
 
   var form = document.getElementById("gnss-plot-form");
@@ -626,8 +577,6 @@ Point Name (Optional):
   function beginSubmit() {
     var fileInput = document.getElementById("gnss-file");
     var truthInput = document.getElementById("truth-file");
-    var testingModeEl = document.getElementById("testing-mode");
-    var testingMode = testingModeEl && testingModeEl.checked;
     var hasFile = fileInput.files && fileInput.files.length > 0;
     var gnssFile = hasFile ? fileInput.files[0] : null;
     var atsFile = truthInput.files && truthInput.files.length > 0 ? truthInput.files[0] : null;
@@ -636,11 +585,6 @@ Point Name (Optional):
       window.alert("Select a GNSS file to upload.");
       return;
     }
-
-    var cachedGnss = window.localStorage.getItem("gnssPlotCachedGnss");
-    var cachedTruth = window.localStorage.getItem("gnssPlotCachedTruth");
-    var skipGnssUpload = testingMode && cachedGnss && gnssFile.name === cachedGnss;
-    var skipTruthUpload = testingMode && atsFile && cachedTruth && atsFile.name === cachedTruth;
 
     if (activeXhr) {
       activeXhr.abort();
@@ -651,35 +595,17 @@ Point Name (Optional):
     form.className = "form-disabled";
     submitBtn.disabled = true;
     statusPanel.className = "active";
-    atsProgressBlock.hidden = !atsFile || skipTruthUpload;
+    atsProgressBlock.hidden = !atsFile;
 
-    if (skipGnssUpload && (!atsFile || skipTruthUpload)) {
-      setPhase("Processing on server...");
-      setDetail("Using cached GNSS" + (skipTruthUpload ? " and ATS" : "") + " files on the server.");
-      setGnssUploadPercent(100, false);
-      if (skipTruthUpload) {
-        setAtsUploadPercent(100, false);
-      }
-    } else if (skipGnssUpload) {
-      setPhase("Uploading ATS truth file...");
-      setDetail("Using cached GNSS; uploading " + atsFile.name + " only.");
-      setGnssUploadPercent(100, false);
-    } else if (skipTruthUpload) {
-      setPhase("Uploading GNSS file...");
-      setDetail("Uploading " + gnssFile.name + "; using cached ATS truth on the server.");
-      setGnssUploadPercent(0, false);
-      setAtsUploadPercent(100, false);
-    } else {
-      setPhase(atsFile ? "Uploading files..." : "Uploading GNSS file...");
-      setDetail(
-        atsFile
-          ? "Sending " + gnssFile.name + " and " + atsFile.name + " to the server."
-          : "Sending " + gnssFile.name + " to the server."
-      );
-      setGnssUploadPercent(0, false);
-      if (atsFile) {
-        setAtsUploadPercent(0, false);
-      }
+    setPhase(atsFile ? "Uploading files..." : "Uploading GNSS file...");
+    setDetail(
+      atsFile
+        ? "Sending " + gnssFile.name + " and " + atsFile.name + " to the server."
+        : "Sending " + gnssFile.name + " to the server."
+    );
+    setGnssUploadPercent(0, false);
+    if (atsFile) {
+      setAtsUploadPercent(0, false);
     }
 
     var xhr = new XMLHttpRequest();
@@ -687,29 +613,19 @@ Point Name (Optional):
     var formData = new FormData(form);
     formData.set("gnss_basename", gnssFile.name);
     formData.set("truth_basename", atsFile ? atsFile.name : "");
-    if (skipGnssUpload) {
-      formData.delete("file");
-      formData.set("skip_gnss_upload", "1");
-    }
-    if (skipTruthUpload) {
-      formData.delete("truth_file");
-      formData.set("skip_truth_upload", "1");
-    }
 
     xhr.open("POST", form.action, true);
     xhr.withCredentials = true;
 
     xhr.upload.addEventListener("progress", function (event) {
-      var progressGnssFile = skipGnssUpload ? { size: 0, name: gnssFile.name } : gnssFile;
-      var progressAtsFile = skipTruthUpload ? null : atsFile;
-      updateUploadProgress(event, progressGnssFile, progressAtsFile);
+      updateUploadProgress(event, gnssFile, atsFile);
       if (event.lengthComputable) {
-        var gnssSize = progressGnssFile ? progressGnssFile.size : 0;
-        var totalSize = gnssSize + (progressAtsFile ? progressAtsFile.size : 0);
+        var gnssSize = gnssFile ? gnssFile.size : 0;
+        var totalSize = gnssSize + (atsFile ? atsFile.size : 0);
         if (totalSize === 0 || event.loaded >= totalSize) {
           setPhase("Upload complete. Processing on server...");
           setGnssUploadPercent(100, false);
-          if (progressAtsFile) {
+          if (atsFile) {
             setAtsUploadPercent(100, false);
           }
         }
@@ -721,7 +637,7 @@ Point Name (Optional):
         if (xhr.readyState === XMLHttpRequest.LOADING) {
           setPhase("Processing on server...");
           setGnssUploadPercent(100, false);
-          if (atsFile && !skipTruthUpload) {
+          if (atsFile) {
             setAtsUploadPercent(100, false);
           }
           var streamLog = extractPreLog(xhr.responseText);
@@ -757,12 +673,6 @@ Point Name (Optional):
         return;
       }
       updateFromResponse(xhr.responseText, true);
-      if (testingMode && isProcessingComplete(xhr.responseText)) {
-        window.localStorage.setItem("gnssPlotCachedGnss", gnssFile.name);
-        if (atsFile) {
-          window.localStorage.setItem("gnssPlotCachedTruth", atsFile.name);
-        }
-      }
       if (!redirectScheduled && !isProcessingComplete(xhr.responseText)) {
         var finalLog = extractPreLog(xhr.responseText);
         if (finalLog) {
