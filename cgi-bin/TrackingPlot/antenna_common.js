@@ -407,9 +407,28 @@ function loadBandMean(antennas, antenna, system, freq, signal) {
     return loadTextFile(url).then(parseMeanRows);
 }
 
+function bandButtonClasses(bandClass) {
+    var classes = [bandClass];
+    if (bandClass.indexOf("GAL-E1-") === 0) {
+        classes.push(bandClass.replace("GAL-E1-", "GAL-L1-"));
+    }
+    return classes;
+}
+
+function enableBandClass(container, bandClass) {
+    $(container).find('[class~="' + bandClass + '"]').prop("disabled", false);
+}
+
 function loadBandSnr(antennas, antenna, system, freq, signal) {
     var url = bandFileName(antennas, antenna, system, freq, signal, ".SNR");
-    return loadTextFile(url).then(parseSnrRows);
+    return loadTextFile(url).then(parseSnrRows).fail(function() {
+        if (system === "GAL" && freq === "L1") {
+            return loadTextFile(
+                bandFileName(antennas, antenna, system, "E1", signal, ".SNR")
+            ).then(parseSnrRows);
+        }
+        return $.Deferred().reject().promise();
+    });
 }
 
 function loadSvSnr(antennas, antenna, system, sv, maxBands) {
@@ -538,7 +557,7 @@ function trackingLimits(System) {
     if (System === "GPS") {
         Max_SVs = 32;
     } else if (System === "GAL") {
-        Max_SVs = 30;
+        Max_SVs = 36;
     } else if (System === "GLONASS") {
         Max_SVs = 24;
     } else if (System === "SBAS") {
@@ -553,7 +572,7 @@ function trackingLimits(System) {
 var ALL_SV_TRACKING_LAYOUT = [
     { system: "GPS", yOffset: 0, svMax: 32, color: "#1f77b4" },
     { system: "GLONASS", yOffset: 40, svMax: 24, color: "#ff7f0e" },
-    { system: "GAL", yOffset: 70, svMax: 30, color: "#9467bd" },
+    { system: "GAL", yOffset: 70, svMax: 36, color: "#9467bd" },
     { system: "BDS", yOffset: 110, svMax: 63, color: "#d62728" },
     { system: "SBAS", yOffset: 200, svMax: 158, svDisplayOffset: 120, color: "#e377c2" },
     { system: "QZSS", yOffset: 250, svMax: 10, color: "#8c564b" }
@@ -594,7 +613,7 @@ function parseTrackedBandLine(line, antennas, antenna) {
     }
     return {
         system: match[1],
-        freq: match[2],
+        freq: match[1] === "GAL" && match[2] === "E1" ? "L1" : match[2],
         signal: match[3],
         label: match[1] + " " + match[2] + "-" + match[3]
     };

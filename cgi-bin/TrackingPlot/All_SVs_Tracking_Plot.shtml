@@ -138,6 +138,8 @@ function create_all_sv_plot() {
             return loadBandSnr(plotAntennas, plotAntenna, band.system, band.freq, band.signal)
                 .then(function(rows) {
                     return { band: band, rows: rows };
+                }, function() {
+                    return { band: band, rows: [] };
                 });
         });
 

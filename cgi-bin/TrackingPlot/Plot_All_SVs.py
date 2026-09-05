@@ -132,9 +132,9 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                     sys.exit("Internal Error, Unknown SBAS Band: " + Band)
 
             elif Sys=="GAL":
-                if Band=="L1":
+                if Band=="L1" or Band=="E1":
                     if Tracked=="MBOC_1_1_PD":
-                        output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("GAL", antenna),HTML_File,Plot_Name)
+                        output_plot(prefix(antenna),Sys,"L1",Tracked,4,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
                         sys.exit("Internal Error, Unknown GAL L1 Tracked: " + Tracked)
                 elif Band=="E5AB":
