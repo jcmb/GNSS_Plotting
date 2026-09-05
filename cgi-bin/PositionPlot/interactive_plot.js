@@ -2893,6 +2893,9 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   }
 
   if (!isMoving) {
+  const neuErrorValues = []
+    .concat(north, east, up)
+    .filter(Number.isFinite);
   drawPlotIfOpen("plot-enu", [
     latencyTrace(x, latency),
     coloredLine(x, north, "North Error", "north", { yaxis: "y2" }),
@@ -2903,9 +2906,18 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: "NEU Error",
     yaxis: latencyPrimaryYAxis(),
-    yaxis2: overlayLeftYAxis({ title: "Error (m)" })
+    yaxis2: overlayLeftYAxis({
+      title: "Error (m)",
+      zeroline: true,
+      ...meterAxisFromValues(neuErrorValues)
+    })
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-enu", "yaxis2", "y2");
   });
 
+  const enuSigmaValues = []
+    .concat(err2d, up, hSigma, vSigma)
+    .filter(Number.isFinite);
   drawPlotIfOpen("plot-enu-sigma", [
     latencyTrace(x, latency),
     ...assignTraceYAxis([
@@ -2927,8 +2939,15 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     margin: { ...commonLayout.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title: "H/U Error and Sigma",
     yaxis: latencyPrimaryYAxis(),
-    yaxis2: overlayLeftYAxis({ title: "Meters", rangemode: "tozero", zeroline: true }),
+    yaxis2: overlayLeftYAxis({
+      title: "Meters",
+      rangemode: "tozero",
+      zeroline: true,
+      ...meterAxisFromValues(enuSigmaValues)
+    }),
     legend: { ...commonLayout.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-enu-sigma", "yaxis2", "y2");
   });
 
   const usedSv = points.map((p) => (Number.isFinite(p.used) ? p.used : null));
