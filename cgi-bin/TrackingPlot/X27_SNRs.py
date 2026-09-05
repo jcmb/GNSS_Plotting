@@ -26,14 +26,7 @@ BAND_ANTENNA = 9
 MIN_RANGE_METERS = 1.0e7
 MAX_RANGE_METERS = 5.0e7
 
-from GNSS_Decls import System_Names, Freq_Names, Tracking_Names, Expected_SNR, Freq_Number
-
-
-def normalize_gal_freq(freq):
-    # ViewDat may report Galileo E1 as Freq "E1" (8); UI and SNR-SV use "L1" (0).
-    if freq == Freq_Number("E1"):
-        return Freq_Number("L1")
-    return freq
+from GNSS_Decls import System_Names, Freq_Names, Tracking_Names, Expected_SNR
 
 Files = {}
 SV_Files = {}
@@ -142,8 +135,6 @@ def note_antenna(antenna):
 
 
 def open_band_file(system, freq, tracking, antenna):
-    if system == 3:
-        freq = normalize_gal_freq(freq)
     key = (system, freq, tracking, antenna)
     if key in Files:
         return Files[key]
@@ -308,8 +299,6 @@ for line in sys.stdin:
         antenna = parse_antenna(fields[antenna_field] if antenna_field < len(fields) else "")
         note_antenna(antenna)
 
-        if System == 3:
-            Freq = normalize_gal_freq(Freq)
         tracking_index = Freq * 50 + Tracking
         if antenna not in SV_SNR:
             SV_SNR[antenna] = {}

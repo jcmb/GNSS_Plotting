@@ -54,8 +54,10 @@ SNR:<br/>
 <button type="button" class="btn-sm TRACKING BDS-E5B-BPSK_D" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=BDS&FREQ=E5B&SIGNAL=BPSK_D')" disabled > BDS B2b </button>
 <button type="button" class="btn-sm TRACKING BDS-E5B-BPSK2_B2" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=BDS&FREQ=E5B&SIGNAL=BPSK2_B2')" disabled > BDS B2I </button>
 <button type="button" class="btn-sm TRACKING BDS-B3-BPSK2_B3" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=BDS&FREQ=B3&SIGNAL=BPSK2_B3')" disabled > BDS B3 </button>
+<!--
 <button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD')" disabled > GAL E1 </button>
 <button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD')" disabled > GAL AltBoc </button>
+-->
 </div>
 
 <div id="SLIPS" hidden>
@@ -114,8 +116,10 @@ SNR:<br/>
 <button type="button" class="btn-sm TRACKING BDS-E5B-BPSK_D" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=BDS&FREQ=E5B&SIGNAL=BPSK_D')" disabled > BDS B2b </button>
 <button type="button" class="btn-sm TRACKING BDS-E5B-BPSK2_B2" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=BDS&FREQ=E5B&SIGNAL=BPSK2_B2')" disabled > BDS B2I </button>
 <button type="button" class="btn-sm TRACKING BDS-B3-BPSK2_B3" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=BDS&FREQ=B3&SIGNAL=BPSK2_B3')" disabled > BDS B3 </button>
+<!--
 <button type="button" class="btn-sm TRACKING GAL-L1-MBOC_1_1_PD" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GAL&FREQ=L1&SIGNAL=MBOC_1_1_PD')" disabled > GAL E1 </button>
 <button type="button" class="btn-sm TRACKING GAL-E5AB-ALTBOC_C_PD" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GAL&FREQ=E5AB&SIGNAL=ALTBOC_C_PD')" disabled > GAL AltBoc </button>
+-->
 </div>
 
 
@@ -136,8 +140,10 @@ SNR:<br/>
 <button type="button" class="btn-sm SNR BDS-E5B-BPSK_D" onclick="create_plot('BDS','E5B','BPSK_D')" disabled > BDS B2b </button>
 <button type="button" class="btn-sm SNR BDS-E5B-BPSK2_B2" onclick="create_plot('BDS','E5B','BPSK2_B2')" disabled > BDS B2I </button>
 <button type="button" class="btn-sm SNR BDS-B3-BPSK2_B3" onclick="create_plot('BDS','B3','BPSK2_B3')" disabled > BDS B3 </button>
+<!--
 <button type="button" class="btn-sm SNR GAL-L1-MBOC_1_1_PD" onclick="create_plot('GAL','L1','MBOC_1_1_PD')" disabled > GAL E1 </button>
-<button type="button" class="btn-sm SNR GAL-E5AB-ALTBOC_C_PD" onclick="create_plot('GAL','E5AB','ALTBOC_C_PD')" disabled > GAL AltBoc </button>
+<button type="button" class="btn-sm SNR GAL-E5AB-ALTBOC_C_PD" onclick="create_plot('GAL','E5AB','E5AB-ALTBOC_C_PD')" disabled > GAL AltBoc </button>
+-->
 <br/>
 Tracking:<br/>
 <button type="button" class="btn-sm SNR GPS-L1-CA" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA')" disabled > GPS L1 CA</button>
@@ -205,9 +211,10 @@ function create_Buttons(PLOT, antennas, selectedAntenna) {
                 return;
             }
             var bandClass = bandBaseName(line, prefix);
-            bandButtonClasses(bandClass).forEach(function(className) {
-                enableBandClass("#" + PLOT, className);
-            });
+            Buttons=$("."+bandClass)
+            for (var i = 0; i < Buttons.length; i++) {
+                Buttons[i].disabled=false
+            }
         })
     })
 }
