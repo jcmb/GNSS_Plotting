@@ -132,6 +132,9 @@ echo "==> Syncing HTML upload forms"
 "${RSYNC[@]}" "$T02_INFO_HTML" "$HTML_DEST/"
 "${RSYNC[@]}" "$ERRLOG_HTML" "$HTML_DEST/"
 "${RSYNC[@]}" "$ERRLOG_VIEW_JS" "$HTML_DEST/"
+# Keep a copy beside the CGI so errLog.pl can inline the viewer without a separate HTTP fetch.
+mkdir -p "$CGI_DEST/errLog"
+"${RSYNC[@]}" "$ERRLOG_VIEW_JS" "$CGI_DEST/errLog/"
 
 if [[ $DRY_RUN -eq 0 ]]; then
   echo

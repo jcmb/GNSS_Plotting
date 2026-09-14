@@ -86,6 +86,22 @@ sub errlog_css {
 CSS
 }
 
+sub load_view_js {
+    my @candidates = (
+        "$FindBin::Bin/errLog_view.js",
+        "$FindBin::Bin/../../HTML/errLog_view.js",
+    );
+    for my $path (@candidates) {
+        if ( open my $fh, '<', $path ) {
+            local $/;
+            my $js = <$fh>;
+            close $fh;
+            return $js if defined $js && $js ne '';
+        }
+    }
+    return q{window.ErrLogView = null;};
+}
+
 sub fail {
     my ($message) = @_;
     if ($xhr) {
@@ -172,6 +188,9 @@ my $safe_title = escapeHTML($filename);
 my $css        = errlog_css();
 my $js_name    = json_string($name);
 my $safe_body  = escapeHTML($body);
+my $view_js    = load_view_js();
+# Prevent </script> in the viewer source from terminating the HTML script block.
+$view_js =~ s#</script>#<\\/script>#gi;
 
 print "Content-Type: text/html; charset=utf-8\r\n\r\n";
 print <<"HTML";
@@ -184,6 +203,9 @@ print <<"HTML";
 <style type="text/css">
 $css
 </style>
+<script type="text/javascript">
+$view_js
+</script>
 </head>
 <body class="page">
 <div class="container clearfix">
@@ -213,7 +235,7 @@ $css
       <tbody data-errlog-tbody></tbody>
     </table>
   </div>
-  <details class="errlog-raw">
+  <details class="errlog-raw" open>
     <summary>Raw processor output</summary>
     <pre id="raw-errlog">$safe_body</pre>
   </details>
@@ -221,11 +243,23 @@ $css
 </div>
 </div>
 </div>
-<script src="/errLog_view.js"></script>
 <script type="text/javascript">
 (function () {
-  var raw = document.getElementById("raw-errlog").textContent;
-  ErrLogView.mount(document.getElementById("errlog-root"), raw, $js_name);
+  var rawEl = document.getElementById("raw-errlog");
+  var raw = rawEl ? rawEl.textContent : "";
+  var root = document.getElementById("errlog-root");
+  if (!window.ErrLogView) {
+    if (root) {
+      var msg = document.createElement("p");
+      msg.style.color = "#a00000";
+      msg.textContent = "errLog viewer script failed to load; raw output is shown below.";
+      root.insertBefore(msg, root.firstChild);
+    }
+    return;
+  }
+  ErrLogView.mount(root, raw, $js_name);
+  var rawDetails = document.querySelector(".errlog-raw");
+  if (rawDetails) rawDetails.open = false;
 })();
 </script>
 </body>

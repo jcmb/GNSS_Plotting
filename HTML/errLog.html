@@ -105,6 +105,7 @@
   white-space: pre-wrap;
 }
 </style>
+<script type="text/javascript" src="errLog_view.js"></script>
 <script type="text/javascript" src="/errLog_view.js"></script>
 </head>
 <body class="page">
@@ -117,7 +118,7 @@
 <div id="content-area">
 <div id="content">
 <div id="main-content" class="clearfix">
-<form id="errlog-upload-form" action="/cgi-bin/errLog/errLog.pl" method="post" enctype="multipart/form-data">
+<form id="errlog-upload-form" action="/cgi-bin/errLog/errLog.pl" method="post" enctype="multipart/form-data" target="_blank">
 <table border="1">
 <tr>
 <td>SysLog.bin:</td>
@@ -172,6 +173,13 @@
   var resultsPre = document.getElementById("results-pre");
   var errlogRoot = document.getElementById("errlog-root");
 
+  /* If the viewer JS did not load, keep native form POST (new tab) so CGI can render the table. */
+  if (!window.ErrLogView) {
+    return;
+  }
+
+  form.removeAttribute("target");
+
   function formatBytes(bytes) {
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
@@ -205,6 +213,43 @@
   function downloadBaseName() {
     var uploaded = fileInput.files && fileInput.files[0] ? fileInput.files[0].name : "SysLog";
     return uploaded.replace(/\.[^.]+$/, "") || "SysLog";
+  }
+
+  function extractPreLog(html) {
+    var parts = [];
+    var searchFrom = 0;
+    var lower = html.toLowerCase();
+    while (true) {
+      var start = lower.indexOf("<pre", searchFrom);
+      if (start === -1) break;
+      var openEnd = html.indexOf(">", start);
+      if (openEnd === -1) break;
+      var contentStart = openEnd + 1;
+      var end = lower.indexOf("</pre>", contentStart);
+      if (end === -1) {
+        parts.push(html.slice(contentStart));
+        break;
+      }
+      parts.push(html.slice(contentStart, end));
+      searchFrom = end + 6;
+    }
+    if (!parts.length) return "";
+    var joined = parts.join("\n");
+    return joined
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, "\"")
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, "&");
+  }
+
+  function normalizeResponse(text) {
+    if (!text) return "";
+    if (/<html[\s>]/i.test(text) || /<pre[\s>]/i.test(text)) {
+      var fromPre = extractPreLog(text);
+      if (fromPre) return fromPre;
+    }
+    return text;
   }
 
   function showResults(text) {
@@ -245,7 +290,7 @@
       progressBox.className = "";
       processingBox.className = "";
       if (xhr.status >= 200 && xhr.status < 300) {
-        var text = xhr.responseText || "";
+        var text = normalizeResponse(xhr.responseText || "");
         if (!text.trim()) {
           showError("Processing finished, but no output was returned.");
           return;
