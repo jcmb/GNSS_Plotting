@@ -1,0 +1,280 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<link rel="stylesheet" type="text/css" href="/css/tcui-styles.css">
+<title>SysLog.bin information</title>
+<style type="text/css">
+#upload-progress {
+  display: none;
+  margin-top: 1em;
+  max-width: 40em;
+}
+#upload-progress.visible { display: block; }
+#upload-progress-bar {
+  width: 100%;
+  height: 1.25em;
+  border: 1px solid #999;
+  background: #eee;
+}
+#upload-progress-fill {
+  width: 0;
+  height: 100%;
+  background: #0063a3;
+  transition: width 0.15s linear;
+}
+#upload-progress-text { margin-top: 0.5em; }
+#upload-error {
+  display: none;
+  margin-top: 1em;
+  color: #a00000;
+}
+#upload-error.visible { display: block; }
+#upload-processing {
+  display: none;
+  margin-top: 1em;
+  color: #0063a3;
+}
+#upload-processing.visible { display: block; }
+#upload-results {
+  display: none;
+  margin-top: 1em;
+  max-width: 100%;
+}
+#upload-results.visible { display: block; }
+.errlog-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.errlog-status { color: #0063a3; font-size: 13px; }
+.errlog-table-wrap {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+.errlog-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.errlog-table th,
+.errlog-table td {
+  border: 1px solid #ccc;
+  padding: 4px 6px;
+  vertical-align: top;
+  text-align: left;
+}
+.errlog-table th {
+  background: #e8eef3;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.errlog-table th.sortable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.errlog-table th.sortable:hover { background: #d5e2ec; }
+.errlog-table th.not-sortable { color: #666; }
+.errlog-table tr.row-error { background: #fff7f7; }
+.errlog-table tr.row-warning { background: #fffdf5; }
+.errlog-table td.type-error { color: #a00000; font-weight: bold; }
+.errlog-table td.type-warning { color: #8a6d00; font-weight: bold; }
+.errlog-table td.backtrace-cell pre {
+  margin: 0;
+  font-family: monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 12em;
+  overflow: auto;
+}
+.errlog-raw { margin-top: 1em; }
+.errlog-raw pre {
+  max-height: 320px;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #ccc;
+  background: #f8f8f8;
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+</style>
+<script type="text/javascript" src="/errLog_view.js"></script>
+</head>
+<body class="page">
+<div class="container clearfix">
+  <div style="padding: 10px 10px 10px 0 ;"> <a href="http://construction.trimble.com/">
+        <img src="/images/trimble-logo.jpg" alt="Trimble Logo" id="logo"> </a>
+      </div>
+</div>
+<div id="top-header-trim"></div>
+<div id="content-area">
+<div id="content">
+<div id="main-content" class="clearfix">
+<form id="errlog-upload-form" action="/cgi-bin/errLog/errLog.pl" method="post" enctype="multipart/form-data">
+<table border="1">
+<tr>
+<td>SysLog.bin:</td>
+<td><input type="file" name="file" id="syslog-file" accept=".bin" /></td>
+</tr>
+</table><br/>
+<input type="submit" id="errlog-submit" value="Submit" />
+<div id="upload-progress" aria-live="polite">
+  <div id="upload-progress-bar"><div id="upload-progress-fill"></div></div>
+  <div id="upload-progress-text">Uploading... 0%</div>
+</div>
+<div id="upload-error"></div>
+<div id="upload-processing">Processing your SysLog.bin on the server.</div>
+</form>
+
+<div id="upload-results">
+  <div id="errlog-root">
+    <div class="errlog-toolbar">
+      <span data-errlog-meta></span>
+      <span data-errlog-count></span>
+      <label><input type="checkbox" data-errlog-hide-warnings /> Hide warnings</label>
+      <input type="button" data-errlog-download-raw value="Download raw output" />
+      <input type="button" data-errlog-download-csv value="Download table CSV" />
+      <span data-errlog-status class="errlog-status" aria-live="polite"></span>
+    </div>
+    <div class="errlog-table-wrap">
+      <table class="errlog-table">
+        <thead data-errlog-thead></thead>
+        <tbody data-errlog-tbody></tbody>
+      </table>
+    </div>
+    <details class="errlog-raw">
+      <summary>Raw processor output</summary>
+      <pre id="results-pre"></pre>
+    </details>
+  </div>
+</div>
+</div>
+</div>
+</div>
+<script type="text/javascript">
+(function () {
+  var form = document.getElementById("errlog-upload-form");
+  var fileInput = document.getElementById("syslog-file");
+  var submitButton = document.getElementById("errlog-submit");
+  var progressBox = document.getElementById("upload-progress");
+  var progressFill = document.getElementById("upload-progress-fill");
+  var progressText = document.getElementById("upload-progress-text");
+  var errorBox = document.getElementById("upload-error");
+  var processingBox = document.getElementById("upload-processing");
+  var resultsBox = document.getElementById("upload-results");
+  var resultsPre = document.getElementById("results-pre");
+  var errlogRoot = document.getElementById("errlog-root");
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  function setProgress(loaded, total) {
+    var percent = total ? Math.round((loaded / total) * 100) : 0;
+    progressFill.style.width = percent + "%";
+    if (total) {
+      progressText.textContent =
+        "Uploading... " + percent + "% (" + formatBytes(loaded) + " of " + formatBytes(total) + ")";
+    } else {
+      progressText.textContent = "Uploading... " + formatBytes(loaded) + " sent";
+    }
+  }
+
+  function showError(message) {
+    errorBox.textContent = message;
+    errorBox.className = "visible";
+  }
+
+  function clearStatus() {
+    errorBox.textContent = "";
+    errorBox.className = "";
+    processingBox.className = "";
+    resultsBox.className = "";
+    resultsPre.textContent = "";
+  }
+
+  function downloadBaseName() {
+    var uploaded = fileInput.files && fileInput.files[0] ? fileInput.files[0].name : "SysLog";
+    return uploaded.replace(/\.[^.]+$/, "") || "SysLog";
+  }
+
+  function showResults(text) {
+    resultsPre.textContent = text;
+    resultsBox.className = "visible";
+    ErrLogView.mount(errlogRoot, text, downloadBaseName());
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    clearStatus();
+
+    if (!fileInput.files || !fileInput.files.length) {
+      showError("Please choose a SysLog.bin file to upload.");
+      return;
+    }
+
+    var formData = new FormData(form);
+    var xhr = new XMLHttpRequest();
+
+    submitButton.disabled = true;
+    progressBox.className = "visible";
+    setProgress(0, fileInput.files[0].size || 0);
+
+    xhr.upload.addEventListener("progress", function (uploadEvent) {
+      if (uploadEvent.lengthComputable) {
+        setProgress(uploadEvent.loaded, uploadEvent.total);
+        if (uploadEvent.loaded >= uploadEvent.total) {
+          progressText.textContent = "Upload complete. Waiting for server...";
+        }
+      } else {
+        setProgress(uploadEvent.loaded, 0);
+      }
+    });
+
+    xhr.addEventListener("load", function () {
+      submitButton.disabled = false;
+      progressBox.className = "";
+      processingBox.className = "";
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var text = xhr.responseText || "";
+        if (!text.trim()) {
+          showError("Processing finished, but no output was returned.");
+          return;
+        }
+        showResults(text);
+        return;
+      }
+      showError(
+        "Upload failed (HTTP " + xhr.status + "). " +
+        ((xhr.responseText || "").replace(/\s+/g, " ").trim().slice(0, 300) || "Please try again.")
+      );
+    });
+
+    xhr.addEventListener("loadstart", function () {
+      processingBox.className = "visible";
+    });
+
+    xhr.addEventListener("error", function () {
+      submitButton.disabled = false;
+      progressBox.className = "";
+      processingBox.className = "";
+      showError("Upload failed due to a network error. Please try again.");
+    });
+
+    xhr.open("POST", form.action, true);
+    xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
+    xhr.send(formData);
+  });
+})();
+</script>
+</body>
+</html>
