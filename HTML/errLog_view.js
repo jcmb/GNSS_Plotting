@@ -376,6 +376,7 @@
     var rawText = options.rawText || "";
     var parsed = parseErrLogText(rawText);
     var hideWarnings = !!options.hideWarnings;
+    var fwVersionFilter = options.fwVersionFilter || "";
     var sortCol = options.sortCol || "type";
     var sortDir = options.sortDir || "asc";
     var tableBody = options.tableBody;
@@ -384,11 +385,33 @@
     var countEl = options.countEl;
     var onStateChange = options.onStateChange || function () {};
 
+    function uniqueFwVersions() {
+      var seen = {};
+      var list = [];
+      parsed.entries.forEach(function (e) {
+        var v = e.fwVersion || "";
+        if (!v || seen[v]) return;
+        seen[v] = true;
+        list.push(v);
+      });
+      list.sort(function (a, b) {
+        if (a < b) return -1;
+        if (a > b) return 1;
+        return 0;
+      });
+      return list;
+    }
+
     function visibleEntries() {
       var list = parsed.entries.slice();
       if (hideWarnings) {
         list = list.filter(function (e) {
           return !e.isWarning;
+        });
+      }
+      if (fwVersionFilter) {
+        list = list.filter(function (e) {
+          return e.fwVersion === fwVersionFilter;
         });
       }
       if (sortCol) {
@@ -488,6 +511,7 @@
       renderBody();
       onStateChange({
         hideWarnings: hideWarnings,
+        fwVersionFilter: fwVersionFilter,
         sortCol: sortCol,
         sortDir: sortDir,
         entryCount: parsed.entries.length
@@ -499,6 +523,13 @@
       setHideWarnings: function (value) {
         hideWarnings = !!value;
         render();
+      },
+      setFwVersionFilter: function (value) {
+        fwVersionFilter = value || "";
+        render();
+      },
+      getFwVersions: function () {
+        return uniqueFwVersions();
       },
       getRawText: function () {
         return rawText;
@@ -540,6 +571,7 @@
 
   function mount(root, rawText, downloadBaseName) {
     var hideCb = root.querySelector("[data-errlog-hide-warnings]");
+    var fwSelect = root.querySelector("[data-errlog-fw-version]");
     var metaEl = root.querySelector("[data-errlog-meta]");
     var countEl = root.querySelector("[data-errlog-count]");
     var tableHead = root.querySelector("[data-errlog-thead]");
@@ -550,7 +582,8 @@
 
     var controller = createController({
       rawText: rawText,
-      hideWarnings: hideCb ? hideCb.checked : false,
+      hideWarnings: hideCb ? hideCb.checked : true,
+      fwVersionFilter: fwSelect ? fwSelect.value : "",
       tableHead: tableHead,
       tableBody: tableBody,
       metaEl: metaEl,
@@ -571,11 +604,41 @@
       }
     }
 
+    function populateFwVersions() {
+      if (!fwSelect) return;
+      var versions = controller.getFwVersions();
+      var previous = fwSelect.value || "";
+      fwSelect.innerHTML = "";
+      var allOpt = document.createElement("option");
+      allOpt.value = "";
+      allOpt.textContent = "All F/W versions";
+      fwSelect.appendChild(allOpt);
+      versions.forEach(function (v) {
+        var opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        fwSelect.appendChild(opt);
+      });
+      if (previous && versions.indexOf(previous) !== -1) {
+        fwSelect.value = previous;
+      } else {
+        fwSelect.value = "";
+      }
+      fwSelect.disabled = versions.length === 0;
+    }
+
     if (hideCb) {
       hideCb.onchange = function () {
         controller.setHideWarnings(hideCb.checked);
       };
-      hideCb.checked = false;
+      hideCb.checked = true;
+      controller.setHideWarnings(true);
+    }
+    if (fwSelect) {
+      populateFwVersions();
+      fwSelect.onchange = function () {
+        controller.setFwVersionFilter(fwSelect.value);
+      };
     }
     if (downloadRawBtn) {
       downloadRawBtn.onclick = function () {

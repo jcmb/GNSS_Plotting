@@ -224,7 +224,12 @@ $view_js
   <div class="errlog-toolbar">
     <span data-errlog-meta></span>
     <span data-errlog-count></span>
-    <label><input type="checkbox" data-errlog-hide-warnings /> Hide warnings</label>
+    <label><input type="checkbox" data-errlog-hide-warnings checked="checked" /> Hide warnings</label>
+    <label>F/W Version
+      <select data-errlog-fw-version>
+        <option value="">All F/W versions</option>
+      </select>
+    </label>
     <input type="button" data-errlog-download-raw value="Download raw output" />
     <input type="button" data-errlog-download-csv value="Download table CSV" />
     <span data-errlog-status class="errlog-status" aria-live="polite"></span>
