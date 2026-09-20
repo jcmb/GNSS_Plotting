@@ -69,7 +69,7 @@ ogo"> </a>
         }
 
     if (System == "GAL") {
-        Max_Bands=2;
+        Max_Bands=5;
         }
 
     if (System == "BDS") {
@@ -242,6 +242,9 @@ ogo"> </a>
     if (System == "GAL") {
         options.series[1].name="E1 C/A"
         options.series[2].name="E5 AltBoc"
+        options.series[3].name="E5b"
+        options.series[4].name="E5a"
+        options.series[5].name="E6"
         }
 
     if (System == "BDS") {
@@ -345,7 +348,9 @@ ogo"> </a>
         Max_Bands = 4;
     } else if (System == "GLONASS") {
         Max_Bands = 4;
-    } else if (System == "GAL" || System == "SBAS") {
+    } else if (System == "GAL") {
+        Max_Bands = 5;
+    } else if (System == "SBAS") {
         Max_Bands = 2;
     } else if (System == "BDS") {
         Max_Bands = 5;

@@ -67,6 +67,9 @@ def output_plot(System, sv_file, plot_base, HTML_File, Plot_Name):
     elif System == "GAL":
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "E1"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "AltBoc"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "E5b"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "E5a"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "E6"))
         print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
     elif System == "BDS":
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "B1"))

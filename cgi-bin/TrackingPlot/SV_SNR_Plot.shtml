@@ -52,7 +52,7 @@ function create_plot(System,SV,Mode) {
         }
 
     if (System == "GAL") {
-        Max_Bands=2;
+        Max_Bands=5;
         }
 
     var options = interactiveChartOptions({
@@ -183,6 +183,14 @@ function create_plot(System,SV,Mode) {
         options.series[4] = {name:  "B3"}
         }
 
+    if (System == "GAL") {
+        options.series[0] = {name:  "E1 C/A"}
+        options.series[1] = {name:  "E5 AltBoc"}
+        options.series[2] = {name:  "E5b"}
+        options.series[3] = {name:  "E5a"}
+        options.series[4] = {name:  "E6"}
+        }
+
     File_Name=antennaFilePrefix(plotAntennas, plotAntenna) + System + "-" + SV +".SNR-SV";
     console.log(File_Name)
 
@@ -297,6 +305,8 @@ function create_compare_plot(System, SV, Mode) {
     } else if (System == "SBAS") {
         Max_Bands = 2;
     } else if (System == "BDS") {
+        Max_Bands = 5;
+    } else if (System == "GAL") {
         Max_Bands = 5;
     } else {
         Max_Bands = 2;

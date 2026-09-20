@@ -178,6 +178,15 @@ def open_sv_file(system, sv_int, sv_label, antenna):
     return SV_Files[key]
 
 
+def first_present(sv_snr, sv_slip, indexes):
+    for idx in indexes:
+        value = sv_snr.get(idx, "")
+        if value:
+            return value, sv_slip.get(idx, "")
+    idx = indexes[0]
+    return sv_snr.get(idx, ""), sv_slip.get(idx, "")
+
+
 def null_sv_row(system, antenna):
     if system == 0:
         return ",,,,,,,,,,\n"
@@ -186,7 +195,7 @@ def null_sv_row(system, antenna):
     if system == 2:
         return ",,,,,,,,\n"
     if system == 3:
-        return ",,,,,,\n"
+        return ",,,,,,,,,,,,\n"
     if system == 10:
         return ",,,,,,,,,,,\n"
     return ",,,,,,\n"
@@ -226,10 +235,18 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
             + str(Expected_SNR[2][1][0][elev]) + "," + str(Expected_SNR[2][1][1][elev]) + "\n"
         )
     elif system == 3:
+        e1_snr, e1_slip = first_present(sv_snr, sv_slip, (23,))
+        altboc_snr, altboc_slip = first_present(sv_snr, sv_slip, (214,))
+        e5b_snr, e5b_slip = first_present(sv_snr, sv_slip, (161,))
+        e5a_snr, e5a_slip = first_present(sv_snr, sv_slip, (111,))
+        e6_snr, e6_slip = first_present(sv_snr, sv_slip, (286, 287, 288, 261))
         handle.write(
             prefix
-            + sv_snr.get(23, "") + ',' + sv_slip.get(23, "") + ','
-            + sv_snr.get(214, "") + ',' + sv_slip.get(214, "") + "\n"
+            + e1_snr + ',' + e1_slip + ','
+            + altboc_snr + ',' + altboc_slip + ','
+            + e5b_snr + ',' + e5b_slip + ','
+            + e5a_snr + ',' + e5a_slip + ','
+            + e6_snr + ',' + e6_slip + "\n"
         )
     elif system == 4:
         handle.write(

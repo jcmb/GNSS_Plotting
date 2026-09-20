@@ -501,7 +501,7 @@ function bandNamesForSystem(System, maxBands) {
         return ["L1 C/A", "L1 P", "L2 C/A", "L2 P"].slice(0, maxBands);
     }
     if (System === "GAL") {
-        return ["E1 C/A", "E5 AltBoc"].slice(0, maxBands);
+        return ["E1 C/A", "E5 AltBoc", "E5b", "E5a", "E6"].slice(0, maxBands);
     }
     if (System === "BDS") {
         return ["B1", "B2a", "B2b", "B2I", "B3"].slice(0, maxBands);
@@ -523,10 +523,10 @@ function maxBandsForSystem(System) {
     if (System === "GLONASS") {
         return 4;
     }
-    if (System === "BDS") {
+    if (System === "BDS" || System === "GAL") {
         return 5;
     }
-    if (System === "GAL" || System === "SBAS") {
+    if (System === "SBAS") {
         return 2;
     }
     return 2;
