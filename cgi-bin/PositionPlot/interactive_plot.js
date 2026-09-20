@@ -902,9 +902,9 @@ function meterFormatFromSpan(span) {
   if (!Number.isFinite(span) || span <= 0) {
     return { tickformat: ".3f", hoverformat: ".3f" };
   }
-  const decimals = Math.max(0, Math.min(3, Math.ceil(3 - Math.log10(Math.max(span, 1e-9)))));
+  const decimals = Math.max(0, Math.min(6, Math.ceil(3 - Math.log10(Math.max(span, 1e-12)))));
   const tickformat = decimals > 0 ? `.${decimals}f` : ".0f";
-  const hoverDecimals = Math.min(decimals + 1, 3);
+  const hoverDecimals = Math.min(decimals + 1, 6);
   const hoverformat = hoverDecimals > 0 ? `.${hoverDecimals}f` : ".1f";
   return { tickformat, hoverformat };
 }
@@ -949,6 +949,8 @@ function attachAdaptiveMeterAxis(plotId, yLayoutKey, yaxisId) {
     }
     const fmt = meterFormatFromSpan(span || 1);
     Plotly.relayout(plotId, {
+      [yLayoutKey + ".exponentformat"]: "none",
+      [yLayoutKey + ".showexponent"]: "none",
       [yLayoutKey + ".tickformat"]: fmt.tickformat,
       [yLayoutKey + ".hoverformat"]: fmt.hoverformat
     });
@@ -1421,6 +1423,9 @@ function plotErrorSigmaRatioChart(
   const { sigmaLegendOnly = true, ratioColorKey = colorKey } = options;
   const color = ERROR_COLORS[colorKey];
   const ratioColor = ERROR_COLORS[ratioColorKey] || color;
+  const ratioAxisValues = []
+    .concat(errY || [], sigY || [])
+    .filter(Number.isFinite);
   return drawPlot(elementId, [
     coloredLine(x, errY, errName, colorKey),
     {
@@ -1447,7 +1452,12 @@ function plotErrorSigmaRatioChart(
     ...layoutBase,
     margin: { ...layoutBase.margin, r: Y2_AXIS_RIGHT_MARGIN },
     title,
-    yaxis: { title: "Meters", rangemode: "tozero", zeroline: true },
+    yaxis: {
+      title: "Meters",
+      rangemode: "tozero",
+      zeroline: true,
+      ...meterAxisFromValues(ratioAxisValues)
+    },
     yaxis2: {
       title: ratioName,
       overlaying: "y",
@@ -1458,6 +1468,7 @@ function plotErrorSigmaRatioChart(
     },
     legend: { ...layoutBase.legend, itemclick: "toggle", itemdoubleclick: "toggleothers" }
   }).then(() => {
+    attachAdaptiveMeterAxis(elementId, "yaxis", "y");
     attachOverlayAxisLegendSync(elementId, {
       yaxis2: { title: ratioName, traces: [ratioName] }
     });
@@ -2866,6 +2877,12 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     const vel = velocitySeries(points);
     const showSolVelNeu = document.getElementById("show-sol-velocity-neu")?.checked;
     const showSolSpeed = document.getElementById("show-sol-velocity-speed")?.checked;
+    const velAxisValues = []
+      .concat(vel.vn, vel.ve, vel.vu)
+      .filter(Number.isFinite);
+    const speedAxisValues = []
+      .concat(vel.speedH, vel.speed3d)
+      .filter(Number.isFinite);
 
     drawPlotIfOpen("plot-velocity-neu", [
       coloredLine(x, vel.vn, "vLat", "north"),
@@ -2876,8 +2893,10 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
       ...commonLayout,
       margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(false, showSolVelNeu) },
       title: "Velocity (NEU)",
-      yaxis: { title: "Velocity (m/s)" },
+      yaxis: { title: "Velocity (m/s)", ...meterAxisFromValues(velAxisValues) },
       ...sigmaPlotOverlayAxes(false, showSolVelNeu, points)
+    }).then(() => {
+      attachAdaptiveMeterAxis("plot-velocity-neu", "yaxis", "y");
     });
     drawPlotIfOpen("plot-velocity-speed", [
       coloredLine(x, vel.speedH, "Horizontal speed", "d2"),
@@ -2887,8 +2906,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
       ...commonLayout,
       margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(false, showSolSpeed) },
       title: "Speed",
-      yaxis: { title: "Speed (m/s)", rangemode: "tozero" },
+      yaxis: {
+        title: "Speed (m/s)",
+        rangemode: "tozero",
+        ...meterAxisFromValues(speedAxisValues)
+      },
       ...sigmaPlotOverlayAxes(false, showSolSpeed, points)
+    }).then(() => {
+      attachAdaptiveMeterAxis("plot-velocity-speed", "yaxis", "y");
     });
   }
 
@@ -2952,6 +2977,8 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
 
   const usedSv = points.map((p) => (Number.isFinite(p.used) ? p.used : null));
   const maxUsedSv = Math.max(1, ...usedSv.filter(Number.isFinite));
+  const neScatterEast = points.map((p) => p.e).filter(Number.isFinite);
+  const neScatterNorth = points.map((p) => p.n).filter(Number.isFinite);
   drawPlotIfOpen("plot-ne-scatter", [{
     x: points.map((p) => p.e),
     y: points.map((p) => p.n),
@@ -2965,8 +2992,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   }], {
     margin: { l: 60, r: 80, t: 40, b: 50 },
     title: "NE Error Scatter (marker color = PDOP, size = SVs used)",
-    xaxis: { title: "East Error (m)", scaleanchor: "y", scaleratio: 1, zeroline: true },
-    yaxis: { title: "North Error (m)", zeroline: true },
+    xaxis: {
+      title: "East Error (m)",
+      scaleanchor: "y",
+      scaleratio: 1,
+      zeroline: true,
+      ...meterAxisFromValues(neScatterEast)
+    },
+    yaxis: { title: "North Error (m)", zeroline: true, ...meterAxisFromValues(neScatterNorth) },
     showlegend: false
   });
 
@@ -2982,7 +3015,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
   ], {
     margin: { l: 60, r: 30, t: 40, b: 40 },
     title: "Cumulative Error Curves",
-    xaxis: { title: "Error (m)" },
+    xaxis: {
+      title: "Error (m)",
+      ...meterAxisFromValues(
+        []
+          .concat(cN.x, cE.x, c2d.x, cU.x)
+          .filter(Number.isFinite)
+      )
+    },
     yaxis: { title: "Percent (%)", range: [0, 100] },
     legend: { orientation: "h" }
   });
@@ -3003,8 +3043,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(showDop1, showSol1) },
     title: "1D Sigma (Vertical)",
-    yaxis: { title: "Sigma (m)", rangemode: "tozero" },
+    yaxis: {
+      title: "Sigma (m)",
+      rangemode: "tozero",
+      ...meterAxisFromValues(vSigma.filter(Number.isFinite))
+    },
     ...sigmaPlotOverlayAxes(showDop1, showSol1, points)
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-sigma-1d", "yaxis", "y");
   });
 
   drawPlotIfOpen("plot-sigma-2d", [
@@ -3015,8 +3061,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(showDop2, showSol2) },
     title: "2D Sigma (Horizontal)",
-    yaxis: { title: "Sigma (m)", rangemode: "tozero" },
+    yaxis: {
+      title: "Sigma (m)",
+      rangemode: "tozero",
+      ...meterAxisFromValues(hSigma.filter(Number.isFinite))
+    },
     ...sigmaPlotOverlayAxes(showDop2, showSol2, points)
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-sigma-2d", "yaxis", "y");
   });
 
   drawPlotIfOpen("plot-sigma-3d", [
@@ -3027,8 +3079,14 @@ function renderPositionPlots(points, solutionPoints, mode, filterInfo) {
     ...commonLayout,
     margin: { ...commonLayout.margin, r: sigmaPlotRightMargin(showDop3, showSol3) },
     title: "3D Sigma",
-    yaxis: { title: "Sigma (m)", rangemode: "tozero" },
+    yaxis: {
+      title: "Sigma (m)",
+      rangemode: "tozero",
+      ...meterAxisFromValues(s3d.filter(Number.isFinite))
+    },
     ...sigmaPlotOverlayAxes(showDop3, showSol3, points)
+  }).then(() => {
+    attachAdaptiveMeterAxis("plot-sigma-3d", "yaxis", "y");
   });
 
   if (!isMoving) {
