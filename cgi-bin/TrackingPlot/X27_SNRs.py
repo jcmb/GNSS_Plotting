@@ -189,7 +189,7 @@ def first_present(sv_snr, sv_slip, indexes):
 
 def null_sv_row(system, antenna):
     if system == 0:
-        return ",,,,,,,,,,\n"
+        return ",,,,,,,,,,,,,,,,\n"
     if system == 1:
         return ",,,,,,\n"
     if system == 2:
@@ -197,7 +197,7 @@ def null_sv_row(system, antenna):
     if system == 3:
         return ",,,,,,,,,,,,\n"
     if system == 10:
-        return ",,,,,,,,,,,\n"
+        return ",,,,,,,,,,,,,,\n"
     return ",,,,,,\n"
 
 
@@ -209,12 +209,14 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
     )
 
     if system == 0:
+        l1c_snr, l1c_slip = first_present(sv_snr, sv_slip, (20,))
         handle.write(
             prefix
             + sv_snr.get(0, "") + ',' + sv_slip.get(0, "") + ','
             + sv_snr.get(52, "") + ',' + sv_slip.get(52, "") + ','
             + sv_snr.get(55, "") + ',' + sv_slip.get(55, "") + ','
-            + sv_snr.get(108, "") + ',' + sv_slip.get(108, "") + ","
+            + sv_snr.get(108, "") + ',' + sv_slip.get(108, "") + ','
+            + l1c_snr + ',' + l1c_slip + ","
             + str(Expected_SNR[0][0][0][elev]) + "," + str(Expected_SNR[0][1][2][elev]) + ","
             + str(Expected_SNR[0][1][5][elev]) + "," + str(Expected_SNR[0][2][8][elev]) + "\n"
         )
@@ -259,16 +261,18 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
     elif system == 10:
         b1_snr, b1_slip = first_present(sv_snr, sv_slip, (326,))
         b2a_snr, b2a_slip = first_present(sv_snr, sv_slip, (108,))
-        b2b_snr, b2b_slip = first_present(sv_snr, sv_slip, (163,))
-        b2i_snr, b2i_slip = first_present(sv_snr, sv_slip, (178, 156))
+        b2b_snr, b2b_slip = first_present(sv_snr, sv_slip, (163, 156))
+        b2i_snr, b2i_slip = first_present(sv_snr, sv_slip, (178,))
         b3_snr, b3_slip = first_present(sv_snr, sv_slip, (379,))
+        b1c_snr, b1c_slip = first_present(sv_snr, sv_slip, (20,))
         handle.write(
             prefix
             + b1_snr + ',' + b1_slip + ','
             + b2a_snr + ',' + b2a_slip + ','
             + b2b_snr + ',' + b2b_slip + ','
             + b2i_snr + ',' + b2i_slip + ','
-            + b3_snr + ',' + b3_slip + "\n"
+            + b3_snr + ',' + b3_slip + ','
+            + b1c_snr + ',' + b1c_slip + "\n"
         )
 
 

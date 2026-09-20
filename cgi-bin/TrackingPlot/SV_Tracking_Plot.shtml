@@ -61,7 +61,7 @@ ogo"> </a>
 
 
     if (System == "GPS") {
-        Max_Bands=4;
+        Max_Bands=5;
         }
 
     if (System == "GLONASS") {
@@ -73,7 +73,7 @@ ogo"> </a>
         }
 
     if (System == "BDS") {
-        Max_Bands=5;
+        Max_Bands=6;
         }
 
     if (System == "SBAS") {
@@ -215,11 +215,12 @@ ogo"> </a>
         options.series[2].name="L2 E"
         options.series[3].name="L2 CS"
         options.series[4].name="L5 IQ"
+        options.series[5].name="L1C"
+        }
   //      options.yAxis[0].categories[1]="L1 C/A"
 //        options.yAxis[0].categories[2]="L2 E"
 ///        options.yAxis[0].categories[3]="L2 CS"
 //        options.yAxis[0].categories[4]="L5 IQ"
-        }
 
     if (System == "SBAS") {
         options.series[1].name="L1 C/A"
@@ -253,6 +254,7 @@ ogo"> </a>
         options.series[3].name="B2b"
         options.series[4].name="B2I"
         options.series[5].name="B3"
+        options.series[6].name="B1C"
         }
 
 
@@ -345,7 +347,7 @@ ogo"> </a>
 
   function create_compare_plot(System, SV) {
     if (System == "GPS") {
-        Max_Bands = 4;
+        Max_Bands = 5;
     } else if (System == "GLONASS") {
         Max_Bands = 4;
     } else if (System == "GAL") {
@@ -353,7 +355,7 @@ ogo"> </a>
     } else if (System == "SBAS") {
         Max_Bands = 2;
     } else if (System == "BDS") {
-        Max_Bands = 5;
+        Max_Bands = 6;
     }
 
     var bandNames = bandNamesForSystem(System, Max_Bands);

@@ -36,7 +36,7 @@ function create_plot(System,SV,Mode) {
 
 
     if (System == "GPS") {
-        Max_Bands=4;
+        Max_Bands=5;
         }
 
     if (System == "GLONASS") {
@@ -48,7 +48,7 @@ function create_plot(System,SV,Mode) {
         }
 
     if (System == "BDS") {
-        Max_Bands=5;
+        Max_Bands=6;
         }
 
     if (System == "GAL") {
@@ -173,6 +173,7 @@ function create_plot(System,SV,Mode) {
         options.series[1] = {name:  "L2 E"}
         options.series[2] = {name:  "L2 CS"}
         options.series[3] = {name:  "L5 IQ"}
+        options.series[4] = {name:  "L1C"}
         }
 
     if (System == "BDS") {
@@ -181,6 +182,7 @@ function create_plot(System,SV,Mode) {
         options.series[2] = {name:  "B2b"}
         options.series[3] = {name:  "B2I"}
         options.series[4] = {name:  "B3"}
+        options.series[5] = {name:  "B1C"}
         }
 
     if (System == "GAL") {
@@ -299,13 +301,13 @@ function create_plot(System,SV,Mode) {
 
 function create_compare_plot(System, SV, Mode) {
     if (System == "GPS") {
-        Max_Bands = 4;
+        Max_Bands = 5;
     } else if (System == "GLONASS") {
         Max_Bands = 3;
     } else if (System == "SBAS") {
         Max_Bands = 2;
     } else if (System == "BDS") {
-        Max_Bands = 5;
+        Max_Bands = 6;
     } else if (System == "GAL") {
         Max_Bands = 5;
     } else {

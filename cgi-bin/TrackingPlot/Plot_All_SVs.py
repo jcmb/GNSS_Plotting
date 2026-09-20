@@ -76,6 +76,8 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                 if Band=="L1":
                     if Tracked=="CA":
                         output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("GPS", antenna),HTML_File,Plot_Name)
+                    elif Tracked=="BOC_1_1_PD":
+                        output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("GPS", antenna),HTML_File,Plot_Name)
                     else:
                         skip_unknown("Skipping unknown GPS L1 Tracked: " + Tracked)
                 elif Band=="L2":
@@ -177,8 +179,10 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                 elif Band=="E5B":
                     if Tracked=="BPSK_D":
                         output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("BDS", antenna),HTML_File,Plot_Name)
-                    elif Tracked=="BPSK2_B2" or Tracked=="I":
+                    elif Tracked=="BPSK2_B2":
                         output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("BDS", antenna),HTML_File,Plot_Name)
+                    elif Tracked=="I":
+                        output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
                         skip_unknown("Skipping unknown BDS E5B Tracked: " + Tracked)
                 elif Band=="B3":
@@ -186,6 +190,11 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                         output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
                         skip_unknown("Skipping unknown BDS B3 Tracked: " + Tracked)
+                elif Band=="L1":
+                    if Tracked=="BOC_1_1_PD":
+                        output_plot(prefix(antenna),Sys,Band,Tracked,14,svs("BDS", antenna),HTML_File,Plot_Name)
+                    else:
+                        skip_unknown("Skipping unknown BDS L1 Tracked: " + Tracked)
                 else:
                     skip_unknown("Skipping unknown BDS Band: " + Band)
             elif Sys=="QZSS":

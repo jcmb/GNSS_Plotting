@@ -48,10 +48,11 @@ def output_plot(System, sv_file, plot_base, HTML_File, Plot_Name):
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "L2 E"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "L2 CS"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "L5 IQ"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "Exp L1 C/A"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 13, "Exp L2 E"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 14, "Exp L2 CS"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 15, "Exp L5 IQ"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "L1C"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 14, "Exp L1 C/A"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 15, "Exp L2 E"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 16, "Exp L2 CS"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 17, "Exp L5 IQ"))
         print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
 
     elif System == "GLONASS":
@@ -77,6 +78,7 @@ def output_plot(System, sv_file, plot_base, HTML_File, Plot_Name):
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "B2b"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "B2I"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "B3"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 14, "B1C"))
         print("'{}' using ($1/1000):($2) title \"Elevation\" smooth bezier axis x1y2".format(data_file))
     elif System == "SBAS":
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "L1 C/A"))

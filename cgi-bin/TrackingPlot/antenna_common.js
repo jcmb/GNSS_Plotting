@@ -495,7 +495,7 @@ function diffMeanSeries(rowsA, rowsB) {
 
 function bandNamesForSystem(System, maxBands) {
     if (System === "GPS") {
-        return ["L1 C/A", "L2 E", "L2 CS", "L5 IQ"].slice(0, maxBands);
+        return ["L1 C/A", "L2 E", "L2 CS", "L5 IQ", "L1C"].slice(0, maxBands);
     }
     if (System === "GLONASS") {
         return ["L1 C/A", "L1 P", "L2 C/A", "L2 P"].slice(0, maxBands);
@@ -504,7 +504,7 @@ function bandNamesForSystem(System, maxBands) {
         return ["E1 C/A", "E5 AltBoc", "E5b", "E5a", "E6"].slice(0, maxBands);
     }
     if (System === "BDS") {
-        return ["B1", "B2a", "B2b", "B2I", "B3"].slice(0, maxBands);
+        return ["B1", "B2a", "B2b", "B2I", "B3", "B1C"].slice(0, maxBands);
     }
     if (System === "SBAS") {
         return ["L1 C/A", "L5 IQ"].slice(0, maxBands);
@@ -518,12 +518,15 @@ function bandNamesForSystem(System, maxBands) {
 
 function maxBandsForSystem(System) {
     if (System === "GPS") {
-        return 4;
+        return 5;
     }
     if (System === "GLONASS") {
         return 4;
     }
-    if (System === "BDS" || System === "GAL") {
+    if (System === "BDS") {
+        return 6;
+    }
+    if (System === "GAL") {
         return 5;
     }
     if (System === "SBAS") {
