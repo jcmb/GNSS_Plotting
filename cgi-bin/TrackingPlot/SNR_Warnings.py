@@ -54,6 +54,8 @@ def Process_Single_Band(Base_Name, Band_Name, SNR_File, Tolerance, Number_Outsid
     SV_Outside_Tolerance = 0
 
     for SNR_Row in SNR_CSV:
+        if len(SNR_Row) <= SNR_Field:
+            continue
         SNR_Row_Time = int(SNR_Row[TIME_Field])
         SV_Measurements += 1
         if Current_Time != SNR_Row_Time:
@@ -68,6 +70,8 @@ def Process_Single_Band(Base_Name, Band_Name, SNR_File, Tolerance, Number_Outsid
             Epoch = {}
         if float(SNR_Row[Elev_Field]) >= Elevation_Mask:
             Epoch[int(SNR_Row[SV_Field])] = SNR_Row
+            if len(SNR_Row) <= Expected_SNR_Field or SNR_Row[Expected_SNR_Field] == "":
+                continue
             SNR = float(SNR_Row[SNR_Field])
             Expected_SNR = float(SNR_Row[Expected_SNR_Field])
             if Expected_SNR - SNR > Tolerance:

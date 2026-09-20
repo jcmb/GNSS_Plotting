@@ -51,6 +51,9 @@ def output_plot (Antenna_Prefix,System,Band_Name,Tracking,Field,SVs,HTML_File,Pl
 
     print("")
 
+def skip_unknown(message):
+    sys.stderr.write(message + "\n")
+
 def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
     def svs(system, antenna):
         return sv_by_antenna.get(antenna, {}).get(system, [])
@@ -74,21 +77,21 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                     if Tracked=="CA":
                         output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("GPS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GPS L1 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GPS L1 Tracked: " + Tracked)
                 elif Band=="L2":
                     if Tracked=="E":
                         output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("GPS", antenna),HTML_File,Plot_Name)
                     elif Tracked=="CS":
                         output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("GPS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GPS L2 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GPS L2 Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="IQ":
                         output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("GPS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GPS L5 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GPS L5 Tracked: " + Tracked)
                 else:
-                    sys.exit("Internal Error, Unknown GPS Band: " + Band)
+                    skip_unknown("Skipping unknown GPS Band: " + Band)
 
 
             elif Sys=="GLONASS":
@@ -98,23 +101,23 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                     elif Tracked=="P":
                         output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("GLONASS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GLONASS L1 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GLONASS L1 Tracked: " + Tracked)
                 elif Band=="L2":
                     if Tracked=="CA":
                         output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("GLONASS", antenna),HTML_File,Plot_Name)
                     elif Tracked=="P":
                         output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("GLONASS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GLONASS L2 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GLONASS L2 Tracked: " + Tracked)
 
                 elif Band=="G3":
                     if Tracked=="G3_PD":
 #                        output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("GLONASS", antenna),HTML_File,Plot_Name)
                         pass
                     else:
-                        sys.exit("Internal Error, Unknown GLONASS G3 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GLONASS G3 Tracked: " + Tracked)
                 else:
-                    sys.exit("Internal Error, Unknown GLONASS Band: " + Band)
+                    skip_unknown("Skipping unknown GLONASS Band: " + Band)
 
 
             elif Sys=="SBAS":
@@ -122,69 +125,69 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                     if Tracked=="CA":
                         output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("SBAS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown SBAS L1 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown SBAS L1 Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="I":
                         output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("SBAS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown SBAS L5 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown SBAS L5 Tracked: " + Tracked)
                 else:
-                    sys.exit("Internal Error, Unknown SBAS Band: " + Band)
+                    skip_unknown("Skipping unknown SBAS Band: " + Band)
 
             elif Sys=="GAL":
                 if Band=="L1":
                     if Tracked=="MBOC_1_1_PD":
                         output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GAL L1 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GAL L1 Tracked: " + Tracked)
                 elif Band=="E5AB":
                     if Tracked=="ALTBOC_C_PD":
                         output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GAL E5AB Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GAL E5AB Tracked: " + Tracked)
                 elif Band=="E5B":
                     if Tracked=="BPSK_PD":
                         output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GAL E5B Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GAL E5B Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="BPSK_PD":
                         output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GAL L5 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GAL L5 Tracked: " + Tracked)
                 elif Band=="E6":
                     if Tracked=="E6_PD" or Tracked=="E6_P" or Tracked=="E6_D" or Tracked=="BPSK_PD":
                         output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("GAL", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown GAL E6 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown GAL E6 Tracked: " + Tracked)
                 else:
-                    sys.exit("Internal Error, Unknown GAL Band: " + Band)
+                    skip_unknown("Skipping unknown GAL Band: " + Band)
 
             elif Sys=="BDS":
                 if Band=="B1_E2":
                     if Tracked=="BPSK2_B1":
                         output_plot(prefix(antenna),Sys,Band,Tracked,4,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown BDS B1 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown BDS B1 Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="IQ":
                         output_plot(prefix(antenna),Sys,Band,Tracked,6,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown BDS B2a Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown BDS B2a Tracked: " + Tracked)
                 elif Band=="E5B":
                     if Tracked=="BPSK_D":
                         output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("BDS", antenna),HTML_File,Plot_Name)
-                    elif Tracked=="BPSK2_B2":
+                    elif Tracked=="BPSK2_B2" or Tracked=="I":
                         output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown BDS E5B Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown BDS E5B Tracked: " + Tracked)
                 elif Band=="B3":
                     if Tracked=="BPSK2_B3":
                         output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("BDS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown BDS B3 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown BDS B3 Tracked: " + Tracked)
                 else:
-                    sys.exit("Internal Error, Unknown BDS Band: " + Band)
+                    skip_unknown("Skipping unknown BDS Band: " + Band)
             elif Sys=="QZSS":
                 if Band=="L1":
                     if Tracked=="CA":
@@ -194,21 +197,21 @@ def read_Bands_and_create_plots(antennas, sv_by_antenna, HTML_File, Plot_Name):
                     elif Tracked=="SAIF":
                         output_plot(prefix(antenna),Sys,Band,Tracked,8,svs("QZSS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown QZSS L1 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown QZSS L1 Tracked: " + Tracked)
                 elif Band=="L2":
                     if Tracked=="CS":
                         output_plot(prefix(antenna),Sys,Band,Tracked,10,svs("QZSS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown QZSS L2 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown QZSS L2 Tracked: " + Tracked)
                 elif Band=="L5":
                     if Tracked=="IQ":
                         output_plot(prefix(antenna),Sys,Band,Tracked,12,svs("QZSS", antenna),HTML_File,Plot_Name)
                     else:
-                        sys.exit("Internal Error, Unknown QZSS L5 Tracked: " + Tracked)
+                        skip_unknown("Skipping unknown QZSS L5 Tracked: " + Tracked)
                 else:
-                    sys.exit("Internal Error, Unknown QZSS Band: " + Band)
+                    skip_unknown("Skipping unknown QZSS Band: " + Band)
             else:
-                sys.exit("Internal Error, Unknown SV Type: " + Sys)
+                skip_unknown("Skipping unknown SV Type: " + Sys)
 
         else:
             sys.exit("Internal Error, could not decode Tracked Bands: " + Band)
@@ -266,7 +269,7 @@ def read_SVs_by_antenna():
                     ensure_antenna(antenna)
                     sv_by_antenna[antenna][Sys].append(SV)
                 else:
-                    sys.exit("Internal Error, Unknown SV Type: " + Sys)
+                    skip_unknown("Skipping unknown SV Type: " + Sys)
             else:
                 sys.exit("Internal Error, could not decode Tracked SVs: " + SV)
 

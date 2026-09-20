@@ -257,13 +257,18 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
             + sv_snr.get(108, "") + ',' + sv_slip.get(108, "") + "\n"
         )
     elif system == 10:
+        b1_snr, b1_slip = first_present(sv_snr, sv_slip, (326,))
+        b2a_snr, b2a_slip = first_present(sv_snr, sv_slip, (108,))
+        b2b_snr, b2b_slip = first_present(sv_snr, sv_slip, (163,))
+        b2i_snr, b2i_slip = first_present(sv_snr, sv_slip, (178, 156))
+        b3_snr, b3_slip = first_present(sv_snr, sv_slip, (379,))
         handle.write(
             prefix
-            + sv_snr.get(326, "") + ',' + sv_slip.get(326, "") + ','
-            + sv_snr.get(108, "") + ',' + sv_slip.get(108, "") + ','
-            + sv_snr.get(163, "") + ',' + sv_slip.get(163, "") + ','
-            + sv_snr.get(178, "") + ',' + sv_slip.get(178, "") + ','
-            + sv_snr.get(379, "") + ',' + sv_slip.get(379, "") + "\n"
+            + b1_snr + ',' + b1_slip + ','
+            + b2a_snr + ',' + b2a_slip + ','
+            + b2b_snr + ',' + b2b_slip + ','
+            + b2i_snr + ',' + b2i_slip + ','
+            + b3_snr + ',' + b3_slip + "\n"
         )
 
 
