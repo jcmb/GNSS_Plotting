@@ -393,8 +393,8 @@ function parseSvSnrRows(data, maxBands) {
             var snr = items[1 + (i * 2)];
             var slip = items[2 + (i * 2)];
             row.bands.push({
-                snr: snr ? parseFloat(snr) : null,
-                slip: slip ? parseInt(slip, 10) : null
+                snr: (snr !== undefined && snr !== "") ? parseFloat(snr) : null,
+                slip: (slip !== undefined && slip !== "") ? parseInt(slip, 10) : null
             });
         }
         rows.push(row);
@@ -495,7 +495,7 @@ function diffMeanSeries(rowsA, rowsB) {
 
 function bandNamesForSystem(System, maxBands) {
     if (System === "GPS") {
-        return ["L1 C/A", "L2 E", "L2 CS", "L5 IQ", "L1C"].slice(0, maxBands);
+        return ["L1 C/A", "L1 C (MBOC)", "L2 E", "L2 CS", "L5 IQ"].slice(0, maxBands);
     }
     if (System === "GLONASS") {
         return ["L1 C/A", "L1 P", "L2 C/A", "L2 P"].slice(0, maxBands);

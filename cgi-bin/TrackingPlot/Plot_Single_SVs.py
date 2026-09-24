@@ -45,10 +45,10 @@ def output_plot(System, sv_file, plot_base, HTML_File, Plot_Name):
     data_file = sv_file + ".SNR-SV"
     if System == "GPS":
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 4, "L1 C/A"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "L2 E"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "L2 CS"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "L5 IQ"))
-        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "L1C"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 6, "L1 C (MBOC)"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 8, "L2 E"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 10, "L2 CS"))
+        print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 12, "L5 IQ"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 14, "Exp L1 C/A"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 15, "Exp L2 E"))
         print("'{}' using ($1/1000):(${}) title \"{}\",\\".format(data_file, 16, "Exp L2 CS"))

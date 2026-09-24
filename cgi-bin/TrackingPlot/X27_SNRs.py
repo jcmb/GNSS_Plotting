@@ -16,7 +16,7 @@ else:
 
 print("GPS Offset: " + str(GPS_Week_MSecs))
 
-MAX_BANDS = 6
+MAX_BANDS = 8
 FIELDS_PER_BAND = 13
 HEADER_FIELDS = 11
 BAND_RANGE = 3
@@ -209,14 +209,16 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
     )
 
     if system == 0:
-        l1c_snr, l1c_slip = first_present(sv_snr, sv_slip, (20,))
+        # L1 C: BOC(1,1) or MBOC(1,1) Pilot/Data (GPS L1C)
+        l1c_snr, l1c_slip = first_present(sv_snr, sv_slip, (20, 21, 22, 23, 24, 25))
+        l2e_snr, l2e_slip = first_present(sv_snr, sv_slip, (52,))
         handle.write(
             prefix
             + sv_snr.get(0, "") + ',' + sv_slip.get(0, "") + ','
-            + sv_snr.get(52, "") + ',' + sv_slip.get(52, "") + ','
+            + l1c_snr + ',' + l1c_slip + ','
+            + l2e_snr + ',' + l2e_slip + ','
             + sv_snr.get(55, "") + ',' + sv_slip.get(55, "") + ','
-            + sv_snr.get(108, "") + ',' + sv_slip.get(108, "") + ','
-            + l1c_snr + ',' + l1c_slip + ","
+            + sv_snr.get(108, "") + ',' + sv_slip.get(108, "") + ","
             + str(Expected_SNR[0][0][0][elev]) + "," + str(Expected_SNR[0][1][2][elev]) + ","
             + str(Expected_SNR[0][1][5][elev]) + "," + str(Expected_SNR[0][2][8][elev]) + "\n"
         )
@@ -237,7 +239,7 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
             + str(Expected_SNR[2][1][0][elev]) + "," + str(Expected_SNR[2][1][1][elev]) + "\n"
         )
     elif system == 3:
-        e1_snr, e1_slip = first_present(sv_snr, sv_slip, (23,))
+        e1_snr, e1_slip = first_present(sv_snr, sv_slip, (23, 20, 21, 22, 24, 25))
         altboc_snr, altboc_slip = first_present(sv_snr, sv_slip, (214,))
         e5b_snr, e5b_slip = first_present(sv_snr, sv_slip, (161,))
         e5a_snr, e5a_slip = first_present(sv_snr, sv_slip, (111,))
@@ -264,7 +266,7 @@ def write_sv_row(system, sv_int, sv_label, antenna, epoch, fields, sv_snr, sv_sl
         b2b_snr, b2b_slip = first_present(sv_snr, sv_slip, (163, 156))
         b2i_snr, b2i_slip = first_present(sv_snr, sv_slip, (178,))
         b3_snr, b3_slip = first_present(sv_snr, sv_slip, (379,))
-        b1c_snr, b1c_slip = first_present(sv_snr, sv_slip, (20,))
+        b1c_snr, b1c_slip = first_present(sv_snr, sv_slip, (20, 21, 22, 23, 24, 25))
         handle.write(
             prefix
             + b1_snr + ',' + b1_slip + ','

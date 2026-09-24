@@ -40,7 +40,7 @@ function create_plot(System,SV,Mode) {
         }
 
     if (System == "GLONASS") {
-        Max_Bands=3;
+        Max_Bands=4;
         }
 
     if (System == "SBAS") {
@@ -170,10 +170,17 @@ function create_plot(System,SV,Mode) {
 
     if (System == "GPS") {
         options.series[0] = {name:  "L1 C/A"}
-        options.series[1] = {name:  "L2 E"}
-        options.series[2] = {name:  "L2 CS"}
-        options.series[3] = {name:  "L5 IQ"}
-        options.series[4] = {name:  "L1C"}
+        options.series[1] = {name:  "L1 C (MBOC)"}
+        options.series[2] = {name:  "L2 E"}
+        options.series[3] = {name:  "L2 CS"}
+        options.series[4] = {name:  "L5 IQ"}
+        }
+
+    if (System == "GLONASS") {
+        options.series[0] = {name:  "L1 C/A"}
+        options.series[1] = {name:  "L1 P"}
+        options.series[2] = {name:  "L2 C/A"}
+        options.series[3] = {name:  "L2 P"}
         }
 
     if (System == "BDS") {
@@ -206,9 +213,9 @@ function create_plot(System,SV,Mode) {
 
             if (items[0]) {
                 for (var i=1;i<=Max_Bands;i++) {
-                    if (items[2+(i*2)]) {
+                    if (items[1+(i*2)]) {
 //                        console.log("Have Data")
-                        current_slip=parseInt(items[2+(i*2)])
+                        current_slip=parseInt(items[2+(i*2)] || "0", 10)
 //                        console.log(items[1])					       
 	    	         elev_data.push({
                              x:items[0],
@@ -224,13 +231,13 @@ function create_plot(System,SV,Mode) {
 //                                Elev: items[1],
                                    Az: items[2],
                                    Signal:i,
-                                   SNR: parseInt(items[1+(i*2)]),
+                                   SNR: parseFloat(items[1+(i*2)]),
                                   });
                                }
                             else {
                                series_data[i].push({
                                    x:items[0],
-                                   y:parseInt(items[1+(i*2)]),
+                                   y:parseFloat(items[1+(i*2)]),
 //                                Elev: items[1],
                                    Az: items[2],
                                    Signal:i,
@@ -245,7 +252,7 @@ function create_plot(System,SV,Mode) {
 //                                Elev: items[1],
                                    Az: items[2],
                                 Signal: i,
-                                SNR: parseInt(items[1+(i*2)]),
+                                SNR: parseFloat(items[1+(i*2)]),
                                 marker: {
                                     symbol: 'url(/images/Sign-Alert-icon.png)'
                                     }
@@ -254,7 +261,7 @@ function create_plot(System,SV,Mode) {
                             else {
                                series_data[i].push({
                                    x:items[0],
-                                   y:parseInt(items[1+(i*2)]),
+                                   y:parseFloat(items[1+(i*2)]),
 //                                Elev: items[1],
                                    Az: items[2],
                                    Signal:i,
@@ -303,7 +310,7 @@ function create_compare_plot(System, SV, Mode) {
     if (System == "GPS") {
         Max_Bands = 5;
     } else if (System == "GLONASS") {
-        Max_Bands = 3;
+        Max_Bands = 4;
     } else if (System == "SBAS") {
         Max_Bands = 2;
     } else if (System == "BDS") {

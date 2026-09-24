@@ -2,7 +2,7 @@
 <div id="TRACKING" hidden>
 Tracking:<br/>
 <button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="create_plot('GPS','L1','CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD" onclick="create_plot('GPS','L1','BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="create_gps_l1c_plot()" disabled > GPS L1C </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="create_plot('GPS','L2','E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="create_plot('GPS','L2','CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="create_plot('GPS','L5','IQ')" disabled > GPS L5 IQ </button>
@@ -26,7 +26,7 @@ Tracking:<br/>
 <br/>
 Slips:<br/>
 <button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="navigate_gps_l1c('Slips_Plot.shtml')" disabled > GPS L1C </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ')" disabled > GPS L5 IQ </button>
@@ -50,7 +50,7 @@ Slips:<br/>
 <br/>
 SNR:<br/>
 <button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="navigate_gps_l1c('SNR_Plot.shtml')" disabled > GPS L1C </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ')" disabled > GPS L5 IQ </button>
@@ -75,7 +75,7 @@ SNR:<br/>
 <div id="SLIPS" hidden>
 Slips:<br/>
 <button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="create_plot('GPS','L1','CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD" onclick="create_plot('GPS','L1','BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="create_gps_l1c_plot()" disabled > GPS L1C </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="create_plot('GPS','L2','E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="create_plot('GPS','L2','CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="create_plot('GPS','L5','IQ')" disabled > GPS L5 IQ </button>
@@ -99,7 +99,7 @@ Slips:<br/>
 <br/>
 Tracking:<br/>
 <button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="navigate_gps_l1c('Tracking_Plot.shtml')" disabled > GPS L1C </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ')" disabled > GPS L5 IQ </button>
@@ -124,7 +124,7 @@ Tracking:<br/>
 <br/>
 SNR:<br/>
 <button type="button" class="btn-sm TRACKING GPS-L1-CA" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm TRACKING GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="navigate_gps_l1c('SNR_Plot.shtml')" disabled > GPS L1C </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-E" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm TRACKING GPS-L2-CS" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm TRACKING GPS-L5-IQ" onclick="navigatePlot('SNR_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ')" disabled > GPS L5 IQ </button>
@@ -150,7 +150,7 @@ SNR:<br/>
 <div id="SNR" hidden>
 SNR:<br/>
 <button type="button" class="btn-sm SNR GPS-L1-CA" onclick="create_plot('GPS','L1','CA')" disabled > GPS L1 CA </button>
-<button type="button" class="btn-sm SNR GPS-L1-BOC_1_1_PD" onclick="create_plot('GPS','L1','BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm SNR GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="create_gps_l1c_plot()" disabled > GPS L1C </button>
 <button type="button" class="btn-sm SNR GPS-L2-E" onclick="create_plot('GPS','L2','E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm SNR GPS-L2-CS" onclick="create_plot('GPS','L2','CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm SNR GPS-L5-IQ" onclick="create_plot('GPS','L5','IQ')" disabled > GPS L5 IQ </button>
@@ -173,7 +173,7 @@ SNR:<br/>
 <br/>
 Tracking:<br/>
 <button type="button" class="btn-sm SNR GPS-L1-CA" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm SNR GPS-L1-BOC_1_1_PD" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm SNR GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="navigate_gps_l1c('Tracking_Plot.shtml')" disabled > GPS L1C </button>
 <button type="button" class="btn-sm SNR GPS-L2-E" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm SNR GPS-L2-CS" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm SNR GPS-L5-IQ" onclick="navigatePlot('Tracking_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ')" disabled > GPS L5 IQ </button>
@@ -197,7 +197,7 @@ Tracking:<br/>
 <br/>
 Slips:<br/>
 <button type="button" class="btn-sm SNR GPS-L1-CA" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=CA')" disabled > GPS L1 CA</button>
-<button type="button" class="btn-sm SNR GPS-L1-BOC_1_1_PD" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L1&SIGNAL=BOC_1_1_PD')" disabled > GPS L1C </button>
+<button type="button" class="btn-sm SNR GPS-L1-BOC_1_1_PD GPS-L1-MBOC_1_1_PD" onclick="navigate_gps_l1c('Slips_Plot.shtml')" disabled > GPS L1C </button>
 <button type="button" class="btn-sm SNR GPS-L2-E" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=E')" disabled > GPS L2 E </button>
 <button type="button" class="btn-sm SNR GPS-L2-CS" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L2&SIGNAL=CS')" disabled > GPS L2 CS </button>
 <button type="button" class="btn-sm SNR GPS-L5-IQ" onclick="navigatePlot('Slips_Plot.shtml?SYSTEM=GPS&FREQ=L5&SIGNAL=IQ')" disabled > GPS L5 IQ </button>
@@ -226,6 +226,7 @@ Slips:<br/>
 <script>
 var GAL_E6_SIGNALS = ["E6_D", "E6_PD", "E6_P", "BPSK_PD"];
 var BDS_B2B_SIGNALS = ["BPSK_D", "I"];
+var GPS_L1C_SIGNALS = ["BOC_1_1_PD", "MBOC_1_1_PD", "BOC_1_1_P", "BOC_1_1_D", "MBOC_1_1_P", "MBOC_1_1_D"];
 var trackedSignalsByBand = {};
 
 function recordTrackedSignal(bandClass) {
@@ -276,6 +277,14 @@ function create_bds_b2b_plot() {
 
 function navigate_bds_b2b(page) {
     navigate_plot_tracked(page, "BDS", "E5B", BDS_B2B_SIGNALS);
+}
+
+function create_gps_l1c_plot() {
+    create_plot_tracked("GPS", "L1", GPS_L1C_SIGNALS);
+}
+
+function navigate_gps_l1c(page) {
+    navigate_plot_tracked(page, "GPS", "L1", GPS_L1C_SIGNALS);
 }
 
 function create_Buttons(PLOT, antennas, selectedAntenna) {
